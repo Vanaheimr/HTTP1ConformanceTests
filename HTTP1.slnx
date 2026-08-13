@@ -5,4 +5,5 @@
     <Project Path="libs/Styx/Styx/Styx.csproj" />
     <Project Path="libs/Styx/StyxTests/StyxTests.csproj" />
   </Folder>
+  <Project Path="Demo/HTTP1.Demo.csproj" />
 </Solution>

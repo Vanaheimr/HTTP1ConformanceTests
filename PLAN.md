@@ -52,9 +52,13 @@ Priorities: **P1** = needed for a credible HTTP/1.1 conformance claim ·
 | Done | `LICENSE`, `.gitattributes`, `README.md`, `PLAN.md` |
 | ToDo | `.gitignore` (bin/obj, Autobahn reports, certs), `HTTP1.slnx`, `CLAUDE.md` (architecture + conventions, model: HTTP/2 repo), `docs/BUILD_LOG.md`, initial commit, GitHub remote `Vanaheimr/HTTP1ConformanceTests` |
 
-## A1 · Demo host · P1 · ~1 d
+## A1 · Demo host · P1 · **done**
 
-Everything downstream drives against it, so it comes first.
+Everything downstream drives against it, so it came first. Built, running,
+and every route verified with curl + a raw RFC 6455 handshake — see
+[`Demo/README.md`](Demo/README.md) for the route table and the verification
+transcript. Two new upstream findings fell out of building it: **H-21** and
+**H-22**.
 
 `Demo/HTTP1.Demo.csproj` on top of `HTTPTestServer` / `HTTPServer`:
 
@@ -249,6 +253,8 @@ never-standardized parts of **H-5**. Everything else is a fix.
 | **H-18** | `HTTP1/Server/URLMapping_old/` alongside `URLMapping/` — two routing generations in the tree | — | P3 | S | ~4 000 lines of probable dead code. Clarify before the harnesses depend on either |
 | **H-19** | No RFC 8187 parameter encoding / RFC 6266 `filename*` | RFC 8187, 6266 | P3 | S | |
 | **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | |
+| **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split |
+| **H-22** | A chunked response silently produces an **empty body** unless `ContentStream` is a `ChunkedTransferEncodingStream` — setting `TransferEncoding = "chunked"` + `ChunkWorker` alone emits correct headers and nothing else, with no error | — | P2 | S | Found while building A1. The server dispatches the worker on the stream type, not the header field. Either wire the two together or fail loudly when they disagree; a silent empty body is the worst of the three options |
 
 ---
 
