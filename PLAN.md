@@ -4,10 +4,26 @@ Derived from the state analysis in [`README.md`](README.md). Two independent
 tracks:
 
 - **Track A — this repository**: demo host, raw-wire harnesses, third-party
-  suite drivers, CI. Nothing here exists yet.
+  suite drivers, CI.
 - **Track B — the Hermod submodule**: the gaps the analysis surfaced in the
   stack itself. Each is a change under `libs/Hermod/` that goes upstream — see
   the workflow below.
+
+**Status legend:** ✅ done · 🔶 partial · ⬜ open · ❌ broken — markers are kept
+current as work proceeds.
+
+**Current state (2026-08-13):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
+14 routes), **A2 ✅** (6 harnesses, **199/199 checks green over cleartext *and*
+TLS**), **A3 ⬜** next. Track B: **23 findings open**, none fixed upstream yet —
+H-1 and H-23 are the cheapest starting points.
+
+| Gate | State |
+|---|---|
+| `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
+| `tests/run-tests.sh` | ✅ 199/199, ~97 s |
+| `tests/run-tests.sh --tls` | ✅ 199/199, ~300 s |
+| Hermod `Tests.HTTP.*` | ✅ 440 tests |
+| third-party suites | ⬜ none wired in yet |
 
 ## Upstream workflow (Track B)
 
@@ -45,14 +61,15 @@ Priorities: **P1** = needed for a credible HTTP/1.1 conformance claim ·
 
 # Track A — this repository
 
-## A0 · Scaffolding · P1 · ~1 h
+## ✅ A0 · Scaffolding
 
 | | |
 |---|---|
-| Done | `LICENSE`, `.gitattributes`, `README.md`, `PLAN.md` |
-| ToDo | `.gitignore` (bin/obj, Autobahn reports, certs), `HTTP1.slnx`, `CLAUDE.md` (architecture + conventions, model: HTTP/2 repo), `docs/BUILD_LOG.md`, initial commit, GitHub remote `Vanaheimr/HTTP1ConformanceTests` |
+| ✅ | `LICENSE`, `.gitattributes`, `.gitignore`, `HTTP1.slnx` |
+| ✅ | `README.md` (the RFC matrix), `PLAN.md`, `CLAUDE.md`, `docs/BUILD_LOG.md` |
+| ✅ | remotes `origin` / `git1` / `git2`, initial commit pushed to all three |
 
-## A1 · Demo host · P1 · **done**
+## ✅ A1 · Demo host
 
 Everything downstream drives against it, so it came first. Built, running,
 and every route verified with curl + a raw RFC 6455 handshake — see
@@ -62,38 +79,40 @@ transcript. Two new upstream findings fell out of building it: **H-21** and
 
 `Demo/HTTP1.Demo.csproj` on top of `HTTPTestServer` / `HTTPServer`:
 
-| Listener | Port | Purpose |
+| Listener | Port | State |
 |---|---|---|
-| HTTP | `:8080` | cleartext — the main conformance target |
-| HTTPS | `:8443` | TLS, self-signed cert generated at startup (as in the h2 demo) |
-| WebSocket | `:8081` / `:8444` | `WebSocketServer` echo — the Autobahn target |
+| HTTP | `:8080` | ✅ cleartext — the main conformance target |
+| HTTPS | `:8443` | ✅ TLS, self-signed cert generated at startup |
+| WebSocket | `:8081` | ✅ `WebSocketServer` echo — the Autobahn target |
 
 Routes, deliberately parallel to the HTTP/2 demo so the two suites stay
-comparable:
+comparable. All ✅ and exercised by the A2 harnesses:
 
 | Route | Exercises |
 |---|---|
-| `/` | baseline `GET`, `Content-Length` framing |
-| `/echo` | request body round-trip, `POST`/`PUT` |
+| `/` | baseline `GET`/`HEAD`, `Content-Length` framing, HTTP/1.0 keep-alive negotiation |
+| `/echo` | request body round-trip, `POST`/`PUT`/`PATCH` |
 | `/large` (128 KiB) | large fixed-length bodies |
 | `/slow` (2 s) | timeouts, client patience, connection reuse after a slow response |
 | `/chunked` | `Transfer-Encoding: chunked` responses incl. chunk extensions |
 | `/trailers` | trailer fields after the terminal chunk |
-| `/files/resource.txt` | `HEAD`, `OPTIONS`, conditional requests, `Range` |
+| `/files/resource.txt` | `HEAD`, `OPTIONS`, conditional requests, `Range` → `206`/`416` |
 | `/files/greeting` | content negotiation (en/de text + en JSON) + `Vary` |
 | `/secret` | `401` + `WWW-Authenticate`, Basic and Bearer |
 | `/search` | `QUERY` (RFC 10008), fixed-length and chunked |
 | `/events` | SSE — history, `Last-Event-ID`, retry, heartbeat |
 | `/expect` | `Expect: 100-continue` and `417` |
-| `/redirect/*` | `301` `302` `303` `307` (`308` blocked on **H-1**) |
+| `/redirect/{code}` | `301` `302` `303` `307` — ⬜ `308` blocked on **H-1** |
 | `/status/{code}` | arbitrary status codes, for the third-party drivers |
-| `/ws` | WebSocket echo (also reachable on the dedicated WS port) |
 
-**Open point:** the general HTTP server and the WebSocket server are *separate
-listeners* in Hermod today (**H-16**). Until that changes, the demo exposes WS
-on its own port and `/ws` only if H-16 is resolved.
+Also: `--fast-timeouts` shortens the read deadlines from 30 s to 3 s so the
+timeout checks resolve quickly; the runner passes it.
 
-## A2 · Raw-wire harnesses · P1 · **done**
+⬜ **`/ws` on the main port is blocked on H-16** — the general HTTP server and
+the WebSocket server are separate listeners in Hermod today, so the demo exposes
+WebSocket on `:8081`. Once H-16 lands, `/ws` moves onto `:8080`.
+
+## ✅ A2 · Raw-wire harnesses
 
 **199/199 checks pass over both transports** — `tests/run-tests.sh`, ~97 s
 cleartext, ~300 s over TLS. See [`tests/README.md`](tests/README.md) for the
@@ -128,7 +147,7 @@ library failure.
 
 </details>
 
-## A3 · curl matrix · P1 · ~1 d
+## ⬜ A3 · curl matrix · P1 · ~1 d
 
 curl is the closest thing HTTP/1.1 has to a reference client, and the installed
 build (8.21, no HTTP/2) is ideal: it cannot silently upgrade.
@@ -141,7 +160,7 @@ build (8.21, no HTTP/2) is ideal: it cannot silently upgrade.
 - assertions on both the status/body **and** the `-v` wire trace
 - `docs/TestingAgainst_curl.md`
 
-## A4 · Autobahn TestSuite · P1 · ~1–2 d
+## ⬜ A4 · Autobahn TestSuite · P1 · ~1–2 d
 
 Hermod's WebSocket README already claims 296 + 242 + 126 + 126 cases with 0
 failures. Those numbers are currently unreproducible from a clean checkout —
@@ -159,7 +178,7 @@ Runs the official `crossbario/autobahn-testsuite` image under WSL/Debian's
 Docker. The scripts must start the daemon themselves (`service docker start`) —
 WSL has no systemd, so it is not running after a reboot.
 
-## A5 · Intermediary interop · P2 · ~2–3 d
+## ⬜ A5 · Intermediary interop · P2 · ~2–3 d
 
 Reverse proxies are the strictest HTTP/1.1 consumers in existence; framing bugs
 surface against nginx long before they surface against a browser.
@@ -174,7 +193,7 @@ surface against nginx long before they surface against a browser.
   `Via`, trailer forwarding, chunked re-framing, `Connection` token handling
 - `docs/TestingAgainst_Proxies.md`
 
-## A6 · Request smuggling / differential fuzzing · P2 · ~2 d
+## ⬜ A6 · Request smuggling / differential fuzzing · P2 · ~2 d
 
 RFC 9112 §11.2 is the section where HTTP/1.1 implementations actually fail.
 Hermod's strict framing rejection is well tested internally, but never against
@@ -188,7 +207,7 @@ an adversarial external tool.
   (h2c upgrade is absent); pin that as a regression
 - `docs/TestingAgainst_Smuggling.md`
 
-## A7 · Non-.NET reference peers · P2 · ~2 d
+## ⬜ A7 · Non-.NET reference peers · P2 · ~2 d
 
 Every current interop test is .NET-vs-.NET. Independent implementations catch
 shared assumptions that two .NET stacks cannot.
@@ -201,7 +220,7 @@ shared assumptions that two .NET stacks cannot.
 | Java `HttpClient` / OkHttp | ✓ | — |
 | `wget`, `httpie`, `aria2c` (ranges) | ✓ | — |
 
-## A8 · Browser interop · P2 · ~1–2 d
+## ⬜ A8 · Browser interop · P2 · ~1–2 d
 
 - `tools/browser-interop.ps1` (model: the HTTP/3 repo's script) driving
   Playwright over Chromium, Firefox and WebKit
@@ -210,7 +229,7 @@ shared assumptions that two .NET stacks cannot.
 - the practical acceptance test — a browser is the least forgiving consumer of
   SSE and WebSocket in daily use
 
-## A9 · Benchmarks · P3 · ~1 d
+## ⬜ A9 · Benchmarks · P3 · ~1 d
 
 `tests/h1bench`, model: `h2bench`. Small `GET` at 1/8/64 concurrent with latency
 percentiles, large download/upload, chunked throughput, parser microbenchmarks,
@@ -219,13 +238,13 @@ absolute number without a control is how "slower than expected" gets mistaken
 for "slow". Additionally `h2load --h1`, `bombardier`, `oha` as external load
 generators (they also stress keep-alive reuse and connection-table cleanup).
 
-## A10 · Parser fuzzing · P3 · ~2 d
+## ⬜ A10 · Parser fuzzing · P3 · ~2 d
 
 SharpFuzz + AFL++ against the request-parsing entry point, seeded from the
 `h1syntax`/`h1framing` corpora. Target: no unhandled exception, no hang, no
 connection-state leak on any input.
 
-## A11 · CI · P2 · ~0.5 d
+## ⬜ A11 · CI · P2 · ~0.5 d
 
 `.github/workflows/ci.yml` (build + Hermod HTTP/WS suites + `run-tests.ps1` +
 curl matrix) and `nightly.yml` (Autobahn + proxies + smuggling + browsers) —
@@ -243,54 +262,55 @@ Two of them may end as "documented as deliberately out of scope" rather than
 implemented — **H-9** (`TRACE` has a real XST security history) and the
 never-standardized parts of **H-5**. Everything else is a fix.
 
-| # | Gap | Spec | P | Effort | Note |
-|---|---|---|---|---|---|
-| **H-1** | Missing status codes: `103` `308` `421` `451` `511` `208` `508`; **`425` is defined but named `NoCode`** | RFC 8297, 9110 §15.4.9/§15.5.20, 7725, 6585, 8470, 5842 | P1 | XS | `308` and the `425` misnomer are outright bugs. Pure data addition |
-| **H-2** | No content coding for HTTP/1 bodies — neither client nor server compresses or decompresses | RFC 9110 §8.4, 1952, 7932, 8878 | P1 | S | **`HTTP2/Core/HTTPContentCoding.cs` already implements `br`/`gzip`/`deflate` with a zlib/raw-deflate sniffer.** Lift it into a shared location and wire it into `AHTTPPDU`. Biggest impact per line of code in this list |
-| **H-3** | `HTTPDigestAuthentication` is *not* RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/nc/cnonce/response | RFC 7616 | P1 | M | Either implement RFC 7616 properly, or rename to something non-colliding. The current name will mislead every reader; curl's `--digest` will not interoperate |
-| **H-4** | `Forwarded` not implemented (only `X-Forwarded-For`) | RFC 7239 | P2 | S | Already marked `//ToDo` at `HTTP1/Request/HTTPRequest.cs:1125` |
-| **H-5** | No RFC 9111 cache (client- or server-side) | RFC 9111, 5861, 8246 | P2 | L | `HTTP2/Core/HTTPCache.cs` + `HTTPCacheControl`/`HTTPCacheDecision`/`HTTPStoredResponse` exist. Same lift as H-2, much larger. Verifiable against `cache-tests.fyi` |
-| **H-6** | No Structured Field Values parser/serializer | RFC 9651 | P2 | M | Prerequisite for most modern fields (9530, 9211, 9213, 9218, Client Hints) |
-| **H-7** | No `Alt-Svc` | RFC 7838 | P2 | S | The natural bridge from this stack to the h2/h3 stacks — and directly testable with curl's `--alt-svc` |
-| **H-8** | ~70 source comments still cite RFC 2616 / RFC 7230-series | — | P2 | S | Mechanical; the HTTP1 README already flags it |
-| **H-9** | No server-side `TRACE` | RFC 9110 §9.3.8 | P3 | XS | Token + client exist; the server never handles it. Note the XST security history — "deliberately not implemented" is a valid answer, but then document it |
-| **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` are settable, but `OPTIONS` preflight is not answered automatically. Browser-visible (**A8**) |
-| **H-11** | Obsolete HTTP-date formats (RFC 850, asctime) not parsed | RFC 9110 §5.6.7 | P3 | XS | Recipients **MUST** accept all three |
-| **H-12** | No HSTS (`Strict-Transport-Security`) | RFC 6797 | P3 | XS | Header emission only; policy is the application's |
-| **H-13** | `Content-MD5` typed (obsolete), RFC 9530 digest fields missing | RFC 9530 | P3 | S | Depends on **H-6** |
-| **H-14** | No `Link` header | RFC 8288 | P3 | S | |
-| **H-15** | No Problem Details | RFC 9457 | P3 | S | Relevant for the `HTTPAPI` layer |
-| **H-16** | General HTTP server has no `Upgrade` dispatch — WebSocket is a separate listener | RFC 9110 §7.8, 9112 §9.6 | P2 | M | Blocks a `/ws` route on the main demo port (**A1**), and it is how every real deployment does it |
-| **H-17** | Server does not negotiate ALPN `http/1.1` | RFC 7301 | P3 | XS | Client side is configurable; the server never offers it |
-| **H-18** | `HTTP1/Server/URLMapping_old/` alongside `URLMapping/` — two routing generations in the tree | — | P3 | S | ~4 000 lines of probable dead code. Clarify before the harnesses depend on either |
-| **H-19** | No RFC 8187 parameter encoding / RFC 6266 `filename*` | RFC 8187, 6266 | P3 | S | |
-| **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | |
-| **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split |
-| **H-22** | A chunked response silently produces an **empty body** unless `ContentStream` is a `ChunkedTransferEncodingStream` — setting `TransferEncoding = "chunked"` + `ChunkWorker` alone emits correct headers and nothing else, with no error | — | P2 | S | Found while building A1. The server dispatches the worker on the stream type, not the header field. Either wire the two together or fail loudly when they disagree; a silent empty body is the worst of the three options |
-| **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
+| | # | Gap | Spec | P | Effort | Note |
+|---|---|---|---|---|---|---|
+| ⬜ | **H-1** | Missing status codes: `103` `308` `421` `451` `511` `208` `508`; **`425` is defined but named `NoCode`** | RFC 8297, 9110 §15.4.9/§15.5.20, 7725, 6585, 8470, 5842 | P1 | XS | `308` and the `425` misnomer are outright bugs. Pure data addition |
+| ⬜ | **H-2** | No content coding for HTTP/1 bodies — neither client nor server compresses or decompresses | RFC 9110 §8.4, 1952, 7932, 8878 | P1 | S | **`HTTP2/Core/HTTPContentCoding.cs` already implements `br`/`gzip`/`deflate` with a zlib/raw-deflate sniffer.** Lift it into a shared location and wire it into `AHTTPPDU`. Biggest impact per line of code in this list |
+| ⬜ | **H-3** | `HTTPDigestAuthentication` is *not* RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/nc/cnonce/response | RFC 7616 | P1 | M | Either implement RFC 7616 properly, or rename to something non-colliding. The current name will mislead every reader; curl's `--digest` will not interoperate |
+| ⬜ | **H-4** | `Forwarded` not implemented (only `X-Forwarded-For`) | RFC 7239 | P2 | S | Already marked `//ToDo` at `HTTP1/Request/HTTPRequest.cs:1125` |
+| ⬜ | **H-5** | No RFC 9111 cache (client- or server-side) | RFC 9111, 5861, 8246 | P2 | L | `HTTP2/Core/HTTPCache.cs` + `HTTPCacheControl`/`HTTPCacheDecision`/`HTTPStoredResponse` exist. Same lift as H-2, much larger. Verifiable against `cache-tests.fyi` |
+| ⬜ | **H-6** | No Structured Field Values parser/serializer | RFC 9651 | P2 | M | Prerequisite for most modern fields (9530, 9211, 9213, 9218, Client Hints) |
+| ⬜ | **H-7** | No `Alt-Svc` | RFC 7838 | P2 | S | The natural bridge from this stack to the h2/h3 stacks — and directly testable with curl's `--alt-svc` |
+| ⬜ | **H-8** | ~70 source comments still cite RFC 2616 / RFC 7230-series | — | P2 | S | Mechanical; the HTTP1 README already flags it |
+| ⬜ | **H-9** | No server-side `TRACE` | RFC 9110 §9.3.8 | P3 | XS | Token + client exist; the server never handles it. Note the XST security history — "deliberately not implemented" is a valid answer, but then document it |
+| ⬜ | **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` are settable, but `OPTIONS` preflight is not answered automatically. Browser-visible (**A8**) |
+| ⬜ | **H-11** | Obsolete HTTP-date formats (RFC 850, asctime) not parsed | RFC 9110 §5.6.7 | P3 | XS | Recipients **MUST** accept all three |
+| ⬜ | **H-12** | No HSTS (`Strict-Transport-Security`) | RFC 6797 | P3 | XS | Header emission only; policy is the application's |
+| ⬜ | **H-13** | `Content-MD5` typed (obsolete), RFC 9530 digest fields missing | RFC 9530 | P3 | S | Depends on **H-6** |
+| ⬜ | **H-14** | No `Link` header | RFC 8288 | P3 | S | |
+| ⬜ | **H-15** | No Problem Details | RFC 9457 | P3 | S | Relevant for the `HTTPAPI` layer |
+| ⬜ | **H-16** | General HTTP server has no `Upgrade` dispatch — WebSocket is a separate listener | RFC 9110 §7.8, 9112 §9.6 | P2 | M | Blocks a `/ws` route on the main demo port (**A1**), and it is how every real deployment does it |
+| ⬜ | **H-17** | Server does not negotiate ALPN `http/1.1` | RFC 7301 | P3 | XS | Client side is configurable; the server never offers it |
+| ⬜ | **H-18** | `HTTP1/Server/URLMapping_old/` alongside `URLMapping/` — two routing generations in the tree | — | P3 | S | ~4 000 lines of probable dead code. Clarify before the harnesses depend on either |
+| ⬜ | **H-19** | No RFC 8187 parameter encoding / RFC 6266 `filename*` | RFC 8187, 6266 | P3 | S | |
+| ⬜ | **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | |
+| ⬜ | **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split |
+| ⬜ | **H-22** | A chunked response silently produces an **empty body** unless `ContentStream` is a `ChunkedTransferEncodingStream` — setting `TransferEncoding = "chunked"` + `ChunkWorker` alone emits correct headers and nothing else, with no error | — | P2 | S | Found while building A1. The server dispatches the worker on the stream type, not the header field. Either wire the two together or fail loudly when they disagree; a silent empty body is the worst of the three options |
+| ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 
 ---
 
 # Suggested sequence
 
 ```
-A0 ──▶ A1 ──┬──▶ A2 ──▶ A3 ──▶ A11 (CI: build + harnesses + curl)
-            │
-            ├──▶ A4  (Autobahn — independent of A2, needs the WS decision)
-            │
-            └──▶ A5, A6, A7, A8  (external suites — after A2 stabilises)
+✅A0 ──▶ ✅A1 ──┬──▶ ✅A2 ──▶ ⬜A3 ──▶ ⬜A11 (CI: build + harnesses + curl)
+                │
+                ├──▶ ⬜A4  (Autobahn — independent of A2, needs the WS decision)
+                │
+                └──▶ ⬜A5, ⬜A6, ⬜A7, ⬜A8  (external suites)
 
-Track B in parallel: H-1 and H-2 first (small, high leverage),
-H-3 and H-16 as decisions before A1/A3 depend on them.
+Track B in parallel: ⬜H-1 and ⬜H-2 first (small, high leverage),
+⬜H-3 and ⬜H-16 as decisions before A3/A4 depend on them.
 ```
 
-**First milestone (~1 week):** A0 + A1 + A2 + A3 + H-1 + H-2 — a runnable demo
-host, the raw-wire gate, the curl matrix, and the two Hermod fixes that are
-cheap and obviously right. At that point the repository can state a number the
-way the HTTP/2 repo does.
+**First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ⬜ + H-1 ⬜ + H-2 ⬜ — a
+runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
+that are cheap and obviously right. Three of six done; the repository already
+states a number (**199/199**) the way the HTTP/2 repo does, but it is still a
+number about code written here.
 
-**Second milestone (~1 week):** A4 + A11 + A5 — Autobahn reproducible from a
-clean checkout, CI green, proxy interop.
+**Second milestone:** ⬜ A4 + A11 + A5 — Autobahn reproducible from a clean
+checkout, CI green, proxy interop.
 
 ---
 
