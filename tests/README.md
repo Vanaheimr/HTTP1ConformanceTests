@@ -25,10 +25,11 @@ scrapes output for a marker character.
 
 ## Status
 
-**199/199 checks pass, over both transports.**
+**257/257 checks pass, over both transports** — 199 raw-wire + 58 curl.
 
 | Harness | Checks | Covers |
 |---|---:|---|
+| `curl-matrix.sh` | 58 | **third-party**: version handling, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |
@@ -37,9 +38,49 @@ scrapes output for a marker character.
 | `h1attack` | 17 | RFC 9112 §11.2 + hardening — CL.TE / TE.CL desync, response splitting, slowloris, oversized bodies, chunk-metadata and trailer floods |
 | `h1raw` | — | diagnostic: send an arbitrary request, dump the reply with control characters made visible. Not in the gate |
 
-Wall-clock: **~97 s cleartext**, **~300 s over TLS** (≈200 TLS handshakes plus
+Wall-clock: **~103 s cleartext**, **~270 s over TLS** (≈250 TLS handshakes plus
 encrypted bulk transfer). The cleartext run is the CI gate; the TLS run is worth
 doing before a release.
+
+## The curl leg
+
+`curl-matrix.sh` is the first thing in this gate that is not our own code.
+Everything else establishes something about an implementation written here; curl
+establishes that an independent one agrees. It runs standalone too:
+
+```bash
+tests/curl-matrix.sh                                        # cleartext
+tests/curl-matrix.sh --base https://127.0.0.1:8443 --insecure
+tests/curl-matrix.sh --curl /usr/bin/curl --label "debian"  # a different build
+```
+
+Three checks are worth calling out because they only work with a real client:
+
+- **`--anyauth`** makes curl probe, parse `WWW-Authenticate`, and pick a scheme.
+  Passing means our challenge is not merely *present* but *parseable* by an
+  implementation that did not write it.
+- **`--etag-save` / `--etag-compare`** round-trips the validator through curl's
+  own store rather than through a string we constructed.
+- **`-T -`** makes curl chunk the *request*: with no length known up front it
+  must use `Transfer-Encoding`, so this is a real client emitting real chunks —
+  a different claim from our harness emitting hand-written ones.
+
+**One check is a pinned expected failure.** `--digest` returns 401, because
+`HTTPDigestAuthentication` is not RFC 7616 (`PLAN.md`, **H-3**). It is asserted
+as 401 on purpose: the day H-3 is fixed, that check turns red and says so.
+
+### The second curl, and why it is skipped
+
+Debian carries curl 8.14 **with** nghttp2/nghttp3. That build is the more
+interesting witness — a client that *could* upgrade and does not proves ALPN
+negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
+
+The runner detects it and skips with a reason: the demo binds loopback only, so
+the WSL VM has no route to it. Reaching it needs the demo bound to all
+interfaces plus a firewall rule — deliberately not done silently, since it opens
+a listener to the LAN. **The same reachability question returns for A5/A6**,
+where the proxies and http-garden run in WSL containers and must reach the demo,
+so it is worth settling once rather than per task.
 
 ## What the harnesses actually test
 
@@ -102,7 +143,16 @@ but easy to reintroduce:
   An unbounded write then blocks once the send buffer fills — invisibly over
   cleartext, where the socket errors out quickly, and as a hang over TLS.
   `SendAsync` is bounded and treats a refused write as data (`WriteWasRefused`),
-  not as an error.
+  not as an error. The same rule applies to the shell leg: every curl in
+  `curl-matrix.sh` carries `--max-time` / `--connect-timeout`, set once in
+  `$TIMEOUTS` rather than per check.
+- **Reading *too little* in the smuggling checks.** The opposite trap, and the
+  nastier one, because it fails silently *green*. `ReadResponseAsync` stops at
+  the end of the first response — but the whole question in `h1attack` is "did a
+  *second* response appear", and a reader that stops after the first can never
+  see one. Those checks use `ReadEverythingAsync` for that reason. Switching
+  them to the fast reader does not make them fail; it makes them tautologies
+  that pass whatever the server does.
 
 Pass several acceptable status codes to `Checks.Status` where the RFC says a
 recipient MUST reject something without saying how — pinning one code there

@@ -358,8 +358,111 @@ Build: 0 warnings, 0 errors. Both transports green.
 
 ---
 
+## 2026-08-13 — The curl matrix (A3)
+
+58 checks in `tests/curl-matrix.sh`, wired into the runner. The gate now stands
+at **257/257 over both transports** — ~103 s cleartext, ~270 s TLS.
+
+This is the first thing here that is not our own code. Everything before it
+establishes something about an implementation written in this repository; curl
+establishes that an independent one agrees.
+
+### The checks that only a real client can make
+
+Most of the matrix restates what the C# harnesses already cover, which is the
+point — restated by a different implementation. Three go further:
+
+- **`--anyauth`** makes curl probe, parse `WWW-Authenticate`, and choose a
+  scheme. Passing means the challenge is not merely present but *parseable* by
+  something that did not write it.
+- **`--etag-save` / `--etag-compare`** round-trips the validator through curl's
+  own store instead of a string we constructed and handed back to ourselves.
+- **`-T -`** makes curl chunk the *request*: with no length known up front it
+  must reach for `Transfer-Encoding`. A real client emitting real chunks is a
+  different claim from our harness emitting hand-written ones.
+
+One check is a **pinned expected failure**: `--digest` returns 401, because
+`HTTPDigestAuthentication` is not RFC 7616 (H-3). Asserting the 401 rather than
+skipping it means the day H-3 is fixed, the check turns red and says so. An
+expected failure that is not asserted is just a gap nobody wrote down.
+
+Also worth recording as a *negative* result: `--compressed` succeeds and returns
+identity content with no `Content-Encoding`. The server has no codec at all
+(H-2), and degrading cleanly rather than claiming a coding it cannot produce is
+the correct behaviour for that gap.
+
+### Three curl quirks, none of them ours
+
+Each cost a failing check before being understood, and all three are curl's own
+surface rather than anything on the wire:
+
+- `%{http_version}` reports HTTP/1.0 as **`1`**, not `1.0`.
+- `-o` applies **per URL**. With three URLs and one `-o /dev/null`, the second
+  and third bodies land on stdout and contaminate `--write-out`.
+- `--write-out` is emitted once per URL **with no separator of its own**, so a
+  multi-URL format string has to supply one. The connection-reuse check now
+  asks for `%{num_connects},` and expects `1,0,0,` — one connection, two reuses.
+
+The Windows build also terminates `--write-out` newlines with CRLF, which would
+make any multi-line expectation match on Linux and fail on Windows; the helper
+strips CRs once so the checks stay identical across builds.
+
+### The 41-minute hang, and what it was not
+
+The TLS run appeared to hang and was left running far too long. It looked like
+the A2 pattern — something that fails fast over cleartext and blocks over TLS —
+and it was not. It was a single curl with no `--max-time`, connecting to a
+listener whose process had died: the socket was still in LISTEN, owned by a PID
+that no longer existed, so connections were accepted and then went nowhere.
+
+Two lessons, both already learned once in A2 and not carried across the language
+boundary:
+
+- **Every request needs a deadline.** `curl-matrix.sh` now sets `--max-time` and
+  `--connect-timeout` once in `$TIMEOUTS`, applied by every helper. With that in
+  place the TLS run finishes in **26 s** — the same work that appeared to hang
+  forever.
+- **A wait loop needs a sleep and a bound.** An ad-hoc `until grep -q Ready; do
+  :; done` spun a core for 53 minutes when the demo failed to start at all. The
+  runner already does this properly (60 attempts, 0.5 s apart, checking the
+  process is still alive); the shell one-liner did not.
+
+### The bug the curl work uncovered in A2
+
+Wiring the matrix into the runner turned `h1attack` red at 15/17 — two TE.TE
+checks that had passed the day before, with nothing between them but the A2
+performance work.
+
+The cause was `ReadResponseAsync`, introduced to stop every check waiting out
+its window: it returns at the end of the **first** complete response. That is
+right for almost everything here and exactly wrong for the smuggling checks,
+whose entire question is *did a second response appear*. A reader that stops
+after the first can never see one.
+
+So the two checks that still counted responses failed honestly — and the ones
+asserting `DoesNotContain("418")` had quietly become **tautologies that pass
+whatever the server does**. That is the worse half: a check that breaks tells
+you something, a check that silently stops testing does not. Those now use an
+explicit `ReadEverythingAsync`, with the reasoning written next to it, because
+the fast reader will look like an obvious cleanup to someone in six months.
+
+### The Debian curl leg is skipped, deliberately visibly
+
+Debian's curl 8.14 has nghttp2/nghttp3 and is the more interesting witness: a
+client that *could* upgrade and does not proves ALPN negotiation in a way the
+Windows build (no HTTP/2 at all) structurally cannot.
+
+It does not run, because the demo binds loopback only and the WSL VM has no
+route to it. The runner prints `SKIP … (loopback-only bind)` rather than
+omitting it, since a silent skip is indistinguishable from a pass. Fixing it
+needs the demo bound to all interfaces plus a firewall rule — not done on my own
+initiative, since it opens a listener to the LAN. **A5 and A6 need the same
+thing**, so it is one decision rather than three.
+
+---
+
 ## Next
 
-**A3 — the curl matrix.** The first genuinely third-party consumer, and the
-first result in this repository that does not depend on code written here. See
-[`../PLAN.md`](../PLAN.md).
+**A4 — Autobahn.** Hermod's WebSocket README already claims 296 + 242 + 126 +
+126 cases with zero failures; this is where those numbers become reproducible
+from a clean checkout. See [`../PLAN.md`](../PLAN.md).

@@ -13,17 +13,19 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-08-13):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-14 routes), **A2 ✅** (6 harnesses, **199/199 checks green over cleartext *and*
-TLS**), **A3 ⬜** next. Track B: **23 findings open**, none fixed upstream yet —
-H-1 and H-23 are the cheapest starting points.
+14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
+over cleartext *and* TLS**. **A4 ⬜** next. Track B: **23 findings open**, none
+fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 199/199, ~97 s |
-| `tests/run-tests.sh --tls` | ✅ 199/199, ~300 s |
+| `tests/run-tests.sh` | ✅ 257/257, ~103 s |
+| `tests/run-tests.sh --tls` | ✅ 257/257, ~270 s |
 | Hermod `Tests.HTTP.*` | ✅ 440 tests |
-| third-party suites | ⬜ none wired in yet |
+| third-party: curl | ✅ 58/58, both transports |
+| third-party: Autobahn, proxies, http-garden, browsers | ⬜ A4–A8 |
+| demo reachable from WSL containers | ❌ loopback-only bind — blocks the Debian curl leg, A5 and A6 |
 
 ## Upstream workflow (Track B)
 
@@ -147,7 +149,19 @@ library failure.
 
 </details>
 
-## ⬜ A3 · curl matrix · P1 · ~1 d
+## ✅ A3 · curl matrix
+
+**58/58 checks pass over both transports**, wired into `tests/run-tests.sh` —
+the gate now stands at **257/257** (199 raw-wire + 58 curl). See
+[`tests/README.md`](tests/README.md#the-curl-leg).
+
+🔶 **The Debian curl leg is skipped**, with a reason rather than silently: the
+demo binds loopback only, so WSL has no route to it. That build is the more
+interesting witness — a client that *could* speak HTTP/2 and does not proves
+ALPN negotiation in a way the Windows build cannot. **The same reachability
+question blocks A5 and A6**, whose containers must reach the demo too, so it is
+worth settling once. Needs the demo bound to all interfaces plus a firewall
+rule — not done silently, since it opens a listener to the LAN.
 
 curl is the closest thing HTTP/1.1 has to a reference client, and the installed
 build (8.21, no HTTP/2) is ideal: it cannot silently upgrade.
@@ -293,7 +307,7 @@ never-standardized parts of **H-5**. Everything else is a fix.
 # Suggested sequence
 
 ```
-✅A0 ──▶ ✅A1 ──┬──▶ ✅A2 ──▶ ⬜A3 ──▶ ⬜A11 (CI: build + harnesses + curl)
+✅A0 ──▶ ✅A1 ──┬──▶ ✅A2 ──▶ ✅A3 ──▶ ⬜A11 (CI: build + harnesses + curl)
                 │
                 ├──▶ ⬜A4  (Autobahn — independent of A2, needs the WS decision)
                 │
@@ -303,11 +317,10 @@ Track B in parallel: ⬜H-1 and ⬜H-2 first (small, high leverage),
 ⬜H-3 and ⬜H-16 as decisions before A3/A4 depend on them.
 ```
 
-**First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ⬜ + H-1 ⬜ + H-2 ⬜ — a
+**First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 ⬜ + H-2 ⬜ — a
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
-that are cheap and obviously right. Three of six done; the repository already
-states a number (**199/199**) the way the HTTP/2 repo does, but it is still a
-number about code written here.
+that are cheap and obviously right. Four of six done. The number is now **257/257**, and 58 of those come from a
+client nobody here wrote — the first part of it that is not self-assessment.
 
 **Second milestone:** ⬜ A4 + A11 + A5 — Autobahn reproducible from a clean
 checkout, CI green, proxy interop.

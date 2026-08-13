@@ -183,6 +183,66 @@ section "Hardening"
 run_harness h1attack
 
 # ---------------------------------------------------------------------------
+# Third-party: curl
+#
+# The first consumer in this gate that is not our own code. Everything above
+# establishes something about an implementation written here; this establishes
+# that an independent one agrees.
+# ---------------------------------------------------------------------------
+run_curl_matrix() {
+    local label="$1"; shift
+
+    if [ -n "$FILTER" ] && [[ "curl" != *"$FILTER"* ]] && [[ "$label" != *"$FILTER"* ]]; then
+        return
+    fi
+
+    TOTAL=$((TOTAL + 1))
+
+    local output
+    output="$("$ROOT/tests/curl-matrix.sh" "$@" 2>&1)"
+    local status=$?
+
+    local verdict
+    verdict="$(printf '%s\n' "$output" | grep -E 'checks passed' | tail -1 | sed 's/^ *//')"
+
+    if [ $status -eq 0 ]; then
+        PASSED=$((PASSED + 1))
+        printf '  %sPASS%s  %-14s %s%s%s\n' "$GREEN" "$OFF" "$label" "$DIM" "$verdict" "$OFF"
+    else
+        FAILURES+=("$label")
+        printf '  %sFAIL%s  %-14s %s\n' "$RED" "$OFF" "$label" "$verdict"
+        printf '%s\n' "$output" | grep -E '^\s+✗' | sed 's/^/      /'
+    fi
+}
+
+section "Third-party (curl)"
+
+if command -v curl > /dev/null 2>&1; then
+    if [ "$USE_TLS" -eq 1 ]; then
+        run_curl_matrix "curl/TLS" --base "https://127.0.0.1:$TLS_PORT" --insecure --label "curl/TLS"
+    else
+        run_curl_matrix "curl" --base "http://127.0.0.1:$HTTP_PORT" --label "curl"
+    fi
+else
+    echo "  SKIP  curl not on PATH"
+fi
+
+# The second curl — the Debian one, which has HTTP/2 and therefore proves that
+# --http1.1 is honoured by a client that could do otherwise. It only runs if WSL
+# can actually reach the demo, which today it cannot: the demo binds loopback
+# only, so the WSL VM has no route to it. Skipped with a reason rather than
+# silently, because the same reachability question returns for the container
+# work in A5/A6 (see tests/README.md).
+if command -v wsl > /dev/null 2>&1 && [ "$USE_TLS" -eq 0 ]; then
+    WSL_HOST="$(wsl -d Debian -- ip route show default 2>/dev/null | awk '{print $3}' | tr -d '\r')"
+    if [ -n "$WSL_HOST" ] && wsl -d Debian -- curl -s -o /dev/null -m 3 "http://$WSL_HOST:$HTTP_PORT/" 2>/dev/null; then
+        run_curl_matrix "curl/debian" --base "http://$WSL_HOST:$HTTP_PORT" --curl "wsl -d Debian -- curl" --label "debian curl"
+    else
+        echo "  SKIP  debian curl — the demo is not reachable from WSL (loopback-only bind)"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 section "Summary"

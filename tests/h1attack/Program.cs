@@ -36,12 +36,32 @@ var host = target.Authority;
 
 // --- §11.2 Request smuggling: the CL/TE family ------------------------------
 
+// Every check in this section reads the *whole* window rather than one framed
+// response, and that is not incidental.
+//
+// RoundTripAsync stops at the end of the first complete response — which is
+// what makes the rest of the suite fast, and exactly the wrong reader here: the
+// question these checks ask is "did a SECOND response appear", and a reader
+// that stops after the first can never see one. Using it here would turn every
+// assertion below into a tautology that passes no matter what the server does.
+static async Task<String> ReadEverythingAsync(Target Target, String Request)
+{
+
+    await using var connection = await Target.ConnectAsync();
+
+    await connection.SendAsync(Request);
+
+    return await connection.ReadAsync(TimeSpan.FromSeconds(2));
+
+}
+
 // CL.TE — a front end that trusts Content-Length sees one request; a back end
 // that trusts Transfer-Encoding sees the terminal chunk and treats the rest as
 // a *second* request. If the smuggled GET is answered, the two ends disagreed.
 {
 
-    var response = await target.RoundTripAsync(
+    var response = await ReadEverythingAsync(
+                       target,
                        $"POST /echo HTTP/1.1\r\nHost: {host}\r\nContent-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n" +
                        $"0\r\n\r\nGET /status/418 HTTP/1.1\r\nHost: {host}\r\n\r\n"
                    );
@@ -54,7 +74,8 @@ var host = target.Authority;
 // TE.CL — the mirror image.
 {
 
-    var response = await target.RoundTripAsync(
+    var response = await ReadEverythingAsync(
+                       target,
                        $"POST /echo HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n" +
                        $"5c\r\nGET /status/418 HTTP/1.1\r\nHost: {host}\r\n\r\n\r\n0\r\n\r\n"
                    );
@@ -87,7 +108,8 @@ foreach (var (label, second) in new (String, String)[] {
          })
 {
 
-    var response = await target.RoundTripAsync(
+    var response = await ReadEverythingAsync(
+                       target,
                        $"POST /echo HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: chunked\r\n{second}\r\n\r\n" +
                        $"0\r\n\r\nGET /status/418 HTTP/1.1\r\nHost: {host}\r\n\r\n"
                    );
@@ -108,7 +130,8 @@ foreach (var (label, second) in new (String, String)[] {
 // the response header section as a field separator.
 {
 
-    var response = await target.RoundTripAsync(
+    var response = await ReadEverythingAsync(
+                       target,
                        $"GET / HTTP/1.1\r\nHost: {host}\r\nX-Inject: a\r\nX-Smuggled: yes\r\n\r\n"
                    );
 

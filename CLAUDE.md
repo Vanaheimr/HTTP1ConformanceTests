@@ -116,14 +116,16 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
-**A2 done** — the raw-wire harnesses: **199/199 checks over both transports**
-(`tests/run-tests.sh`, ~97 s cleartext / ~300 s TLS). See [`tests/README.md`](tests/README.md).
-**A3 next** — the curl matrix.
+**A2 done** — the raw-wire harnesses (199 checks).
+**A3 done** — the curl matrix (58 checks). The gate is **257/257 over both
+transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
+[`tests/README.md`](tests/README.md).
+**A4 next** — Autobahn.
 
 | | |
 |---|---|
 | Hermod's own NUnit suites | 440 / 300 / 42 (verified by `--list-tests`) |
-| this repo's harnesses | **199/199**, cleartext and TLS |
+| this repo's gate | **257/257**, cleartext and TLS (199 raw-wire + 58 curl) |
 | Autobahn | recorded in Hermod's WebSocket README, **not yet reproducible from a clean checkout** — that is A4 |
 
 Building A1 and A2 produced three upstream findings between them (**H-21**,
