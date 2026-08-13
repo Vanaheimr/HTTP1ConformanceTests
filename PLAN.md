@@ -23,9 +23,10 @@ fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 | `tests/run-tests.sh` | ✅ 257/257, ~103 s |
 | `tests/run-tests.sh --tls` | ✅ 257/257, ~270 s |
 | Hermod `Tests.HTTP.*` | ✅ 440 tests |
-| third-party: curl | ✅ 58/58, both transports |
+| `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
+| third-party: curl | ✅ 58/58 per build, two builds, both transports |
 | third-party: Autobahn, proxies, http-garden, browsers | ⬜ A4–A8 |
-| demo reachable from WSL containers | ❌ loopback-only bind — blocks the Debian curl leg, A5 and A6 |
+| demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocks A5 and A6 |
 
 ## Upstream workflow (Track B)
 
@@ -155,13 +156,14 @@ library failure.
 the gate now stands at **257/257** (199 raw-wire + 58 curl). See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-🔶 **The Debian curl leg is skipped**, with a reason rather than silently: the
-demo binds loopback only, so WSL has no route to it. That build is the more
-interesting witness — a client that *could* speak HTTP/2 and does not proves
-ALPN negotiation in a way the Windows build cannot. **The same reachability
-question blocks A5 and A6**, whose containers must reach the demo too, so it is
-worth settling once. Needs the demo bound to all interfaces plus a firewall
-rule — not done silently, since it opens a listener to the LAN.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **315/315**.
+That build has nghttp2 and is the more interesting witness: a client that *could*
+speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
+cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
+rule was necessary**. Opt-in, so a plain run never widens a listener.
+
+**This unblocks A5 and A6** — their containers need the same reachability, and
+it is now one flag rather than an open question.
 
 curl is the closest thing HTTP/1.1 has to a reference client, and the installed
 build (8.21, no HTTP/2) is ideal: it cannot silently upgrade.

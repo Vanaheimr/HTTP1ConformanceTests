@@ -59,8 +59,16 @@ never will.
 Autobahn, the proxy matrix and http-garden all want Docker. It is installed in
 **WSL/Debian** (26.1.5) — not Docker Desktop. WSL has no systemd, so the daemon
 is not running after a reboot and the runner scripts start it themselves
-(`sudo service docker start`). The demo host runs on Windows, so from inside a
-container it is reachable via the **host IP**, not `localhost`.
+(`sudo service docker start`).
+
+**Reaching the demo from WSL:** start it with `--bind-any` (0.0.0.0 instead of
+loopback) and address it by the **host IP** from `ip route show default`, not
+`localhost`. No firewall rule is needed. `tests/run-tests.sh --wsl` does both.
+Opt-in on purpose — a plain test run must never widen a listener.
+
+Anything invoking a Linux binary from Git Bash (`wsl -d Debian -- curl`) also
+needs `MSYS2_ARG_CONV_EXCL='*'` against MSYS path rewriting, and must escape
+glob characters against the shell `wsl.exe` spawns. See `tests/README.md`.
 
 ## Architecture — the stack under test
 
@@ -126,6 +134,7 @@ transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 |---|---|
 | Hermod's own NUnit suites | 440 / 300 / 42 (verified by `--list-tests`) |
 | this repo's gate | **257/257**, cleartext and TLS (199 raw-wire + 58 curl) |
+| with `--wsl` (second curl build) | **315/315** |
 | Autobahn | recorded in Hermod's WebSocket README, **not yet reproducible from a clean checkout** — that is A4 |
 
 Building A1 and A2 produced three upstream findings between them (**H-21**,

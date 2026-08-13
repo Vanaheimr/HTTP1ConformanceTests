@@ -55,6 +55,35 @@ fi
 TMP="$(mktemp -d -t curlmatrix.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
+# Running curl through a wrapper (wsl -d Debian -- curl) sends every argument
+# across two boundaries before the binary sees it, and each one mangles a
+# different thing. None of this is curl's doing or the server's, but all of it
+# produces failures that look like conformance findings:
+#
+#   1. Git Bash (MSYS) rewrites POSIX-looking arguments into Windows paths. That
+#      is exactly right for a Windows curl — "$TMP/etag" has to become
+#      C:/Users/…/etag — and exactly wrong for a Linux one, which then writes its
+#      ETag to a Windows path that does not exist inside WSL and silently saves
+#      nothing. MSYS2_ARG_CONV_EXCL switches the rewriting off.
+#   2. wsl.exe hands the remaining arguments to a shell on the Linux side, which
+#      globs them. A bare "*" request target expands to the caller's directory
+#      listing — verified: `wsl -d Debian -- echo '*'` prints the repo contents,
+#      and curl then treats the filenames as URLs and dials out to whatever
+#      resolves. Escaping survives that expansion.
+#
+# Both are needed together: (1) alone leaves the glob, (2) alone leaves the path.
+# Stdin redirection is unaffected by either — a pipe is not a path.
+if printf '%s' "$CURL" | grep -q "wsl"; then
+    REMOTE="yes"
+    STAR='\*'
+    ETAG_FILE="${ETAG_FILE:-/tmp/h1-curl-matrix-etag}"
+    export MSYS2_ARG_CONV_EXCL='*'
+else
+    REMOTE="no"
+    STAR='*'
+    ETAG_FILE="$TMP/etag"
+fi
+
 if [ -t 1 ]; then
     RED=$'\033[31m'; GREEN=$'\033[32m'; DIM=$'\033[2m'; OFF=$'\033[0m'
 else
@@ -159,7 +188,7 @@ wo    "POST -d"                        '%{http_code}' "200"  -X POST -d "hello" 
 has   "POST body is echoed"            "hello"                -X POST -d "hello" "$BASE/echo"
 wo    "OPTIONS on a resource"          '%{http_code}' "204"  -X OPTIONS "$BASE/files/resource.txt"
 has   "resource OPTIONS lists Allow"   "Allow:"               -X OPTIONS -D- "$BASE/files/resource.txt"
-wo    "server-wide OPTIONS *"          '%{http_code}' "204"  --request-target '*' -X OPTIONS "$BASE"
+wo    "server-wide OPTIONS *"          '%{http_code}' "204"  --request-target "$STAR" -X OPTIONS "$BASE"
 wo    "405 for an unsupported method"  '%{http_code}' "405"  -X DELETE "$BASE/files/resource.txt"
 has   "405 carries Allow"              "Allow:"               -X DELETE -D- "$BASE/files/resource.txt"
 wo    "QUERY (RFC 10008)"              '%{http_code}' "200"  -X QUERY -d "ap" "$BASE/search"
@@ -209,13 +238,21 @@ wo    "3 requests reuse one connection" '%{num_connects},' "1,0,0," \
 # Conditional requests — curl's own ETag store
 # ---------------------------------------------------------------------------
 echo "  -- conditional --"
-$CURL -s $INSECURE "${TIMEOUTS[@]}" -o /dev/null --etag-save "$TMP/etag" "$BASE/files/resource.txt" 2>/dev/null
-if [ -s "$TMP/etag" ]; then
-    pass "curl stored the ETag ($(cat "$TMP/etag"))"
-else
-    fail "curl stored the ETag" "--etag-save produced nothing"
+# The round trip is curl's, not ours: it saves the validator to its own store
+# and replays it. We only assert the second exchange's status, so the file never
+# has to be readable from this side — which is what lets the same check run
+# against a curl living in another filesystem.
+$CURL -s $INSECURE "${TIMEOUTS[@]}" -o /dev/null --etag-save "$ETAG_FILE" "$BASE/files/resource.txt" 2>/dev/null
+
+if [ "$REMOTE" = "no" ]; then
+    if [ -s "$ETAG_FILE" ]; then
+        pass "curl stored the ETag ($(cat "$ETAG_FILE"))"
+    else
+        fail "curl stored the ETag" "--etag-save produced nothing"
+    fi
 fi
-wo    "--etag-compare → 304"           '%{http_code}' "304" --etag-compare "$TMP/etag" "$BASE/files/resource.txt"
+
+wo    "--etag-compare → 304"           '%{http_code}' "304" --etag-compare "$ETAG_FILE" "$BASE/files/resource.txt"
 wo    "-z after Last-Modified → 304"   '%{http_code}' "304" -z "Wed, 01 Jul 2026 00:00:00 GMT" "$BASE/files/resource.txt"
 wo    "-z before Last-Modified → 200"  '%{http_code}' "200" -z "Mon, 01 Jan 2024 00:00:00 GMT" "$BASE/files/resource.txt"
 

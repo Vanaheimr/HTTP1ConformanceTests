@@ -31,7 +31,7 @@ tests/run-tests.sh        # 257/257 checks, ~103 s
 |---|---|
 | `tests/` raw-wire harnesses | **199/199** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
 | `tests/curl-matrix.sh` | **58/58** — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **257/257** |
+| both, over cleartext *and* TLS | **257/257** — and **315/315** with `--wsl`, which adds a second curl build |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes |
 | remaining third-party suites | not yet — Autobahn (A4), proxies (A5), http-garden (A6), browsers (A8) |
 

@@ -96,6 +96,19 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             var fastTimeouts  = Arguments.Contains("--fast-timeouts");
             var readTimeout   = fastTimeouts ? TimeSpan.FromSeconds(3) : (TimeSpan?) null;
 
+            // --bind-any listens on 0.0.0.0 instead of loopback, which is what
+            // the container-based suites need: Autobahn, the reverse proxies and
+            // http-garden all run in WSL and have no route to a loopback-only
+            // listener on the Windows host.
+            //
+            // Opt-in, and loud about it. The default stays loopback so that
+            // running the demo can never expose it by accident, and so that
+            // "who opened this port" is answerable by grepping for the flag
+            // rather than by reading the whole file. Reachability beyond WSL is
+            // then the firewall's decision, not ours — see tests/README.md.
+            var bindAny       = Arguments.Contains("--bind-any");
+            var bindAddress   = bindAny ? (IIPAddress) IPv4Address.Any : null;
+
             Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
             Console.WriteLine("║   Hermod HTTP/1.1 demo host — conformance target              ║");
             Console.WriteLine("╠═══════════════════════════════════════════════════════════════╣");
@@ -117,6 +130,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // Cleartext HTTP on :8080
             // ---------------------------------------------------------------
             var httpServer   = await HTTPServer.StartNew(
+                                         IPAddress:          bindAddress,
                                          TCPPort:            IPPort.Parse(httpPort),
                                          HTTPServerName:     "Hermod HTTP/1.1 Demo",
                                          HeaderReadTimeout:  readTimeout,
@@ -131,6 +145,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // TLS on :8443
             // ---------------------------------------------------------------
             var httpsServer  = await HTTPServer.StartNew(
+                                         IPAddress:                  bindAddress,
                                          TCPPort:                    IPPort.Parse(httpsPort),
                                          HTTPServerName:             "Hermod HTTP/1.1 Demo (TLS)",
                                          ServerCertificateSelector:  (tcpServer, tcpClient) => certificate,
@@ -146,6 +161,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // WebSocket echo on :8081 — the Autobahn fuzzingclient target
             // ---------------------------------------------------------------
             var webSocketServer = new WebSocketServer(
+                                      IPAddress:              bindAddress,
                                       HTTPPort:               IPPort.Parse(wsPort),
                                       HTTPServerName:         "Hermod HTTP/1.1 Demo (WebSocket)",
                                       RequireAuthentication:  false,
@@ -160,6 +176,14 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                 await webSocketServer.SendBinaryMessage(connection, data,   eventTrackingId, ct);
 
             Console.WriteLine($"  ✓ WebSocket listener on :{wsPort}");
+
+            if (bindAny)
+            {
+                Console.WriteLine();
+                Console.WriteLine("  ⚠  --bind-any: listening on 0.0.0.0, not just loopback.");
+                Console.WriteLine("     Reachable from anywhere the firewall permits.");
+            }
+
             Console.WriteLine();
             Console.WriteLine("  Ready.");
             Console.WriteLine();

@@ -26,6 +26,7 @@ scrapes output for a marker character.
 ## Status
 
 **257/257 checks pass, over both transports** — 199 raw-wire + 58 curl.
+With `--wsl`, a second curl build joins in: **315/315**.
 
 | Harness | Checks | Covers |
 |---|---:|---|
@@ -69,18 +70,39 @@ Three checks are worth calling out because they only work with a real client:
 `HTTPDigestAuthentication` is not RFC 7616 (`PLAN.md`, **H-3**). It is asserted
 as 401 on purpose: the day H-3 is fixed, that check turns red and says so.
 
-### The second curl, and why it is skipped
+### The second curl — `--wsl`
 
 Debian carries curl 8.14 **with** nghttp2/nghttp3. That build is the more
-interesting witness — a client that *could* upgrade and does not proves ALPN
+interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
-The runner detects it and skips with a reason: the demo binds loopback only, so
-the WSL VM has no route to it. Reaching it needs the demo bound to all
-interfaces plus a firewall rule — deliberately not done silently, since it opens
-a listener to the LAN. **The same reachability question returns for A5/A6**,
-where the proxies and http-garden run in WSL containers and must reach the demo,
-so it is worth settling once rather than per task.
+```bash
+tests/run-tests.sh --wsl        # 315/315 — both curl builds
+```
+
+`--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the
+WSL VM can route to it. **Opt-in**, because a plain test run must never widen a
+listener as a side effect; without it the runner prints
+`SKIP … pass --wsl`, since a silent skip is indistinguishable from a pass.
+
+No firewall rule turned out to be necessary — WSL's vSwitch reaches the host
+once the listener is not loopback-bound. **This also unblocks A5 and A6**, whose
+containers need exactly the same reachability.
+
+#### Two layers of argument mangling, neither of them curl's
+
+Running a Linux binary through `wsl -d Debian -- curl` from Git Bash sends every
+argument across two boundaries, and each mangles a different thing. Both produce
+failures that look exactly like conformance findings:
+
+| | What it does | Fix |
+|---|---|---|
+| Git Bash (MSYS) | rewrites POSIX-looking arguments into Windows paths — right for a Windows curl, fatal for a Linux one, which then saves its ETag to a path that does not exist inside WSL and silently stores nothing | `MSYS2_ARG_CONV_EXCL='*'` |
+| `wsl.exe` | hands the arguments to a shell on the Linux side, which **globs** them. A bare `*` request target expands to the caller's directory listing — `wsl -d Debian -- echo '*'` prints the repo contents — and curl then treats the filenames as URLs and dials out to whatever resolves | escape it: `\*` |
+
+Both are needed together: the first alone leaves the glob, the second alone
+leaves the path. Stdin redirection is unaffected by either — a pipe is not a
+path, which is why the `-T -` chunked-upload check works unchanged.
 
 ## What the harnesses actually test
 

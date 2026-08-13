@@ -16,6 +16,11 @@
 #     tests/run-tests.sh --filter attack  # only harnesses matching *attack*
 #     tests/run-tests.sh --tls            # drive the TLS listener instead
 #     tests/run-tests.sh --keep-demo      # leave the demo running afterwards
+#     tests/run-tests.sh --wsl            # also drive the Debian curl (see below)
+#
+# --wsl starts the demo with --bind-any (0.0.0.0 instead of loopback) so the WSL
+# VM can reach it, and then runs the Debian curl leg as well. Opt-in, because a
+# plain test run must never widen a listener as a side effect.
 #
 set -uo pipefail
 
@@ -29,6 +34,7 @@ NO_BUILD=0
 FILTER=""
 USE_TLS=0
 KEEP_DEMO=0
+USE_WSL=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +42,7 @@ while [ $# -gt 0 ]; do
         --filter)    FILTER="${2:-}"; shift ;;
         --tls)       USE_TLS=1 ;;
         --keep-demo) KEEP_DEMO=1 ;;
+        --wsl)       USE_WSL=1 ;;
         -h|--help)   sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)           echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -108,7 +115,13 @@ fi
 # resolve in seconds rather than half a minute each. It changes how long the
 # harness waits, not what it asserts: the claim under test is "an incomplete
 # message eventually yields 408", never a particular number of seconds.
-"$DEMO_EXE" --fast-timeouts > "$DEMO_LOG" 2>&1 &
+DEMO_ARGS=(--fast-timeouts)
+if [ "$USE_WSL" -eq 1 ]; then
+    DEMO_ARGS+=(--bind-any)
+    echo "  --wsl: binding 0.0.0.0 so the WSL VM can reach the demo"
+fi
+
+"$DEMO_EXE" "${DEMO_ARGS[@]}" > "$DEMO_LOG" 2>&1 &
 DEMO_PID=$!
 
 READY=0
@@ -228,18 +241,19 @@ else
 fi
 
 # The second curl — the Debian one, which has HTTP/2 and therefore proves that
-# --http1.1 is honoured by a client that could do otherwise. It only runs if WSL
-# can actually reach the demo, which today it cannot: the demo binds loopback
-# only, so the WSL VM has no route to it. Skipped with a reason rather than
-# silently, because the same reachability question returns for the container
-# work in A5/A6 (see tests/README.md).
-if command -v wsl > /dev/null 2>&1 && [ "$USE_TLS" -eq 0 ]; then
+# --http1.1 is honoured by a client that *could* do otherwise. Needs --wsl, which
+# binds the demo to 0.0.0.0; without it the demo is loopback-only and the WSL VM
+# has no route. Skipped with a reason rather than silently, since a silent skip
+# is indistinguishable from a pass.
+if [ "$USE_WSL" -eq 1 ] && command -v wsl > /dev/null 2>&1 && [ "$USE_TLS" -eq 0 ]; then
     WSL_HOST="$(wsl -d Debian -- ip route show default 2>/dev/null | awk '{print $3}' | tr -d '\r')"
     if [ -n "$WSL_HOST" ] && wsl -d Debian -- curl -s -o /dev/null -m 3 "http://$WSL_HOST:$HTTP_PORT/" 2>/dev/null; then
         run_curl_matrix "curl/debian" --base "http://$WSL_HOST:$HTTP_PORT" --curl "wsl -d Debian -- curl" --label "debian curl"
     else
-        echo "  SKIP  debian curl — the demo is not reachable from WSL (loopback-only bind)"
+        echo "  SKIP  debian curl — WSL cannot reach the demo at ${WSL_HOST:-<no default route>}"
     fi
+elif [ "$USE_TLS" -eq 0 ]; then
+    echo "  SKIP  debian curl — pass --wsl to bind 0.0.0.0 and include it"
 fi
 
 # ---------------------------------------------------------------------------

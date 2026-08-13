@@ -446,7 +446,51 @@ you something, a check that silently stops testing does not. Those now use an
 explicit `ReadEverythingAsync`, with the reasoning written next to it, because
 the fast reader will look like an obvious cleanup to someone in six months.
 
-### The Debian curl leg is skipped, deliberately visibly
+### The second curl, after all — and no firewall rule
+
+The section below was written when the Debian leg was still skipped. It is kept
+because the reasoning still holds for *why* it is opt-in; what changed is that
+enabling it turned out to cost far less than expected.
+
+Binding the demo to `0.0.0.0` (`--bind-any`, opt-in, default stays loopback) was
+enough on its own: WSL's vSwitch reaches the host at `172.23.32.1` without any
+firewall rule. So the system-settings change I had proposed — and asked for
+sign-off on, since it opens a listener — was simply not needed. Worth recording
+as a reminder to measure the actual barrier before negotiating about it.
+
+`tests/run-tests.sh --wsl` now runs both curl builds: **315/315**.
+
+Getting there cost three failures on the Debian leg, and **none of them were the
+server**. All three came from running a Linux binary through Git Bash and
+`wsl.exe`, which mangle arguments in two different ways:
+
+- **MSYS path rewriting.** Git Bash turns POSIX-looking arguments into Windows
+  paths — exactly right for the Windows curl (`$TMP/etag` must become
+  `C:/Users/…/etag`) and fatal for the Linux one, which then wrote its ETag to a
+  path that does not exist inside WSL and *silently saved nothing*.
+  `MSYS2_ARG_CONV_EXCL='*'` switches it off for that leg.
+- **Glob expansion on the far side.** `wsl.exe` hands its arguments to a shell,
+  which expands them: `wsl -d Debian -- echo '*'` prints the repo's directory
+  listing. So `--request-target '*'` became a list of filenames, and curl dialled
+  out to whatever resolved — the transcript contains 400s from two *different*
+  nginx versions that are not ours. Escaping it (`\*`) survives the expansion.
+
+Both are needed together; either alone leaves the other. Stdin redirection is
+untouched by both, which is why the `-T -` chunked-upload check kept working —
+a pipe is not a path.
+
+The same mangling had already left a landmine: a file literally named `nul` in
+the repository root, 26 bytes containing a demo response body, created when
+`-o /dev/null` was rewritten to `nul` and landed as a real file rather than the
+null device. git cannot index it at all (`short read while indexing nul`), so it
+broke `git add -A` outright. Deleting it needs the `\\?\` device prefix, and it
+is now in `.gitignore` so an accidental one cannot break staging again.
+
+None of this is conformance work. It is recorded because every one of these
+presented as a failing conformance check first, and the cost of misreading one
+as a server finding is an afternoon spent in the wrong repository.
+
+### (historic) The Debian curl leg is skipped, deliberately visibly
 
 Debian's curl 8.14 has nghttp2/nghttp3 and is the more interesting witness: a
 client that *could* upgrade and does not proves ALPN negotiation in a way the
