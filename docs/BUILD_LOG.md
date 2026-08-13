@@ -225,8 +225,141 @@ Build: 0 warnings, 0 errors.
 
 ---
 
+## 2026-08-13 — The raw-wire harnesses (A2)
+
+Six harnesses plus a diagnostic, on a shared `H1Core`, driven by
+`tests/run-tests.sh`. **199/199 checks pass over both transports** — ~97 s
+cleartext, ~300 s over TLS.
+
+The runner is bash rather than PowerShell: CI runs on Linux, and Git Bash makes
+the same script work on Windows. One script, no drift between two copies. (The
+HTTP/2 repo maintains both variants and says so in its conventions; this repo
+does not repeat that.)
+
+`H1Core` exists because Hermod's own `HTTPRawSocketClient` is `internal` to
+`HermodTests` and cannot be referenced from here — and because six copies of a
+raw-socket client is how six subtly different raw-socket clients happen.
+
+### The first run: 192/199, and none of the seven were what they looked like
+
+Every one of the seven failures needed a decision — real finding, or harness
+bug? Getting that wrong in either direction is expensive: filing a harness bug
+upstream wastes someone's afternoon, and dismissing a real finding as "my test
+is wrong" is worse. So each was reproduced by hand with `h1raw` before being
+classified. The tally came out four harness bugs, two real findings, one demo
+gap — which is roughly the ratio to expect when a harness is younger than the
+thing it tests.
+
+**Not a smuggling vulnerability (harness bug).** Two `h1attack` checks failed
+with "smuggled request executed": a duplicate `Transfer-Encoding: chunked`
+followed by `0\r\n\r\nGET /status/418`, and the 418 came back. It looks alarming
+until you read the bytes: after a well-formed terminal chunk, those trailing
+bytes *are* a legitimate pipelined request, and answering them is correct
+HTTP/1.1. My assertion conflated "the bytes after the body were parsed as a
+request" with "a desync occurred".
+
+The deeper point is that a single origin server **cannot** exhibit a TE.TE
+desync at all — smuggling is a disagreement between two parsers, and there is
+only one here. What one server can be held to is that the boundary is
+*deterministic*: refuse the message, or read it as chunked and treat the rest as
+exactly one pipelined request. Never a third answer. The checks now assert that,
+with a comment pointing at http-garden (A6) for the real differential.
+
+The CL.TE and TE.CL checks stay as they were, and they are meaningful, because
+RFC 9112 §6.1 forbids that combination outright: a smuggled request answered
+*there* would prove the server picked one field and ignored the other.
+
+**408 after 30 s (harness bug).** Two truncated-body checks failed because the
+server was right and the harness impatient — a truncated body is not malformed,
+the sender has merely stopped, so the only correct response is to wait out the
+read deadline and answer 408. It did, at 30.0 s; the harness gave up at 3.
+
+Rather than widen the windows and accept a two-minute suite, the demo gained
+`--fast-timeouts` (3 s instead of 30 s), which the runner passes. That changes
+how long the harness waits, not what it asserts: the claim is "an incomplete
+message eventually yields 408", never a particular number of seconds. The
+default run keeps Hermod's real defaults, so the demo stays representative.
+
+**HTTP/1.0 keep-alive (demo gap, and a documentation lesson).** A `GET / HTTP/1.0`
+with `Connection: keep-alive` was answered `Connection: close`. Hermod's README
+says keep-alive is honoured "only when it is explicitly negotiated in both
+directions", and `HTTP_1_0_KeepAlive_Is_Honoured_When_Negotiated_In_Both_Directions`
+turns out to construct its server with `ConnectionType.KeepAlive` — so "both
+directions" means the *response* has to opt in too, per handler. Defensible, and
+security-conservative: HTTP/1.0 persistence is off unless the application asks.
+The demo's `/` handler now asks. Note what did *not* change: the HTTP/1.0
+request without a `Connection` field still gets `close`, which is the check that
+proves the version logic is real rather than a blanket setting.
+
+**HEAD is not derived from GET (H-23, real).** `HEAD /` returned `405` with
+`Allow: GET`. RFC 9110 §9.3.2: "a server SHOULD support HEAD for any resource it
+supports GET for". Worse than the 405 is the `Allow` — a client that consults it
+to find out what *is* supported is told `GET` and not `HEAD`, which is the one
+field that exists to prevent exactly that confusion. Filed upstream; meanwhile
+every GET route in the demo registers `HEAD` by hand.
+
+### Then the TLS run hung, which was the best bug of the day
+
+With cleartext green, `--tls` never finished. `h1attack` sat there. The cause was
+in the harness, and it is the kind that only shows up on one transport:
+
+`SendAsync` had no deadline. These harnesses deliberately send payloads the
+server is supposed to reject — and a server that rejects a large body *stops
+reading it*. Over cleartext the socket then errors out almost immediately and
+the write fails fast, hiding the problem entirely. Over TLS the extra buffering
+means the write simply blocks once the send buffer fills, forever.
+
+So the same code was correct-looking and broken depending on the transport,
+which is a good argument for running the suite over both. `SendAsync` is now
+bounded and treats a refused write as *data* (`WriteWasRefused`) rather than an
+error — because for most of these checks, "the server stopped listening" is the
+pass condition.
+
+### And then the suite was too slow, for a reason worth writing down
+
+At 236 s cleartext it was already tedious; TLS blew past ten minutes. The cause
+was not TLS and not the server:
+
+**HTTP/1.1 connections are persistent, so the server does not close after
+answering.** A read that waits for the peer to close therefore waits out its
+entire window on *every single check*. With ~200 checks and a 3 s default, that
+is up to ten minutes of pure harness delay, and none of it measuring anything.
+
+The fix is a real response reader — `ReadResponseAsync` returns as soon as the
+response is complete *by its own framing*: bodyless statuses (1xx/204/304) and
+HEAD replies immediately, chunked bodies at the terminal chunk, otherwise
+`Content-Length` bytes, falling back to close-delimited. 236 s → 97 s, with TLS
+finishing at 300 s.
+
+HEAD needed an explicit flag: the reply carries a `Content-Length` describing
+content it must not send, so a reader that trusts the field waits for bytes that
+will never arrive. The response alone cannot tell you which method produced it —
+only the caller knows.
+
+One more measurement bug fell out of the same area: a check asserting "oversized
+`Content-Length` is rejected without reading the body" was timing `ReadAsync`,
+which meant it measured the harness's own window rather than the server's
+latency, and reported exactly 10.0 s of a 10 s window. It now sends headers
+only — not one byte of the declared 10 GiB — and measures with
+`ReadHeadersAsync`, which returns on the header terminator.
+
+### What the harnesses establish, and what they do not
+
+Recorded in `tests/README.md` too, because it is the thing most likely to be
+misread six months from now:
+
+`h1semantics` verifies **the demo** as much as the library. The 304s, 206s and
+negotiated variants come from `Demo/Program.cs`, because Hermod applies no
+resource policy of its own by design. What these 63 checks can honestly
+establish is that an origin server built on this library *can* implement RFC
+9110 correctly — not that the library does it for you.
+
+Build: 0 warnings, 0 errors. Both transports green.
+
+---
+
 ## Next
 
-**A2 — the raw-wire harnesses.** `h1syntax`, `h1framing`, `h1conn`,
-`h1semantics`, `h1attack`, `h1sse`, plus `tests/run-tests.ps1`. See
+**A3 — the curl matrix.** The first genuinely third-party consumer, and the
+first result in this repository that does not depend on code written here. See
 [`../PLAN.md`](../PLAN.md).

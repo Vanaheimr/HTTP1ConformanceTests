@@ -85,7 +85,16 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
         public static async Task<Int32> Main(String[] Arguments)
         {
 
-            var certificate = CreateSelfSignedCertificate("localhost");
+            var certificate   = CreateSelfSignedCertificate("localhost");
+
+            // --fast-timeouts shortens the header/body read deadlines so that
+            // timeout behaviour is testable in seconds instead of half a minute.
+            // It changes the *values*, not the behaviour: what the harnesses
+            // assert is "an incomplete message eventually yields 408", never a
+            // particular number of seconds. The default run keeps Hermod's real
+            // defaults, so the demo stays representative of a deployment.
+            var fastTimeouts  = Arguments.Contains("--fast-timeouts");
+            var readTimeout   = fastTimeouts ? TimeSpan.FromSeconds(3) : (TimeSpan?) null;
 
             Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
             Console.WriteLine("║   Hermod HTTP/1.1 demo host — conformance target              ║");
@@ -108,8 +117,10 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // Cleartext HTTP on :8080
             // ---------------------------------------------------------------
             var httpServer   = await HTTPServer.StartNew(
-                                         TCPPort:         IPPort.Parse(httpPort),
-                                         HTTPServerName:  "Hermod HTTP/1.1 Demo"
+                                         TCPPort:            IPPort.Parse(httpPort),
+                                         HTTPServerName:     "Hermod HTTP/1.1 Demo",
+                                         HeaderReadTimeout:  readTimeout,
+                                         BodyReadTimeout:    readTimeout
                                      );
 
             ConfigureAPI(httpServer.AddHTTPAPI());
@@ -122,7 +133,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             var httpsServer  = await HTTPServer.StartNew(
                                          TCPPort:                    IPPort.Parse(httpsPort),
                                          HTTPServerName:             "Hermod HTTP/1.1 Demo (TLS)",
-                                         ServerCertificateSelector:  (tcpServer, tcpClient) => certificate
+                                         ServerCertificateSelector:  (tcpServer, tcpClient) => certificate,
+                                         HeaderReadTimeout:          readTimeout,
+                                         BodyReadTimeout:            readTimeout
                                      );
 
             ConfigureAPI(httpsServer.AddHTTPAPI());
@@ -186,19 +199,33 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
         private static void ConfigureAPI(HTTPAPI API)
         {
 
-            #region GET /  — the baseline: Content-Length framed, nothing clever
+            #region GET|HEAD /  — the baseline: Content-Length framed, nothing clever
 
-            API.AddHandler(
-                HTTPMethod.GET,
-                HTTPPath.Root,
-                HTTPDelegate: request => Task.FromResult(
-                    new HTTPResponse.Builder(request) {
-                        HTTPStatusCode  = HTTPStatusCode.OK,
-                        ContentType     = HTTPContentType.Text.PLAIN,
-                        Content         = "Hermod HTTP/1.1 demo host\n".ToUTF8Bytes()
-                    }.AsImmutable
-                )
-            );
+            // HEAD is registered explicitly alongside GET. RFC 9110 §9.3.2 says a
+            // server SHOULD support HEAD wherever it supports GET, but Hermod does
+            // not derive it — an unregistered HEAD is answered 405 with
+            // "Allow: GET", which also omits HEAD from the very list a client
+            // would consult. Filed upstream as H-23; until then, every GET route
+            // that wants HEAD has to say so.
+            foreach (var method in new[] { HTTPMethod.GET, HTTPMethod.HEAD })
+                API.AddHandler(
+                    method,
+                    HTTPPath.Root,
+                    HTTPDelegate: request => Task.FromResult(
+                        new HTTPResponse.Builder(request) {
+                            HTTPStatusCode  = HTTPStatusCode.OK,
+                            ContentType     = HTTPContentType.Text.PLAIN,
+                            // Opting the *response* into keep-alive is what makes
+                            // HTTP/1.0 persistence possible at all: Hermod honours
+                            // it only when both directions ask for it, so without
+                            // this an HTTP/1.0 "Connection: keep-alive" request is
+                            // answered "Connection: close". HTTP/1.1 is unaffected,
+                            // being persistent by default.
+                            Connection      = ConnectionType.KeepAlive,
+                            Content         = "Hermod HTTP/1.1 demo host\n".ToUTF8Bytes()
+                        }.AsImmutable
+                    )
+                );
 
             #endregion
 

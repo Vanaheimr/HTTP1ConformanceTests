@@ -20,12 +20,20 @@ differentials, real reverse proxies, real browsers).
 
 ## Status
 
-**Bootstrapping.** The repository currently holds the submodules, the
-specification matrix below, and the work plan in [`PLAN.md`](PLAN.md). The demo
-host, the harnesses, and the third-party drivers are the plan's content — none
-of them exist yet.
+The **demo host** and the **raw-wire harnesses** are in place; the third-party
+suite drivers are next (see [`PLAN.md`](PLAN.md)).
 
-What *does* exist today is the coverage inside Hermod itself:
+```bash
+tests/run-tests.sh        # 199/199 checks, ~97 s
+```
+
+| | |
+|---|---|
+| `tests/` harnesses | **199/199 checks pass**, over cleartext *and* TLS — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
+| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes, verified with curl and a raw RFC 6455 handshake |
+| third-party suites | not yet — curl (A3), Autobahn (A4), proxies (A5), http-garden (A6), browsers (A8) |
+
+On top of that, the coverage inside Hermod itself:
 
 | Where | Count | What |
 |---|---:|---|
@@ -350,11 +358,20 @@ HTTP1ConformanceTests/               solution HTTP1.slnx (at the repo root)
 │   ├── Hermod/                      ← git submodule (Vanaheimr Hermod)
 │   │   ├── Hermod/HTTP1/            the hand-rolled HTTP/1.x stack
 │   │   ├── Hermod/HTTP/             shared HTTP model (methods, status, URL, …)
-│   │   └── HermodTests/{HTTP,WebSocket}/   the existing NUnit suites
+│   │   └── HermodTests/             the existing NUnit suites (Tests.HTTP.*)
 │   └── Styx/                        ← git submodule (Vanaheimr Styx)
-├── Demo/                            runnable demo host — http :8080, https :8443, ws/wss
-├── tests/                           raw-wire harnesses + third-party drivers + tools
-└── docs/                            build log + per-suite walkthroughs
+├── Demo/                            demo host — http :8080, https :8443, ws :8081
+├── tests/
+│   ├── run-tests.sh                 the gate: build → start demo → all harnesses
+│   ├── H1Core/                      shared raw socket, checks, target parsing
+│   ├── h1syntax/                    request line, targets, versions, field syntax
+│   ├── h1framing/                   body length, transfer codings, chunks, trailers
+│   ├── h1conn/                      persistence, pipelining, half-close
+│   ├── h1semantics/                 methods, conditionals, ranges, negotiation, auth
+│   ├── h1sse/                       Server-Sent Events
+│   ├── h1attack/                    smuggling, slowloris, floods, limits
+│   └── h1raw/                       diagnostic wire dumper (not in the gate)
+└── docs/BUILD_LOG.md                chronological build history
 ```
 
 # License

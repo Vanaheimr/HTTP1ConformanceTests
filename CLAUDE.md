@@ -115,18 +115,20 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 ## Current state
 
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
-**A1 done** — the demo host on `:8080` / `:8443` / `:8081`, every route verified
-with curl and a raw RFC 6455 handshake. See [`Demo/README.md`](Demo/README.md).
-**A2 next** — the raw-wire harnesses.
+**A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
+**A2 done** — the raw-wire harnesses: **199/199 checks over both transports**
+(`tests/run-tests.sh`, ~97 s cleartext / ~300 s TLS). See [`tests/README.md`](tests/README.md).
+**A3 next** — the curl matrix.
 
-Nothing under `tests/` exists yet. The numbers this repository can currently
-quote are Hermod's own (440 / 300 / 42, verified by `--list-tests`) plus the
-Autobahn results recorded in the WebSocket README, which are **not yet
-reproducible from a clean checkout** — making them so is A4.
+| | |
+|---|---|
+| Hermod's own NUnit suites | 440 / 300 / 42 (verified by `--list-tests`) |
+| this repo's harnesses | **199/199**, cleartext and TLS |
+| Autobahn | recorded in Hermod's WebSocket README, **not yet reproducible from a clean checkout** — that is A4 |
 
-Building A1 produced two upstream findings on its own (**H-21**, **H-22**),
-which is the pattern to expect: the demo is the first consumer of these APIs
-that is not also a test written by the same person who wrote them.
+Building A1 and A2 produced three upstream findings between them (**H-21**,
+**H-22**, **H-23**), which is the pattern to expect: this repository is the
+first consumer of these APIs that is not also a test written by their author.
 
 ### What the state analysis found
 
@@ -174,8 +176,9 @@ verifies the demo — not the library.
   interop test is .NET against .NET. That is the single biggest weakness in the
   current coverage: two stacks sharing a runtime also share assumptions. The
   third-party tracks (A3–A8) exist to break that.
-- Runner scripts come in both `.ps1` and `.sh` variants: the PowerShell ones use
-  `Get-NetTCPConnection` (Windows-only) and cannot run under `pwsh` on Linux.
+- **Runner scripts are bash, not PowerShell.** CI runs on Linux and Git Bash
+  makes the same script work on Windows — one script, no drift between two
+  copies. Keep them POSIX-ish and free of Windows-only cmdlets.
 
 ## References
 

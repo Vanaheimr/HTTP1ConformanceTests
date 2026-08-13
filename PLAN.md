@@ -93,7 +93,17 @@ comparable:
 listeners* in Hermod today (**H-16**). Until that changes, the demo exposes WS
 on its own port and `/ws` only if H-16 is resolved.
 
-## A2 · Raw-wire harnesses · P1 · ~3–5 d
+## A2 · Raw-wire harnesses · P1 · **done**
+
+**199/199 checks pass over both transports** — `tests/run-tests.sh`, ~97 s
+cleartext, ~300 s over TLS. See [`tests/README.md`](tests/README.md) for the
+per-harness breakdown and what the checks do and do not establish. One new
+upstream finding: **H-23**.
+
+The original scope below is kept for reference; everything in it shipped except
+the deferred items noted in `tests/README.md`.
+
+<details><summary>original scope</summary>
 
 The core of the repository: what no high-level client will emit. Model:
 `h2attack`/`h2semantics`/`h2connect` — console apps, per-check `✓`/`✗`, one
@@ -115,6 +125,8 @@ generated automatically. That is **by design** (🔵 in the matrix) — the demo
 handlers must implement them, and the harness then verifies *the demo*, not the
 library. Worth stating explicitly in `tests/README.md` so it is not read as a
 library failure.
+
+</details>
 
 ## A3 · curl matrix · P1 · ~1 d
 
@@ -255,6 +267,7 @@ never-standardized parts of **H-5**. Everything else is a fix.
 | **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | |
 | **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split |
 | **H-22** | A chunked response silently produces an **empty body** unless `ContentStream` is a `ChunkedTransferEncodingStream` — setting `TransferEncoding = "chunked"` + `ChunkWorker` alone emits correct headers and nothing else, with no error | — | P2 | S | Found while building A1. The server dispatches the worker on the stream type, not the header field. Either wire the two together or fail loudly when they disagree; a silent empty body is the worst of the three options |
+| **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 
 ---
 

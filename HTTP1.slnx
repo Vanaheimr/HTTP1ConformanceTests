@@ -5,5 +5,15 @@
     <Project Path="libs/Styx/Styx/Styx.csproj" />
     <Project Path="libs/Styx/StyxTests/StyxTests.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/H1Core/H1Core.csproj" />
+    <Project Path="tests/h1attack/h1attack.csproj" />
+    <Project Path="tests/h1conn/h1conn.csproj" />
+    <Project Path="tests/h1framing/h1framing.csproj" />
+    <Project Path="tests/h1raw/h1raw.csproj" />
+    <Project Path="tests/h1semantics/h1semantics.csproj" />
+    <Project Path="tests/h1sse/h1sse.csproj" />
+    <Project Path="tests/h1syntax/h1syntax.csproj" />
+  </Folder>
   <Project Path="Demo/HTTP1.Demo.csproj" />
 </Solution>
