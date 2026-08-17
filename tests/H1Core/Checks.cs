@@ -132,7 +132,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region (static) StatusOf / FirstLine / ResponseCount
 
-        /// <summary>The status code of the first response in the buffer, if any.</summary>
+        /// <summary>
+        /// The status code of the first response in the buffer, if any.
+        /// </summary>
         public static UInt16? StatusOf(String Response)
         {
 
@@ -182,7 +184,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region (static) Summarize (Text)
 
-        /// <summary>Collapse a wire dump to one readable line for failure output.</summary>
+        /// <summary>
+        /// Collapse a wire dump to one readable line for failure output.
+        /// </summary>
         private static String Summarize(String Text)
         {
 
@@ -199,7 +203,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region Summary()
 
-        /// <summary>Print the verdict and return the process exit code.</summary>
+        /// <summary>
+        /// Print the verdict and return the process exit code.
+        /// </summary>
         public Int32 Summary()
         {
 

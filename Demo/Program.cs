@@ -69,7 +69,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
         private static readonly String    resourceETag  = "\"hermod-h1-demo-resource-v1\"";
         private static readonly DateTime  resourceDate  = new (2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        /// <summary>The /search corpus, for the RFC 10008 QUERY method.</summary>
+        /// <summary>
+        /// The /search corpus, for the RFC 10008 QUERY method.
+        /// </summary>
         private static readonly String[]  corpus        = [
                                                               "apple", "apricot", "avocado",
                                                               "banana", "blueberry",

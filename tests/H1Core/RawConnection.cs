@@ -58,7 +58,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region Properties
 
-        /// <summary>Whether the underlying socket still reports a connection.</summary>
+        /// <summary>
+        /// Whether the underlying socket still reports a connection.
+        /// </summary>
         public Boolean IsConnected
             => tcpClient.Connected;
 
@@ -114,7 +116,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region SendAsync (Text | Bytes)
 
-        /// <summary>Write the given text as ASCII, byte for byte, unmodified.</summary>
+        /// <summary>
+        /// Write the given text as ASCII, byte for byte, unmodified.
+        /// </summary>
         public Task SendAsync(String Text)
             => SendAsync(Encoding.ASCII.GetBytes(Text));
 
@@ -197,7 +201,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region ShutdownSend()
 
-        /// <summary>Half-close: signal EOF to the peer while still reading.</summary>
+        /// <summary>
+        /// Half-close: signal EOF to the peer while still reading.
+        /// </summary>
         public void ShutdownSend()
         {
             try
@@ -393,7 +399,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         }
 
-        /// <summary>Whether the buffer already holds one whole response.</summary>
+        /// <summary>
+        /// Whether the buffer already holds one whole response.
+        /// </summary>
         private static Boolean IsComplete(String Text, Boolean Bodyless)
         {
 

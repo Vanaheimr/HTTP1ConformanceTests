@@ -27,7 +27,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
     public sealed record Target(String Host, UInt16 Port, Boolean TLS)
     {
 
-        /// <summary>The Host field value to put in requests.</summary>
+        /// <summary>
+        /// The Host field value to put in requests.
+        /// </summary>
         public String Authority
             => $"{Host}:{Port}";
 
