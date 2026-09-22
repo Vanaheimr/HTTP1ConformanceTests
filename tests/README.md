@@ -192,9 +192,11 @@ and the server declines, because .NET's `DeflateStream` cannot set `windowBits`.
 RFC 7692 §7.1.2.1 requires declining an offer that cannot be satisfied, so this is
 correct behaviour and Autobahn says `UNIMPLEMENTED` rather than `FAILED`.
 
-It is not in CI yet, deliberately: the script exits non-zero on any non-passing
-case, and excluding two sections to buy a green badge is an allowance that would
-outlive its reason. See
+It runs nightly at 03:37 UTC and gates on a **floor** of 481 rather than on
+perfection: passing must not drop below it, and a single hard failure (`FAILED`,
+`WRONG CODE`, `UNCLEAN`) fails the run whatever the count says. Excluding the two
+sections to buy a green badge would have been the alternative, and it is the worse
+one — an exclusion hides the cases, a floor keeps counting them. See
 [`TestingAgainst_Autobahn.md`](TestingAgainst_Autobahn.md) for the full account,
 including what the first run found and why this suite belongs in this repository
 rather than only in the HTTP/2 sibling.

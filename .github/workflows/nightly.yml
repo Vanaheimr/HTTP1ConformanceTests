@@ -1,0 +1,122 @@
+name: Nightly
+
+# ci.yml gates every push with everything this repository carries itself: the 447
+# in-process HTTP/1.x tests and the 7 raw-wire harnesses. This workflow adds the
+# one external conformance suite it does not carry — the Autobahn TestSuite
+# (RFC 6455 + permessage-deflate, 517 cases against the demo host's WebSocket
+# echo server on :8081).
+#
+# It is here rather than in the gate because of how it is ACQUIRED, not how it
+# behaves: Autobahn ships usably only as a Docker Hub image. A registry rate
+# limit or a moved tag would turn a push red for a reason that has nothing to do
+# with this code, and a gate that fails for reasons outside the change is a gate
+# people learn to ignore.
+#
+# What it is NOT is informational. The run drives OUR server over loopback with
+# the suite as the only foreign part, so the number is exact and this job gates
+# on it — a nightly that reports a number without failing on it is a report
+# nobody reads.
+
+on:
+  schedule:
+    # 03:37 UTC. The family staggers so the four do not contend for runners:
+    # Hermod 02:17, HTTP/3 02:43, HTTP/2 03:11, this one last. Off the hour on
+    # purpose — GitHub's scheduler is busiest there and delays runs by tens of
+    # minutes.
+    - cron: '37 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  # One nightly at a time; a second one starting while the first still holds
+  # :8080/:8443/:8081 would fail on the bind and say nothing useful.
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  autobahn:
+    # Plain ubuntu-latest, deliberately NOT the debian:13 container ci.yml uses.
+    # The suite only ships usably as a Docker image (the native wstest is legacy
+    # Python 2), and there is no daemon inside that container —
+    # docker-in-docker is not set up and does not need to be, because GitHub's
+    # Ubuntu runner has one already.
+    #
+    # Windows is absent for a related reason: its runner's Docker is in
+    # Windows-container mode, and `--network host` — how the suite reaches the
+    # echo server on loopback — is a Linux-container feature. tests/autobahn.sh
+    # does carry a Docker Desktop branch (default bridge plus
+    # host.docker.internal), but nothing exercises it, and the framing under
+    # test is not platform-dependent, so one platform answers the question.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Debug, matching ci.yml: tests/autobahn.sh locates the demo host under
+      # bin/Debug, and a Release-only build would leave it with nothing to start.
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      # This is the largest of Hermod's three WebSocket implementations — 24
+      # files, ~12 000 lines, with its own WebSocketFrame and its own
+      # permessage-deflate — and until 2026-09-22 no foreign suite had ever
+      # touched it. The widely-quoted "Autobahn 517/517" belonged to the HTTP/2
+      # sibling and certified the smallest of the three.
+      #
+      # Unlike that sibling, Autobahn here drives the REAL path: it speaks
+      # WebSocket over an HTTP/1.1 Upgrade, which is exactly what this stack
+      # does, so handshake, framing, compression and close are all under test
+      # rather than the framing layer alone behind a tunnel.
+      #
+      # The script gates on a floor rather than on perfection — see min_pass in
+      # tests/autobahn.sh and the walkthrough in tests/TestingAgainst_Autobahn.md.
+      # Short version: passing must not drop below 481, and a single hard failure
+      # (FAILED / WRONG CODE / UNCLEAN) fails the run whatever the count says.
+      # The 36 that do not pass are sections 13.3 and 13.5, where the client
+      # offers server_max_window_bits=9 and this server declines it — which RFC
+      # 7692 Section 7.1.2.1 requires rather than permits, because DeflateStream
+      # cannot set the window size.
+      #
+      # The exit code is captured BEFORE the summary is written, and the step
+      # ends on it. Both halves matter: the summary commands would otherwise
+      # overwrite $?, and running the pipeline under `set -e` would abort before
+      # the summary on exactly the night the summary is worth having.
+      - name: Autobahn fuzzingclient (517 cases, floor 481)
+        timeout-minutes: 45
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          set +e
+          tests/autobahn.sh --no-build 2>&1 | tee artifacts/autobahn.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          {
+            echo '## Autobahn TestSuite — RFC 6455 over HTTP/1.1'
+            echo
+            echo '```'
+            tail -30 artifacts/autobahn.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+      # The HTML report is the part worth keeping: it names the non-passing case
+      # and shows the frames exchanged, which the console summary does not. The
+      # demo host's own log rides along as demo-host.log — the only view of a
+      # failure from our side of the wire, and the HTTP/2 sibling spent three
+      # hung nights learning that discarding it leaves nothing to look at.
+      #
+      # always(), not !cancelled(): a step that overruns its timeout-minutes
+      # counts as a *cancellation*, which is precisely the case where this
+      # upload is the only evidence there is.
+      - name: Upload Autobahn report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: autobahn-report
+          path: |
+            tests/autobahn/reports/
+            artifacts/autobahn.txt

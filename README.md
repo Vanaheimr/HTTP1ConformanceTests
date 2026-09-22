@@ -22,7 +22,7 @@ differentials, real reverse proxies, real browsers).
 
 The **demo host** and the **raw-wire harnesses** are in place, CI gates every push
 on Windows and Debian 13, and the first third-party conformance suite — Autobahn —
-is now driven here too (see [`PLAN.md`](PLAN.md) for the rest).
+runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
 tests/run-tests.sh        # 257/257 checks, ~103 s
@@ -34,7 +34,7 @@ tests/run-tests.sh        # 257/257 checks, ~103 s
 | `tests/curl-matrix.sh` | **58/58** — the first checks here made by a client nobody in this repository wrote |
 | both, over cleartext *and* TLS | **257/257** — and **315/315** with `--wsl`, which adds a second curl build |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes |
-| `tests/autobahn.sh` | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
+| `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |
 
 On top of that, the coverage inside Hermod itself:

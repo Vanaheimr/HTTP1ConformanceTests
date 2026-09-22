@@ -99,17 +99,30 @@ Autobahn does not catch it because Python's zlib inflates with a large window re
 
 The honest comparison is therefore the other way round: 481/517 here is the *stricter* result.
 
-## Why this is not in CI yet
+## In CI: the nightly, gated on a floor
 
-`tests/autobahn.sh` exits non-zero on any non-passing case, so wiring it into a gate today would
-make it red on day one. Excluding sections 13.3 and 13.5 to get a green badge is the wrong trade:
-an allowance like that outlives the reason for it, and this repository has a fresh example next
-door of a number that looked like corroboration and was not.
+[`.github/workflows/nightly.yml`](../.github/workflows/nightly.yml) runs this every night at
+03:37 UTC on `ubuntu-latest`, and **fails on the result** — a nightly that reports a number
+without failing on it is a report nobody reads. It is not in the push gate because of how the
+suite is *acquired* rather than how it behaves: Autobahn ships usably only as a Docker Hub image,
+and a registry rate limit turning a push red would teach people to ignore the gate.
 
-Gating is a decision rather than a fix now: either accept 481/517 as the target and gate on "no
-regression from it", or treat `UNIMPLEMENTED` as passing in the parse step (defensible — it is
-not a failure) and gate on 517. Either way it belongs in a nightly job (the HTTP/2 sibling's `nightly.yml` is the template — Autobahn needs Docker, which
-belongs in a nightly rather than a push gate).
+The gate is a **floor, not a target**. `min_pass` in `tests/autobahn.sh` is 481, and the run
+counts three buckets rather than two:
+
+| Bucket | Verdicts | Effect |
+|---|---|---|
+| passing | `OK`, `NON-STRICT`, `INFORMATIONAL` | must stay at or above `min_pass` |
+| declined | `UNIMPLEMENTED` | tolerated and counted — it is the RFC-required refusal, not a defect |
+| hard | `FAILED`, `WRONG CODE`, `UNCLEAN` | **always fatal**, whatever the count says |
+
+So the floor can only ever absorb a change in how many extension offers we decline. It cannot
+launder a real failure into a pass, which is what made 481 gateable at all.
+
+The alternative was excluding sections 13.3 and 13.5 to buy a green badge. That is the worse
+trade: an exclusion hides the cases, a floor keeps counting them — and an allowance outlives the
+reason it was granted. When the number goes *up*, the script says so out loud and asks for the
+floor to be raised; a floor nobody raises is a ratchet that has rusted.
 
 ## Reading the report
 
