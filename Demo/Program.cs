@@ -171,6 +171,16 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                       AutoStart:              true
                                   );
 
+            // RFC 7692 permessage-deflate. AWebSocketServer leaves it off by
+            // default, which is the right default for a library and the wrong
+            // one for a conformance target: with the extension unoffered, the
+            // Autobahn fuzzingclient reports all 216 cases of sections 12 and 13
+            // as UNIMPLEMENTED rather than exercising the compression path this
+            // stack does implement (WebSocketPerMessageDeflate.cs). The handshake
+            // reads the property per connection, so setting it here applies to
+            // every client that arrives.
+            webSocketServer.EnablePerMessageDeflate = true;
+
             webSocketServer.OnTextMessageReceived   += async (timestamp, server, connection, frame, eventTrackingId, text, ct) =>
                 await webSocketServer.SendTextMessage  (connection, text,   eventTrackingId, ct);
 

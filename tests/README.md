@@ -180,8 +180,25 @@ Pass several acceptable status codes to `Checks.Status` where the RFC says a
 recipient MUST reject something without saying how — pinning one code there
 asserts Hermod's taste rather than the standard.
 
+## Autobahn (A4)
+
+`tests/autobahn.sh` drives the canonical RFC 6455 suite — 517 cases — against the
+demo host's WebSocket echo server on `:8081`. Docker is the only prerequisite.
+
+Currently **481/517**. Everything except compression parameter negotiation passes;
+the 36 that do not are sections 13.3 and 13.5, where the client asks for
+`client_max_window_bits = 9` and the server declines the offer. RFC 7692 permits
+declining, so Autobahn reports `UNIMPLEMENTED` rather than a failure.
+
+It is not in CI yet, deliberately: the script exits non-zero on any non-passing
+case, and excluding two sections to buy a green badge is an allowance that would
+outlive its reason. See
+[`TestingAgainst_Autobahn.md`](TestingAgainst_Autobahn.md) for the full account,
+including what the first run found and why this suite belongs in this repository
+rather than only in the HTTP/2 sibling.
+
 ## Not here yet
 
-`PLAN.md` tracks the rest: curl (A3), Autobahn (A4), reverse proxies (A5),
-http-garden and the smuggling scanners (A6), non-.NET reference peers (A7),
-browsers (A8), benchmarks (A9), parser fuzzing (A10), CI (A11).
+`PLAN.md` tracks the rest: reverse proxies (A5), http-garden and the smuggling
+scanners (A6), non-.NET reference peers (A7), browsers (A8), benchmarks (A9),
+parser fuzzing (A10). CI (A11) landed on 2026-09-22.
