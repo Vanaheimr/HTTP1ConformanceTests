@@ -68,25 +68,36 @@ Sections 12 and 13 — all 216 cases — came back `UNIMPLEMENTED`, because the 
 conformance target: the extension is implemented (`WebSocketPerMessageDeflate.cs`, 351 lines) and
 was simply not switched on. One line in the demo took the score from 301 to 481.
 
-### What remains: `client_max_window_bits = 9`
+### What remains: `server_max_window_bits = 9`, and it is correct behaviour
 
 The 36 that are still `UNIMPLEMENTED` are sections **13.3** and **13.5**, and the pattern is exact:
 
-| Case | Client offer | Result |
+| Case | What the client actually offers | Result |
 |---|---|---|
-| 13.1, 13.2 | window bits not requested | OK |
-| 13.4, 13.6 | window bits = 15 | OK |
-| **13.3, 13.5** | **window bits = 9** | **UNIMPLEMENTED** |
-| 13.7 | a list including 9, but also "not requested" | OK — the server picks another offer |
+| 13.1, 13.2 | no `server_max_window_bits` | OK |
+| 13.4, 13.6 | `server_max_window_bits=15` | OK |
+| **13.3, 13.5** | **`server_max_window_bits=9`** | **UNIMPLEMENTED** |
+| 13.7 | a list including 9, but also an offer without it | OK — the server takes the other offer |
 
-So the server accepts the extension when the window is left at the default or explicitly 15, and
-declines the offer when the client asks for a smaller window. RFC 7692 §7.1.2 permits declining an
-offer that cannot be satisfied — the fallback is simply no compression — so this is a limitation
-rather than a protocol violation, and Autobahn says `UNIMPLEMENTED` rather than `FAILED`.
+Read off the wire, from the `httpRequest` recorded in each case report — not inferred
+from the case description, which names the parameter only as "requestMaxWindowBits".
 
-It is worth a look nonetheless, because the HTTP/2 sibling's implementation reports 517/517 against
-the same suite and therefore does accept `9`. Two implementations in the same library, one
-answering an offer the other declines.
+`server_max_window_bits=N` is the client telling the **server** to cap its own compression window.
+.NET's `DeflateStream` exposes no control over `windowBits`, so the server cannot comply with 9 —
+and RFC 7692 §7.1.2.1 says a server that cannot satisfy an offer must **decline** it, falling back
+to no compression. That is exactly what `TryNegotiateAsServer` does, and `UNIMPLEMENTED` is
+Autobahn's accurate word for "the server declined the extension for this offer" — not `FAILED`.
+
+**So there is nothing to fix here.** An earlier version of this file named the parameter
+`client_max_window_bits` and suggested the HTTP/2 sibling handled it better because it reports
+517/517. Both halves were wrong. The parameter is `server_max_window_bits`, and the sibling's
+higher score comes from the opposite of a better implementation: its `WebSocketDeflate.ShouldAccept`
+accepts any offer whose value merely contains the string `permessage-deflate`, without parsing the
+parameters at all. Faced with `server_max_window_bits=9` it answers "accepted" and then compresses
+with a 15-bit window — which a client that had allocated a 9-bit inflate window could not decode.
+Autobahn does not catch it because Python's zlib inflates with a large window regardless.
+
+The honest comparison is therefore the other way round: 481/517 here is the *stricter* result.
 
 ## Why this is not in CI yet
 
@@ -95,8 +106,9 @@ make it red on day one. Excluding sections 13.3 and 13.5 to get a green badge is
 an allowance like that outlives the reason for it, and this repository has a fresh example next
 door of a number that looked like corroboration and was not.
 
-The sequence that gets this gated is: settle `client_max_window_bits`, re-measure, then add a
-nightly job (the HTTP/2 sibling's `nightly.yml` is the template — Autobahn needs Docker, which
+Gating is a decision rather than a fix now: either accept 481/517 as the target and gate on "no
+regression from it", or treat `UNIMPLEMENTED` as passing in the parse step (defensible — it is
+not a failure) and gate on 517. Either way it belongs in a nightly job (the HTTP/2 sibling's `nightly.yml` is the template — Autobahn needs Docker, which
 belongs in a nightly rather than a push gate).
 
 ## Reading the report

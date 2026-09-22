@@ -186,9 +186,11 @@ asserts Hermod's taste rather than the standard.
 demo host's WebSocket echo server on `:8081`. Docker is the only prerequisite.
 
 Currently **481/517**. Everything except compression parameter negotiation passes;
-the 36 that do not are sections 13.3 and 13.5, where the client asks for
-`client_max_window_bits = 9` and the server declines the offer. RFC 7692 permits
-declining, so Autobahn reports `UNIMPLEMENTED` rather than a failure.
+the 36 that do not are sections 13.3 and 13.5, where the client offers
+`server_max_window_bits=9` — asking the server to cap its own compression window —
+and the server declines, because .NET's `DeflateStream` cannot set `windowBits`.
+RFC 7692 §7.1.2.1 requires declining an offer that cannot be satisfied, so this is
+correct behaviour and Autobahn says `UNIMPLEMENTED` rather than `FAILED`.
 
 It is not in CI yet, deliberately: the script exits non-zero on any non-passing
 case, and excluding two sections to buy a green badge is an allowance that would
