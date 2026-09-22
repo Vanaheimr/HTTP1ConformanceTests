@@ -50,11 +50,29 @@ nobuild=0
 # summary, the artifact and even the job log were all lost.
 run_timeout=1200
 
+# The floor this run must not fall below, and the reason it is a floor rather
+# than an expected total.
+#
+# Measured 481/517 on 2026-09-22. The 36 that do not pass are sections 13.3
+# and 13.5, where the client offers server_max_window_bits=9 and this server
+# declines, because DeflateStream cannot set the window size.
+#
+# UNIMPLEMENTED is the one non-passing verdict tolerated, because it is not a
+# failure: it means the server declined an extension offer it cannot satisfy,
+# which RFC 7692 Section 7.1.2.1 requires rather than permits. Everything else
+# -- FAILED, WRONG CODE, UNCLEAN -- fails the run outright no matter what the
+# count says, so the floor can never launder a real regression into a pass.
+#
+# Raise it when the number goes up. A floor that is never raised is a ratchet
+# that has rusted.
+min_pass=481
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --ws-port)     ws_port="$2";     shift 2 ;;
         --image)       image="$2";       shift 2 ;;
         --run-timeout) run_timeout="$2"; shift 2 ;;
+        --min-pass)    min_pass="$2";    shift 2 ;;
         --no-build)    nobuild=1;        shift ;;
         -h|--help)     grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -259,52 +277,68 @@ MSYS_NO_PATHCONV=1 $runner docker run --name "$CONTAINER" -e PYTHONUNBUFFERED=1 
     }
 
 # --- parse the report ------------------------------------------------------
-INDEX="$REPDIR/index.json"
-[ -f "$INDEX" ] || { echo "No Autobahn report at $INDEX (did the container reach the server?)" >&2; exit 1; }
+INDEXFILE="$REPDIR/index.json"
+[ -f "$INDEXFILE" ] || { echo "No Autobahn report at $INDEXFILE (did the container reach the server?)" >&2; exit 1; }
 
-# Pass = behavior AND behaviorClose both in {OK, NON-STRICT, INFORMATIONAL}.
-# Prefer jq, fall back to python3, last resort a grep heuristic that can only
-# answer yes/no.
-bad=1
-if command -v jq >/dev/null 2>&1; then
-    bad="$(jq '[.. | objects | select(has("behavior")) |
-                 select((.behavior     | IN("OK","NON-STRICT","INFORMATIONAL") | not) or
-                        (.behaviorClose | IN("OK","NON-STRICT","INFORMATIONAL") | not))] | length' "$INDEX")"
-    total="$(jq '[.. | objects | select(has("behavior"))] | length' "$INDEX")"
-    echo; echo "Autobahn: $((total - bad))/$total cases OK"
-    if [ "$bad" -gt 0 ]; then
-        echo "Non-passing cases:" >&2
-        jq -r '.. | objects | select(has("behavior")) |
-               select((.behavior     | IN("OK","NON-STRICT","INFORMATIONAL") | not) or
-                      (.behaviorClose | IN("OK","NON-STRICT","INFORMATIONAL") | not)) |
-               "  behavior=\(.behavior) close=\(.behaviorClose)"' "$INDEX" >&2
-    fi
-elif command -v python3 >/dev/null 2>&1; then
-    read -r total bad < <(python3 - "$INDEX" <<'PY'
-import json, sys
-allowed = {"OK", "NON-STRICT", "INFORMATIONAL"}
-d = json.load(open(sys.argv[1]))
-total = fail = 0
-for agent in d.values():
-    for cid, r in agent.items():
+# Three buckets rather than two, because "not passing" is not one thing here.
+#
+#   passing  -- OK, NON-STRICT, INFORMATIONAL
+#   declined -- UNIMPLEMENTED: the server refused an extension offer it cannot
+#               satisfy. RFC 7692 Section 7.1.2.1 requires that refusal, so it
+#               is correct behaviour, not a defect. Tolerated, but counted.
+#   hard     -- anything else: FAILED, WRONG CODE, UNCLEAN. Always fatal.
+#
+# The verdict is then: no hard failures at all, and passing >= $min_pass. A
+# floor cannot hide a regression into a *failure*, only a change in how many
+# offers we decline -- and that number moving down is what the floor catches.
+#
+# Python does the counting; jq is not assumed, and the old grep fallback could
+# only answer yes/no, which is useless once the answer is a number.
+read -r passing declined hard total < <(
+python3 - "$INDEXFILE" <<'PYEOF'
+import json, sys, collections
+PASS     = {"OK", "NON-STRICT", "INFORMATIONAL"}
+DECLINED = {"UNIMPLEMENTED"}
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+passing = declined = hard = total = 0
+worst = collections.Counter()
+for agent, cases in d.items():
+    for cid, r in cases.items():
         total += 1
-        if r.get("behavior") not in allowed or r.get("behaviorClose") not in allowed:
-            fail += 1
-            print(f"  {cid}: behavior={r.get('behavior')} close={r.get('behaviorClose')}", file=sys.stderr)
-print(total, fail)
-PY
+        b, bc = r.get("behavior"), r.get("behaviorClose")
+        if b in PASS and bc in PASS:
+            passing += 1
+        elif b in DECLINED or bc in DECLINED:
+            declined += 1
+        else:
+            hard += 1
+            worst[f"  {cid}: behavior={b} close={bc}"] += 1
+for line in sorted(worst):
+    print(line, file=sys.stderr)
+print(passing, declined, hard, total)
+PYEOF
 )
-    echo; echo "Autobahn: $((total - bad))/$total cases OK"
-else
-    echo "Neither jq nor python3 found; falling back to a grep heuristic." >&2
-    if grep -qE '"(behavior|behaviorClose)": *"(FAILED|WRONG CODE|UNCLEAN)"' "$INDEX"; then bad=1; else bad=0; fi
-fi
 
+echo
+echo "Autobahn: $passing/$total passing, $declined declined (UNIMPLEMENTED), $hard hard failures"
 echo "Full HTML report: $REPDIR/index.html"
 echo
-if [ "$bad" -gt 0 ]; then
-    echo "Autobahn reported non-passing cases."
+
+if [ "$hard" -gt 0 ]; then
+    echo "FAIL: $hard case(s) failed outright — see the lines above and the HTML report." >&2
     exit 1
 fi
-echo "Autobahn: all cases passed."
+
+if [ "$passing" -lt "$min_pass" ]; then
+    echo "FAIL: $passing passing is below the floor of $min_pass." >&2
+    echo "      Either a regression, or the floor needs revisiting — deliberately, not silently." >&2
+    exit 1
+fi
+
+if [ "$passing" -gt "$min_pass" ]; then
+    echo "NOTE: $passing passing is ABOVE the floor of $min_pass. Raise min_pass in this script"
+    echo "      so the improvement is held rather than merely enjoyed."
+fi
+
+echo "Autobahn: at or above the floor ($passing >= $min_pass), no hard failures."
 exit 0
