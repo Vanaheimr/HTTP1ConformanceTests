@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  # Manual runs from the Actions tab. This gate builds against a submodule pin,
+  # so the useful manual case is not "run it again" but "run it unchanged after
+  # Hermod moved" — checking out a pin that has not been bumped yet is exactly
+  # what the button is for.
+  workflow_dispatch:
+
+concurrency:
+  # Pull requests: one run per branch, newest wins — a run against a head that
+  # has been superseded answers a question nobody is asking any more.
+  #
+  # Pushes: one run per commit, and nothing cancels anything. A commit with no
+  # verdict is a hole nobody comes back to fill: the next commit contains it, so
+  # the code does get tested eventually, but once that run is red there is no
+  # longer any way to say which of the two commits did it.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test:
+    # The same two legs as the HTTP/2 and HTTP/3 sibling repositories:
+    #
+    #  * Windows, where the stack has been developed and where the suite is
+    #    known to be 7/7 harnesses (257 checks there, 258 on Debian — see
+    #    the harness step).
+    #  * Debian 13, matching the siblings. GitHub offers no Debian runner image,
+    #    so this runs on an Ubuntu runner inside a debian:13 container —
+    #    deliberately not the official .NET SDK image, which is still
+    #    Debian-12-based.
+    #
+    # fail-fast is off on purpose: "red on exactly one platform" is the most
+    # valuable signal a two-leg matrix produces, and in the HTTP/2 sibling that
+    # signal turned out to be a real server bug rather than a platform quirk.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            leg: windows-latest
+          - os: ubuntu-latest
+            container: debian:13
+            leg: debian-13-container
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+      # BEFORE the checkout, not after: a bare debian:13 image has no git, and
+      # `submodules: recursive` needs it — without git, actions/checkout falls
+      # back to a tarball download that cannot fetch submodules at all, and the
+      # build then fails on an empty libs/.
+      #
+      # curl is not optional here the way it is in the siblings: this runner
+      # probes the demo host with it *and* drives tests/curl-matrix.sh through
+      # it, which is 59 of this leg's 258 checks. The rest are the .NET runtime
+      # prerequisites — ICU and tzdata for globalization, OpenSSL for crypto,
+      # ca-certificates for NuGet over HTTPS.
+      - name: Install prerequisites (Debian container)
+        if: runner.os == 'Linux'
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+
+      # The HTTP/1.x stack lives in the Hermod submodule, Styx below that —
+      # without a recursive checkout nothing here compiles at all.
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Debug, not Release, and the runner forces it: run-tests.sh drives each
+      # harness through `dotnet run --no-build`, which resolves the default
+      # configuration. Against a Release-only build it would find no assembly.
+      # These are correctness checks rather than benchmarks, so Debug costs
+      # nothing but wall-clock.
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      # The filter is spelled with the trailing dot on purpose, and it is worth
+      # a sentence because the obvious shorthand is wrong in a way that passes.
+      # "FullyQualifiedName~Hermod.Tests.HTTP" matches 910 tests — it swallows
+      # Hermod.Tests.HTTP2 and Hermod.Tests.HTTP3 as substrings, so it would
+      # gate the other two protocols under this repository's name. With the dot
+      # it is 447, which is HTTP/1.x and nothing else; HTTPS is named
+      # explicitly because "Tests.HTTPS." does not contain "Tests.HTTP.".
+      #
+      # (The HTTP/2 sibling learned this the expensive way: a
+      # "FullyQualifiedName~HTTP2" filter there matched all 2085 tests in the
+      # assembly and gated something other than what it claimed.)
+      - name: Test (447 HTTP/1.x tests, from the pinned Hermod)
+        timeout-minutes: 30
+        run: dotnet test libs/Hermod/HermodTests/HermodTests.csproj --no-build --filter "FullyQualifiedName~Hermod.Tests.HTTP.|FullyQualifiedName~Hermod.Tests.HTTPS." --logger "console;verbosity=normal" --logger "trx;LogFileName=${{ matrix.leg }}.trx" --results-directory artifacts
+
+      # What this repository has that Hermod's own CI cannot run: seven
+      # harnesses driven against a live demo host over a real socket —
+      # syntax, framing, connection handling, RFC 9110 semantics, SSE,
+      # hardening, and a curl matrix that puts a foreign client on the other
+      # end of the wire. The runner starts the demo on :8080, drives each
+      # harness, and stops it again.
+      #
+      # The step name counts harnesses rather than checks on purpose: the total
+      # is platform-dependent. Measured before this gate was added, the curl
+      # matrix reports 58 checks against the Windows curl and 59 against
+      # Debian's, so "257" would have been wrong on one leg from day one.
+      #
+      # One runner for both legs, because there is only one: run-tests.sh is
+      # bash and runs under the Git Bash that ships on GitHub's Windows images.
+      # The HTTP/2 sibling used to keep a PowerShell twin beside its bash
+      # runner; the two drifted, the PowerShell one silently ran every harness
+      # with no arguments for weeks, and "Windows says 48/48" read as
+      # corroboration when it was a different and mostly empty measurement.
+      # Two runners produce two numbers that look like agreement.
+      #
+      # The Debian curl leg inside run-tests.sh stays skipped here (it needs
+      # --wsl, which widens the demo's listener to 0.0.0.0); the container's
+      # own curl is the foreign client on this leg.
+      - name: Harness suite (7 harnesses)
+        timeout-minutes: 30
+        shell: bash
+        run: tests/run-tests.sh --no-build
+
+      # The console log answers "did it pass" and almost nothing else: which
+      # test failed takes grepping the step log, and a skip reason never reaches
+      # the console at normal verbosity at all. TRX keeps outcome, duration,
+      # error message, stack trace and the Assert.Ignore text per test, and
+      # `gh run download` fetches it without a signed-in browser session.
+      #
+      # always() rather than success(): a red run is when these files matter
+      # most — and always() rather than !cancelled(), because a step that
+      # overruns its timeout-minutes counts as a *cancellation*, which is
+      # exactly the case where losing the evidence hurts most. A build that
+      # fails before the test step leaves no .trx, which upload-artifact
+      # reports as a warning rather than a second failure — the compile error
+      # is the finding there.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.leg }}
+          path: artifacts/*.trx

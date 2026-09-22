@@ -1,3 +1,10 @@
 # Keep shell scripts LF-only so they stay runnable after a clone on
 # Linux/macOS/WSL, regardless of the committer's platform or core.autocrlf.
 *.sh text eol=lf
+
+# Same reasoning for the workflows. Today every `run:` in them is a single line,
+# which YAML strips the line ending from either way — but a multi-line `run: |`
+# block committed with CRLF would carry a trailing \r into each command on the
+# Linux leg, and "command not found: apt-get\r" is a confusing way to learn this.
+*.yml text eol=lf
+*.yaml text eol=lf
