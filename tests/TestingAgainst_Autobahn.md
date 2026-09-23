@@ -212,6 +212,80 @@ result:
 | `autobahn` | `tests/autobahn.sh` | 481 |
 | `autobahn-client` | `tests/autobahn-client.sh` | 445 |
 
+## When *we* are the one that fails: 12.4.18, and a log that said nothing
+
+On 2026-09-23 the nightly's server job went red for the first time, on case **12.4.18** — "send
+1000 compressed messages each of payload size 131072", the heaviest case in the suite at 128 MiB
+of payload each way. Three other runs the same day passed it.
+
+What the case report says, and it is worth reading precisely:
+
+| | |
+|---|---|
+| `behavior` | `FAILED` |
+| `duration` | 1504 ms — locally the same case passes in ~3700 ms |
+| `txFrameStats` | `{"1": 717}` — the suite sent 717 text frames |
+| `rxFrameStats` | `{"1": 716}` — it got 716 back, and **no** opcode 8 |
+| `droppedByMe` | `false` |
+| `wasNotCleanReason` | "peer dropped the TCP connection without previous WebSocket closing handshake" |
+
+So: we echoed 716 of 717 messages correctly and then the connection was simply gone, with no
+close frame, about 40 % of the way through a case that usually finishes. Not a hang — a drop.
+
+**And the log said nothing.** `demo-host.log` was in the artifact, exactly as the section above
+promises, and it contained the startup banner and not one further line. That is not because
+nothing went wrong; it is because Hermod's servers take an `ILoggerFactory` and default it to
+`NullLoggerFactory.Instance`. Only two code paths can end that read loop without a close frame,
+and *both* log — one at Debug ("Read error on WebSocket connection"), one at Error ("Exception in
+HTTP WebSocket server connection loop"). Both records were formatted into a null sink.
+
+A file that exists, is collected, is named in the documentation, and is empty of everything that
+matters is worse than no file: it answers "did we keep evidence?" with yes.
+
+### The demo host now has a voice
+
+`Demo/Program.cs` takes `--log[=<level>]` and passes a small console `ILoggerFactory`
+(`Demo/ConsoleLogger.cs`, forty lines, no package) to all three servers. `tests/autobahn.sh`
+starts it with `--log=debug`, and the demo also prints one line saying so — "was the instrument
+even switched on" is a question a silent log cannot answer.
+
+Debug rather than Warning, because the read-error path is a Debug record, and it costs nothing:
+the WebSocket server has two Debug statements in total and logs nothing per frame.
+
+Verified by running the full suite with it on: **128 warning records** where there had been none,
+every one of them a correct refusal of a protocol violation the suite deliberately commits —
+
+```
+  18:18:06.566  WARN  WebSocketServer: WebSocket protocol violation from 127.0.0.1:56648:
+                      Control frame payload length must not exceed 125 bytes!
+  18:18:06.687  WARN  WebSocketServer: WebSocket protocol violation from 127.0.0.1:56726:
+                      A frame has RSV2 or RSV3 set, but no such extension was negotiated!
+```
+
+The first attempt at this proof was inconclusive and worth recording: a two-case slice produced
+no records at all, which looked like broken wiring. It was not. The Debug line that seemed
+guaranteed — `RemoveConnection`, "Removing HTTP WebSocket connection with …" — is on a method
+**nothing calls**. A passing case logs nothing because a passing case has nothing to say.
+
+### Reproduction: failed, 13 attempts
+
+Stated plainly, because a mechanism that fits is not a mechanism that was demonstrated:
+
+- 10 × section 12.4 (18 cases) with the demo host pinned to two CPUs, harsher than the runner's
+  four: 18/18 every time, no warnings.
+- Full 517-case runs, likewise squeezed: green.
+
+So 12.4.18 is **not diagnosed**. What changed is that the next occurrence names itself: the
+record is written, the level captures it, and the file is in the artifact. That is the same move
+the HTTP/2 sibling made with `PYTHONUNBUFFERED` after two wrong diagnoses drawn from a flush
+boundary, and for the same reason — an intermittent failure is worth one instrument, not three
+hypotheses.
+
+`tests/autobahn.sh --cases '12.4.*'` exists for the next attempt: it runs a slice in under a
+minute instead of eight. A slice does not carry the floor — a floor is a statement about the
+whole suite — but a hard failure in one is still fatal, which is the half that matters when
+chasing one case.
+
 ## Reading the report
 
 `tests/autobahn/reports/index.html` (server) and `tests/autobahn/reports-client/index.html`
@@ -222,5 +296,6 @@ actual handshake is recorded — `httpRequest` and `httpResponse` per case, whic
 descriptions, whose wording ("requestMaxWindowBits") names the parameter differently.
 
 The demo host's own log is kept beside the server report as `demo-host.log`, because it is the
-only view of a failure from our side of the wire. For the client run the equivalent is the
+only view of a failure from our side of the wire — see the section above for what it took to make
+that sentence true. For the client run the equivalent is the
 fuzzingserver container's log, whose tail the script prints.

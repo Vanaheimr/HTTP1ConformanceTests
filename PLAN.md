@@ -16,7 +16,7 @@ current as work proceeds.
 14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
-nightly for both Autobahn directions. Track B: **24 findings, 2 fixed upstream**
+nightly for both Autobahn directions. Track B: **25 findings, 2 fixed upstream**
 and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 — H-1 whole, H-2 in the half that was missing.
 
@@ -28,7 +28,7 @@ and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 | Hermod `Tests.HTTP.*` | ✅ 552 tests, both CI legs (537 before H-1/H-2) |
 | `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
 | third-party: curl | ✅ 58/58 per build, two builds, both transports |
-| third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated |
+| third-party: Autobahn (server) | 🔶 481/517 + 36 declined, nightly, gated — but 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23, see **H-25** |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 7 harnesses |
@@ -349,6 +349,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ⬜ | **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | |
 | ⬜ | **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split |
 | ⬜ | **H-22** | A chunked response silently produces an **empty body** unless `ContentStream` is a `ChunkedTransferEncodingStream` — setting `TransferEncoding = "chunked"` + `ChunkWorker` alone emits correct headers and nothing else, with no error | — | P2 | S | Found while building A1. The server dispatches the worker on the stream type, not the header field. Either wire the two together or fail loudly when they disagree; a silent empty body is the worst of the three options |
+| ⬜ | **H-25** | The WebSocket server drops the TCP connection mid-case, without a close handshake, under load — Autobahn 12.4.18 (1000 compressed messages of 128 KiB), once in four runs | RFC 6455 §7 | P1 | ? | Ours, not the peer's: the suite reports `droppedByMe: false`, 717 frames sent against 716 received, no opcode 8 either way, at 1504 ms of a case that normally takes 3700. Only two paths end that read loop without a close frame and both log — one at Debug, one at Error — into the `NullLoggerFactory` the servers default to, so the artifact held 517 case reports and no word about the cause. **Instrumented 2026-09-23** (`--log` on the demo, `--log=debug` from `tests/autobahn.sh`, verified by 128 records where there had been none); the next occurrence names itself. **Reproduction failed** so far: 10 × section 12.4 plus full-suite runs, demo pinned to two CPUs, all green. Not diagnosed, and not to be papered over by lowering a floor |
 | ⬜ | **H-24** | Six status-code reason phrases predate RFC 9110: 413 `Request Entity Too Large`, 414 `Request-URI Too Long`, 416 `Requested Range Not Satisfiable`, 422 `Unprocessable Entity`, plus 306/418 carrying draft names for codes the RFC reserves | RFC 9110 §15 | P3 | XS | Found while doing H-1. Not a defect — §15 says a client SHOULD ignore the reason phrase — but it is what goes out on the wire, since the status line is `{Code} {Name}`. Renaming the fields is breaking for every downstream Vanaheimr project, so it is a decision rather than a fix; `HTTPStatusCodeTests` pins the exact divergence set meanwhile, so it cannot drift further unnoticed |
 | ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 

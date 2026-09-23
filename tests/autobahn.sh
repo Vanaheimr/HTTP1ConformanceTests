@@ -34,6 +34,7 @@
 #   tests/autobahn.sh --no-build
 #   tests/autobahn.sh --ws-port 8081 --image crossbario/autobahn-testsuite
 #   tests/autobahn.sh --run-timeout 1200   # cap the fuzzingclient (0 = off)
+#   tests/autobahn.sh --cases '12.4.*'     # one slice, for chasing one case
 #
 set -euo pipefail
 
@@ -42,6 +43,14 @@ http_port=8080
 tls_port=8443
 image="crossbario/autobahn-testsuite"
 nobuild=0
+
+# Which cases to run. "*" is every one of the 517 and is what the nightly uses;
+# anything else is a slice, for reproducing one case without paying four minutes
+# per attempt. A slice zeroes the floor further down: a floor is a statement
+# about the whole suite, and comparing a subset against it would either fail for
+# the wrong reason or pass for none.
+cases='"*"'
+sliced=0
 
 # A ceiling on the fuzzingclient itself, so a hang fails inside this script
 # rather than hanging whatever called it. The HTTP/2 sibling learned this the
@@ -73,6 +82,8 @@ while [ $# -gt 0 ]; do
         --image)       image="$2";       shift 2 ;;
         --run-timeout) run_timeout="$2"; shift 2 ;;
         --min-pass)    min_pass="$2";    shift 2 ;;
+        --cases)       cases="$(printf '%s' "$2" | awk -F',' '{ for (i=1;i<=NF;i++) printf "%s\"%s\"", (i>1 ? ", " : ""), $i }')"
+                       sliced=1;         shift 2 ;;
         --no-build)    nobuild=1;        shift ;;
         -h|--help)     grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -162,8 +173,20 @@ free_ports "$http_port" "$tls_port" "$ws_port"
 # Autobahn cases deliberately pause mid-message, and a shortened deadline would
 # close those connections and report our own test configuration as a
 # conformance failure.
+# --log=debug, and the log is kept as an artifact whatever the verdict.
+#
+# Not decoration. On 2026-09-23 this job failed case 12.4.18 — our server
+# dropped the TCP connection after 716 of 1000 compressed 128 KiB messages,
+# with no close handshake — and the artifact held 517 case reports next to a
+# demo-host.log containing the startup banner and nothing else. Both code paths
+# that can end that read loop without a close frame do log, one at Debug and one
+# at Error, into the NullLogger the servers default to.
+#
+# Debug rather than Warning because the read-error path is a Debug record, and
+# it is cheap: the WebSocket server has two Debug statements in total and logs
+# nothing per frame, so a full 517-case run adds a few hundred lines.
 DEMO_LOG="$(mktemp -t h1-autobahn-demo.XXXXXX.log)"
-"$DEMO" > "$DEMO_LOG" 2>&1 &
+"$DEMO" --log=debug > "$DEMO_LOG" 2>&1 &
 DEMO_PID=$!
 
 cleanup() {
@@ -223,7 +246,7 @@ cat >"$REPDIR/fuzzingclient.json" <<JSON
 {
     "outdir": "/reports",
     "servers": [{ "agent": "Hermod.HTTP1", "url": "ws://$ws_host:$ws_port" }],
-    "cases": ["*"],
+    "cases": [$cases],
     "exclude-cases": [],
     "exclude-agent-cases": {}
 }
@@ -327,6 +350,16 @@ echo
 if [ "$hard" -gt 0 ]; then
     echo "FAIL: $hard case(s) failed outright — see the lines above and the HTML report." >&2
     exit 1
+fi
+
+# A slice is measured, not gated: the floor describes the whole suite, so
+# holding a subset to it would be an arbitrary comparison. Hard failures stay
+# fatal either way — that is the half of the verdict a slice can still answer,
+# and the half that matters when chasing one case.
+if [ "$sliced" -eq 1 ]; then
+    echo "NOTE: --cases given, so the floor of $min_pass does not apply; hard failures still do."
+    echo "Autobahn: no hard failures."
+    exit 0
 fi
 
 if [ "$passing" -lt "$min_pass" ]; then

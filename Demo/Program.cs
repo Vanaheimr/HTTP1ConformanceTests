@@ -23,6 +23,8 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
+using Microsoft.Extensions.Logging;
+
 using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using org.GraphDefined.Vanaheimr.Hermod.WebSocket;
@@ -111,6 +113,33 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             var bindAny       = Arguments.Contains("--bind-any");
             var bindAddress   = bindAny ? (IIPAddress) IPv4Address.Any : null;
 
+            // --log[=<level>] gives Hermod's own diagnostics somewhere to go.
+            // Every server here takes an ILoggerFactory and defaults it to
+            // NullLoggerFactory, so without this flag each warning and each
+            // stack trace the stack writes about a connection it is tearing
+            // down is discarded before it is formatted.
+            //
+            // That cost a day: the Autobahn nightly of 2026-09-23 failed case
+            // 12.4.18 with our WebSocket server dropping TCP after 716 of 1000
+            // messages, and the artifact held 517 case reports plus a demo log
+            // containing nothing but this banner. Both paths that can end that
+            // read loop without a close frame log — one at Debug, one at Error.
+            //
+            // Off by default, because the banner is what a human running the
+            // demo wants to see. tests/autobahn.sh passes --log=debug.
+            var logArgument   = Arguments.FirstOrDefault(argument => argument == "--log" ||
+                                                                     argument.StartsWith("--log=", StringComparison.Ordinal));
+
+            var loggerFactory = logArgument is null
+                                    ? null
+                                    : new ConsoleLoggerFactory(
+                                          ConsoleLoggerFactory.ParseLevel(
+                                              logArgument.Length > 6
+                                                  ? logArgument[6..]
+                                                  : "information"
+                                          )
+                                      );
+
             Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
             Console.WriteLine("║   Hermod HTTP/1.1 demo host — conformance target              ║");
             Console.WriteLine("╠═══════════════════════════════════════════════════════════════╣");
@@ -136,7 +165,8 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                          TCPPort:            IPPort.Parse(httpPort),
                                          HTTPServerName:     "Hermod HTTP/1.1 Demo",
                                          HeaderReadTimeout:  readTimeout,
-                                         BodyReadTimeout:    readTimeout
+                                         BodyReadTimeout:    readTimeout,
+                                         LoggerFactory:      loggerFactory
                                      );
 
             ConfigureAPI(httpServer.AddHTTPAPI());
@@ -152,7 +182,8 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                          HTTPServerName:             "Hermod HTTP/1.1 Demo (TLS)",
                                          ServerCertificateSelector:  (tcpServer, tcpClient) => certificate,
                                          HeaderReadTimeout:          readTimeout,
-                                         BodyReadTimeout:            readTimeout
+                                         BodyReadTimeout:            readTimeout,
+                                         LoggerFactory:              loggerFactory
                                      );
 
             ConfigureAPI(httpsServer.AddHTTPAPI());
@@ -168,6 +199,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                       HTTPServerName:         "Hermod HTTP/1.1 Demo (WebSocket)",
                                       RequireAuthentication:  false,
                                       SecWebSocketProtocols:  [ "echo", "demo" ],
+                                      LoggerFactory:          loggerFactory,
                                       AutoStart:              true
                                   );
 
@@ -188,6 +220,12 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                 await webSocketServer.SendBinaryMessage(connection, data,   eventTrackingId, ct);
 
             Console.WriteLine($"  ✓ WebSocket listener on :{wsPort}");
+
+            // Say so in the log itself. "Was the instrument even switched on?"
+            // is a question a silent log cannot answer, and this repository has
+            // lost time to exactly that question more than once.
+            if (loggerFactory is not null)
+                Console.WriteLine($"  ✓ Hermod diagnostics logged here ({logArgument})");
 
             if (bindAny)
             {

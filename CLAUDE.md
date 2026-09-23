@@ -164,7 +164,8 @@ pointed at a foreign suite. See
 | Hermod's own NUnit suites | 536 / 299 / 49 (run counts — `--list-tests` reports three more, see [`README.md`](README.md)) |
 | this repo's gate | **257/257**, cleartext and TLS (199 raw-wire + 58 curl) |
 | with `--wsl` (second curl build) | **315/315** |
-| Autobahn | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor |
+| Autobahn (server) | **481/517** + 36 declined — nightly, gated on the floor, but see **H-25**: 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23 |
+| Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 
 Building A1 and A2 produced three upstream findings between them (**H-21**,
 **H-22**, **H-23**), which is the pattern to expect: this repository is the
