@@ -41,15 +41,26 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Count | What |
 |---|---:|---|
-| `HermodTests/` namespace `Tests.HTTP.*` | **440** NUnit tests | everything HTTP/1.x — see the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
-| ↳ the HTTP/1.x protocol regression selection | **300** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, .NET interop |
-| ↳ `Tests.HTTP.WebSockets` | **42** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| Autobahn (run manually, not yet automated here) | 296 + 242 + 126 + 126 | server & client suites incl. sections 12/13 |
+| `HermodTests/` namespace `Tests.HTTP.*` | **536** NUnit tests | everything HTTP/1.x — see the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| ↳ the HTTP/1.x protocol regression selection | **299** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, .NET interop |
+| ↳ `Tests.HTTP.WebSockets` | **49** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
+| Autobahn against the demo host | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 
-Counts verified by `dotnet test --list-tests` against this checkout. The
-protocol-regression figure is the filter documented in
+Counts are **run** counts — `dotnet test` with that filter, measured against
+this checkout on 2026-09-23, after the Hermod pin advanced 181 commits.
+
+An earlier revision of this table took them from `dotnet test --list-tests`, and
+that is worth a sentence rather than a silent correction: on this checkout the
+two disagree. `--list-tests` reports 539 for `Tests.HTTP.*` and 302 for the
+regression selection, where 536 and 299 actually execute; `Tests.HTTP.WebSockets`
+agrees at 49. Nothing is skipped in those runs — the listing simply counts three
+entries that never become a test case. A number that is not the number the gate
+produces is not the number to publish.
+
+The protocol-regression figure is the filter documented in
 [`libs/Hermod/Hermod/HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md),
-which recorded 295 on 2026-07-18 — it has since grown to 300.
+which recorded 295 on 2026-07-18. It reads 299 today, and the two are not
+strictly comparable — that one was a list count.
 
 ## Requirements
 

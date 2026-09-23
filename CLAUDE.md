@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **440 NUnit tests** live with the stack in Hermod
+suite drivers; the **536 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, namespace `Tests.HTTP.*`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,9 +32,11 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **440 NUnit tests** in `libs/Hermod/HermodTests/`
-under `Tests.HTTP.*` — of which **300** are the HTTP/1.x protocol regression
-selection and **42** cover RFC 6455/7692 WebSockets:
+**Tests:** most coverage is the **536 NUnit tests** in `libs/Hermod/HermodTests/`
+under `Tests.HTTP.*` — of which **299** are the HTTP/1.x protocol regression
+selection and **49** cover RFC 6455/7692 WebSockets. These are run counts, not
+`--list-tests` counts; see the note under the coverage table in
+[`README.md`](README.md) for why the two differ by three here:
 
 ```powershell
 dotnet test HTTP1.slnx --filter "FullyQualifiedName~Tests.HTTP."
@@ -128,14 +130,20 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A3 done** — the curl matrix (58 checks). The gate is **257/257 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
-**A4 next** — Autobahn.
+**A4 done** — Autobahn. `tests/autobahn.sh` drives the suite against the
+demo host's WebSocket echo server, and `.github/workflows/nightly.yml` runs
+it every night gated on a floor rather than on perfection: **481 / 517**
+passing, 36 declined, zero hard failures. The 36 are sections 13.3 and 13.5,
+where the client offers `server_max_window_bits=9` and this server must
+decline what `DeflateStream` cannot deliver (RFC 7692 §7.1.2.1). See
+[`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md).
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 440 / 300 / 42 (verified by `--list-tests`) |
+| Hermod's own NUnit suites | 536 / 299 / 49 (run counts — `--list-tests` reports three more, see [`README.md`](README.md)) |
 | this repo's gate | **257/257**, cleartext and TLS (199 raw-wire + 58 curl) |
 | with `--wsl` (second curl build) | **315/315** |
-| Autobahn | recorded in Hermod's WebSocket README, **not yet reproducible from a clean checkout** — that is A4 |
+| Autobahn | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor |
 
 Building A1 and A2 produced three upstream findings between them (**H-21**,
 **H-22**, **H-23**), which is the pattern to expect: this repository is the

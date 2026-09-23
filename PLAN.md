@@ -22,10 +22,11 @@ fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
 | `tests/run-tests.sh` | ✅ 257/257, ~103 s |
 | `tests/run-tests.sh --tls` | ✅ 257/257, ~270 s |
-| Hermod `Tests.HTTP.*` | ✅ 440 tests |
+| Hermod `Tests.HTTP.*` | ✅ 536 tests |
 | `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
 | third-party: curl | ✅ 58/58 per build, two builds, both transports |
-| third-party: Autobahn, proxies, http-garden, browsers | ⬜ A4–A8 |
+| third-party: Autobahn | ✅ 481/517 + 36 declined, nightly, gated |
+| third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocks A5 and A6 |
 
 ## Upstream workflow (Track B)
@@ -342,7 +343,7 @@ checkout, CI green, proxy interop.
   to the Windows curl 8.21, which has no HTTP/2 at all: the Windows one cannot
   accidentally upgrade, the Debian one proves `--http1.1` and ALPN are honoured.
 - **Test placement follows the HTTP/2 repo.** In-process unit and integration
-  tests live with the stack in `HermodTests/` (namespace `Tests.HTTP.*`, 440
+  tests live with the stack in `HermodTests/` (namespace `Tests.HTTP.*`, 536
   today); this repository holds only the demo-driven raw-wire harnesses, the
   third-party suite drivers and the tooling. A2 produces harnesses, not NUnit
   fixtures — a Track B fix's regression test goes upstream with the fix.

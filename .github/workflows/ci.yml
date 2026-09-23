@@ -86,13 +86,13 @@ jobs:
       # "FullyQualifiedName~Hermod.Tests.HTTP" matches 910 tests — it swallows
       # Hermod.Tests.HTTP2 and Hermod.Tests.HTTP3 as substrings, so it would
       # gate the other two protocols under this repository's name. With the dot
-      # it is 447, which is HTTP/1.x and nothing else; HTTPS is named
+      # it is HTTP/1.x and nothing else; HTTPS is named
       # explicitly because "Tests.HTTPS." does not contain "Tests.HTTP.".
       #
       # (The HTTP/2 sibling learned this the expensive way: a
       # "FullyQualifiedName~HTTP2" filter there matched all 2085 tests in the
       # assembly and gated something other than what it claimed.)
-      - name: Test (447 HTTP/1.x tests, from the pinned Hermod)
+      - name: Test (HTTP/1.x tests, from the pinned Hermod)
         timeout-minutes: 30
         run: dotnet test libs/Hermod/HermodTests/HermodTests.csproj --no-build --filter "FullyQualifiedName~Hermod.Tests.HTTP.|FullyQualifiedName~Hermod.Tests.HTTPS." --logger "console;verbosity=normal" --logger "trx;LogFileName=${{ matrix.leg }}.trx" --results-directory artifacts
 

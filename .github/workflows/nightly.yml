@@ -1,6 +1,6 @@
 name: Nightly
 
-# ci.yml gates every push with everything this repository carries itself: the 447
+# ci.yml gates every push with everything this repository carries itself: the
 # in-process HTTP/1.x tests and the 7 raw-wire harnesses. This workflow adds the
 # one external conformance suite it does not carry — the Autobahn TestSuite
 # (RFC 6455 + permessage-deflate, 517 cases against the demo host's WebSocket
