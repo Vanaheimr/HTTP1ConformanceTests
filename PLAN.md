@@ -12,10 +12,11 @@ tracks:
 **Status legend:** ✅ done · 🔶 partial · ⬜ open · ❌ broken — markers are kept
 current as work proceeds.
 
-**Current state (2026-08-13):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
+**Current state (2026-09-23):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
 14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
-445/517, zero hard failures either way. Track B: **23 findings open**, none
+445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
+nightly for both Autobahn directions. Track B: **23 findings open**, none
 fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 
 | Gate | State |
@@ -29,6 +30,8 @@ fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
+| CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 7 harnesses |
+| Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocks A5 and A6 |
 
 ## Upstream workflow (Track B)
@@ -277,11 +280,33 @@ SharpFuzz + AFL++ against the request-parsing entry point, seeded from the
 `h1syntax`/`h1framing` corpora. Target: no unhandled exception, no hang, no
 connection-state leak on any input.
 
-## ⬜ A11 · CI · P2 · ~0.5 d
+## ✅ A11 · CI · P2 · done 2026-09-23
 
-`.github/workflows/ci.yml` (build + Hermod HTTP/WS suites + `run-tests.ps1` +
-curl matrix) and `nightly.yml` (Autobahn + proxies + smuggling + browsers) —
-model: the HTTP/3 repo, which already has both.
+`.github/workflows/ci.yml` runs per push on the same two legs as the sibling
+repositories — `windows-latest` and a `debian:13` container — with
+`fail-fast: false`, because "red on exactly one platform" is the signal a
+two-leg matrix exists to produce, and in the HTTP/2 sibling that signal was a
+real server bug rather than a platform quirk. Three steps: build, the pinned
+Hermod's `Tests.HTTP.*`, and `tests/run-tests.sh` (7 harnesses — the curl
+matrix among them, driven through the container's own curl on the Debian leg).
+The `.trx` files upload on `always()` rather than `success()`: a red run is when
+they matter most, and a step killed by `timeout-minutes` counts as a
+*cancellation*, so `!cancelled()` would drop the evidence in exactly the case
+that needs it.
+
+`.github/workflows/nightly.yml` runs both Autobahn directions, in two jobs
+rather than two steps of one, each gated on a floor: `autobahn` at 481,
+`autobahn-client` at 445.
+
+What the nightly does **not** have is the proxy, smuggling and browser jobs this
+section originally listed. That is not unfinished CI work — A5, A6 and A8 do not
+exist to be run, and they bring their own jobs when they land.
+
+This section also used to ask for `run-tests.ps1`. There has never been one in
+this repository, and after the HTTP/2 and HTTP/3 repos each paid for keeping a
+second runner — one of them with a `$Args` parameter that silently never bound,
+so twelve harness labels ran one scenario twelve times and reported 48/48 —
+there will not be one.
 
 ---
 
@@ -326,14 +351,15 @@ never-standardized parts of **H-5**. Everything else is a fix.
 # Suggested sequence
 
 ```
-✅A0 ──▶ ✅A1 ──┬──▶ ✅A2 ──▶ ✅A3 ──▶ ⬜A11 (CI: build + harnesses + curl)
+✅A0 ──▶ ✅A1 ──┬──▶ ✅A2 ──▶ ✅A3 ──▶ ✅A11 (CI: build + harnesses + curl)
                 │
-                ├──▶ ⬜A4  (Autobahn — independent of A2, needs the WS decision)
+                ├──▶ ✅A4  (Autobahn — both directions, both gated nightly)
                 │
                 └──▶ ⬜A5, ⬜A6, ⬜A7, ⬜A8  (external suites)
 
 Track B in parallel: ⬜H-1 and ⬜H-2 first (small, high leverage),
-⬜H-3 and ⬜H-16 as decisions before A3/A4 depend on them.
+⬜H-3 and ⬜H-16 as decisions — A3 and A4 turned out to need neither, so
+nothing is waiting on them any more.
 ```
 
 **First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 ⬜ + H-2 ⬜ — a
@@ -341,8 +367,9 @@ runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Four of six done. The number is now **257/257**, and 58 of those come from a
 client nobody here wrote — the first part of it that is not self-assessment.
 
-**Second milestone:** ⬜ A4 + A11 + A5 — Autobahn reproducible from a clean
-checkout, CI green, proxy interop.
+**Second milestone:** ✅ A4 + ✅ A11 + ⬜ A5 — Autobahn reproducible from a
+clean checkout in both directions, CI green on two legs, proxy interop. Two of
+three.
 
 ---
 
