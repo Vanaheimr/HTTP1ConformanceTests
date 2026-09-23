@@ -28,9 +28,28 @@ scrapes output for a marker character.
 **261/261 checks pass, over both transports** — 201 raw-wire + 60 curl.
 With `--wsl`, a second curl build joins in: **321/321**.
 
+The curl figure is 60 **here** and 61 on the CI Debian leg, and that is not a
+discrepancy to reconcile. Two of the matrix's checks are conditional:
+
+| Check | Runs when |
+|---|---|
+| `--http1.1 honoured by an HTTP/2-capable curl` | the curl under test was built with nghttp2 — a build that *cannot* upgrade proves nothing by not upgrading |
+| `curl stored the ETag` | the target is local, so `--etag-save` writes somewhere this script can read |
+
+So 59 checks always run, and the two flags give three real combinations:
+
+| Context | HTTP/2 | local target | curl checks | suite |
+|---|---|---|---:|---:|
+| Windows / Git Bash, and the CI Windows leg | no | yes | 60 | **261** |
+| the Debian curl reached through WSL (`--wsl`) | yes | no | 60 | — |
+| the CI `debian:13` container | yes | yes | 61 | **262** |
+
+The first two agree at 60 for opposite reasons, which is worth knowing before
+someone reconciles them into one number.
+
 | Harness | Checks | Covers |
 |---|---:|---|
-| `curl-matrix.sh` | 60 | **third-party**: version handling, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
+| `curl-matrix.sh` | 60–61 | **third-party**: version handling, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |

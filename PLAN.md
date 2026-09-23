@@ -28,7 +28,7 @@ and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 552, both legs — 537 before H-1/H-2 |
 | ↳ `Tests.HTTP.` alone | ✅ 551 — the missing one is all of `Tests.HTTPS.` |
 | `tests/run-tests.sh --wsl` | ✅ 321/321 — adds the Debian curl |
-| third-party: curl | ✅ 60/60 per build, two builds, both transports |
+| third-party: curl | ✅ 60/60 per build, two builds, both transports — 61 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the two conditional checks |
 | third-party: Autobahn (server) | 🔶 481/517 + 36 declined, nightly, gated — but 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23, see **H-25** |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |

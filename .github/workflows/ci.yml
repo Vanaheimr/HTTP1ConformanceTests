@@ -27,7 +27,7 @@ jobs:
     # The same two legs as the HTTP/2 and HTTP/3 sibling repositories:
     #
     #  * Windows, where the stack has been developed and where the suite is
-    #    known to be 7/7 harnesses (257 checks there, 258 on Debian — see
+    #    known to be 7/7 harnesses (261 checks there, 262 on Debian — see
     #    the harness step).
     #  * Debian 13, matching the siblings. GitHub offers no Debian runner image,
     #    so this runs on an Ubuntu runner inside a debian:13 container —

@@ -31,7 +31,7 @@ tests/run-tests.sh        # 261/261 checks, ~103 s
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **60/60** — the first checks here made by a client nobody in this repository wrote |
+| `tests/curl-matrix.sh` | **60/60** (61 on the CI Debian leg — two checks are conditional) — the first checks here made by a client nobody in this repository wrote |
 | both, over cleartext *and* TLS | **261/261** — and **321/321** with `--wsl`, which adds a second curl build |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |

@@ -128,7 +128,8 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
-**A3 done** — the curl matrix (60 checks). The gate is **261/261 over both
+**A3 done** — the curl matrix (60 checks, 61 where curl has HTTP/2 *and* the
+target is local — see [`tests/README.md`](tests/README.md)). The gate is **261/261 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
