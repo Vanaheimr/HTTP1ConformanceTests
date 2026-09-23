@@ -25,7 +25,7 @@ and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
 | `tests/run-tests.sh` | ✅ 257/257, ~103 s |
 | `tests/run-tests.sh --tls` | ✅ 257/257, ~270 s |
-| Hermod `Tests.HTTP.*` | ✅ 536 tests |
+| Hermod `Tests.HTTP.*` | ✅ 552 tests, both CI legs (537 before H-1/H-2) |
 | `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
 | third-party: curl | ✅ 58/58 per build, two builds, both transports |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated |
