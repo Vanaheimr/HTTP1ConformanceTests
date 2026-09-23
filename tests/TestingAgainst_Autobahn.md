@@ -1,17 +1,22 @@
 # Testing against the Autobahn TestSuite
 
 [Autobahn|TestSuite](https://github.com/crossbario/autobahn-testsuite) is the canonical RFC 6455
-WebSocket conformance suite. Its `fuzzingclient` drives 517 cases against a WebSocket **echo**
-server — framing, fragmentation, UTF-8 handling, the close handshake, and `permessage-deflate`
-(RFC 7692) across a dozen parameter sets.
+WebSocket conformance suite. It runs 517 cases — framing, fragmentation, UTF-8 handling, the
+close handshake, and `permessage-deflate` (RFC 7692) across a dozen parameter sets — and it runs
+them in **both directions**, which is why this repository has two drivers.
 
 ```bash
-tests/autobahn.sh              # build + run everything
-tests/autobahn.sh --no-build
+tests/autobahn.sh              # fuzzingclient  vs. our SERVER   → 481/517
+tests/autobahn-client.sh       # fuzzingserver  vs. our CLIENT   → 445/517
 ```
 
-The only prerequisite is Docker; the suite ships usably only as an image, because the native
-`wstest` is legacy Python 2.
+Both take `--no-build`, and both gate on a floor in the nightly. The only prerequisite is Docker;
+the suite ships usably only as an image, because the native `wstest` is legacy Python 2.
+
+`WebSocketServer` and `WebSocketClient` are separate implementations inside one subsystem, so
+certifying one says nothing about the other. Until 2026-09-23 only the server had ever met a
+foreign suite, while Hermod's WebSocket README quoted client numbers that no command in any
+repository could reproduce.
 
 ## Why this suite belongs in *this* repository
 
@@ -51,7 +56,7 @@ deadlines so the timeout harness resolves in seconds; several Autobahn cases pau
 purpose, and a shortened deadline would close those connections and report our own test
 configuration as a conformance failure.
 
-## Current result: 481 / 517
+## The server side: fuzzingclient against our echo server — 481 / 517
 
 Measured 2026-09-22, the first time this stack was ever pointed at the suite.
 
@@ -116,6 +121,63 @@ converging on the same number against the same 517 cases is a stronger statement
 them scoring 517. `TryNegotiateAsServer` here was right the whole time; what changed is that the
 sibling stopped disagreeing with it.
 
+## The other direction: `fuzzingserver` against our client — 445 / 517
+
+`tests/autobahn-client.sh` inverts the topology. There the suite connects to our echo server;
+here the suite **listens** and `tests/autobahn-client/` — a driver over Hermod's
+`WebSocketClient` — connects into it, case by case.
+
+The fuzzingserver protocol is three kinds of connection: `/getCaseCount` returns the number of
+cases, `/runCase?case=N&agent=A` runs one case against whatever connects (the client must echo
+every message back with its type preserved, and the server hangs up when the case is done), and
+`/updateReports?agent=A` makes the server write the report. A case is one connection, and "the
+case ended" is "the server hung up".
+
+| Verdict | Count |
+|---|---|
+| `OK` | 440 |
+| `INFORMATIONAL` | 3 |
+| `NON-STRICT` | 2 |
+| `UNIMPLEMENTED` | **72** |
+| **hard failures** | **0** |
+
+Measured 2026-09-23, the first time this client was ever pointed at the suite. **Zero hard
+failures**: everything the client attempts, it gets right — 445 of 517 on the first run, with no
+change to the library.
+
+### The 72 declines, and why they are not the server's 36
+
+The server's 36 and the client's 72 look like the same finding and are not.
+
+The 72 are sections **13.3, 13.4, 13.5 and 13.6**, eighteen cases each, and they are declined by
+the **suite**, not by us. Read off the wire from each case report: those sections configure the
+fuzzingserver to expect a specific client offer.
+
+| Section | The offer the suite expects | Result |
+|---|---|---|
+| 13.1, 13.2 | `requestMaxWindowBits = 0` — no such parameter | OK |
+| **13.3, 13.4** | `server_max_window_bits` = **9** / **15** | **UNIMPLEMENTED** |
+| **13.5, 13.6** | the same, plus `client_no_context_takeover` | **UNIMPLEMENTED** |
+| 13.7 | a list, one entry of which carries no parameter | OK — that entry matches |
+
+Our client offers the fixed constant `WebSocketPerMessageDeflate.ClientOfferHeader`:
+
+```
+Sec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; server_no_context_takeover
+```
+
+It never carries `server_max_window_bits`, so in 13.3–13.6 the suite answers with **no**
+`Sec-WebSocket-Extensions` header at all and the compression those sections wanted to exercise is
+never negotiated. Nothing is wrong on the wire. What is missing is an offer we do not know how to
+make.
+
+So the two numbers are opposite ends of one fact. `DeflateStream` exposes no control over
+`windowBits`, which means this stack can neither *honour* a constrained window (the server's
+RFC-required refusal, 36 cases) nor meaningfully *request* one (the client's narrow offer, 72
+cases). Making the client offer configurable would be the fix for the second half; the
+`HTTPRequestBuilder` hook on `WebSocketClient` already lets a caller replace the header by hand,
+so the gap is "not offered as a feature" rather than "impossible".
+
 ## In CI: the nightly, gated on a floor
 
 [`.github/workflows/nightly.yml`](../.github/workflows/nightly.yml) runs this every night at
@@ -141,8 +203,24 @@ trade: an exclusion hides the cases, a floor keeps counting them — and an allo
 reason it was granted. When the number goes *up*, the script says so out loud and asks for the
 floor to be raised; a floor nobody raises is a ratchet that has rusted.
 
+Both drivers are gated the same way, in two jobs rather than two steps of one — they bind
+different ports and run for minutes each, and a failure in one should not cost the other its
+result:
+
+| Job | Driver | Floor |
+|---|---|---|
+| `autobahn` | `tests/autobahn.sh` | 481 |
+| `autobahn-client` | `tests/autobahn-client.sh` | 445 |
+
 ## Reading the report
 
-`tests/autobahn/reports/index.html` is the human-readable report: per case, the frames exchanged
-and the verdict. `index.json` is what the script parses. The demo host's own log is kept beside
-them as `demo-host.log`, because it is the only view of a failure from our side of the wire.
+`tests/autobahn/reports/index.html` (server) and `tests/autobahn/reports-client/index.html`
+(client) are the human-readable reports: per case, the frames exchanged and the verdict.
+`index.json` beside each is what the scripts parse, and the per-case JSON files are where the
+actual handshake is recorded — `httpRequest` and `httpResponse` per case, which is how the
+`server_max_window_bits` story above was read off the wire rather than inferred from the case
+descriptions, whose wording ("requestMaxWindowBits") names the parameter differently.
+
+The demo host's own log is kept beside the server report as `demo-host.log`, because it is the
+only view of a failure from our side of the wire. For the client run the equivalent is the
+fuzzingserver container's log, whose tail the script prints.

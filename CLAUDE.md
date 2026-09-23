@@ -130,25 +130,34 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A3 done** — the curl matrix (58 checks). The gate is **257/257 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
-**A4 half done** — Autobahn, **server side only**.
+**A4 done** — Autobahn, **both directions**, both gated nightly on a floor
+rather than on perfection.
 
-`tests/autobahn.sh` points the suite's `fuzzingclient` at the demo host's
-WebSocket echo server on `:8081`, and `.github/workflows/nightly.yml` runs it
-every night gated on a floor rather than on perfection: **481 / 517** passing,
-36 declined, zero hard failures. The 36 are sections 13.3 and 13.5, where the
-client offers `server_max_window_bits=9` and this server must decline what
-`DeflateStream` cannot deliver (RFC 7692 §7.1.2.1). See
+| | Driver | Result |
+|---|---|---|
+| server | `tests/autobahn.sh` → `fuzzingclient` vs. the demo host on `:8081` | **481 / 517**, 36 declined, 0 hard |
+| client | `tests/autobahn-client.sh` → our `WebSocketClient` vs. `fuzzingserver` | **445 / 517**, 72 declined, 0 hard |
+
+Zero hard failures on both sides: everything either half attempts, it gets
+right. The declines are the interesting part, and they are not the same thing
+twice.
+
+The server's 36 are sections 13.3 and 13.5, where the peer offers
+`server_max_window_bits=9` and this server must refuse what `DeflateStream`
+cannot deliver — RFC 7692 §7.1.2.1 requires that refusal rather than permitting
+it.
+
+The client's 72 are sections 13.3–13.6, and there it is the SUITE that declines
+us: those sections expect a client offer carrying `server_max_window_bits`, and
+our offer is the fixed constant `WebSocketPerMessageDeflate.ClientOfferHeader`,
+which never carries it. Nothing is wrong on the wire; the compression those
+sections wanted to exercise is simply never negotiated. Both numbers trace back
+to one fact — `DeflateStream` exposes no window-size control — from its two
+opposite ends.
+
+Measured 2026-09-23, the first time Hermod's WebSocket client had ever been
+pointed at a foreign suite. See
 [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md).
-
-**What is missing is the other direction**, and A4 as planned asked for both:
-`tests/autobahn-client/` driving Hermod's WebSocket **client** against the
-suite's `fuzzingserver`, with its own `fuzzingserver.json`. Neither exists. So
-the 481/517 certifies `WebSocketServer`, and `WebSocketClient` — part of the
-same 24-file subsystem, and the half this repository's own `Demo` does not
-exercise either — is still covered by no foreign suite at all. An earlier
-revision of this file called A4 done on the strength of the server half; that
-was wrong, and it is exactly the kind of number this repository keeps catching
-elsewhere.
 
 | | |
 |---|---|

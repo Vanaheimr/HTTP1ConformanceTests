@@ -45,7 +45,7 @@ On top of that, the coverage inside Hermod itself:
 | ↳ the HTTP/1.x protocol regression selection | **299** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, .NET interop |
 | ↳ `Tests.HTTP.WebSockets` | **49** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
 | Autobahn vs. the **server** (demo host `:8081`) | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
-| Autobahn vs. the **client** (`fuzzingserver`) | — | not built; `WebSocketClient` is covered by no foreign suite (PLAN.md A4) |
+| Autobahn vs. the **client** (`fuzzingserver`) | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite by `tests/autobahn-client.sh`, nightly and gated — 0 hard failures |
 
 Counts are **run** counts — `dotnet test` with that filter, measured against
 this checkout on 2026-09-23, after the Hermod pin advanced 181 commits.

@@ -14,8 +14,8 @@ current as work proceeds.
 
 **Current state (2026-08-13):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
 14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
-over cleartext *and* TLS**. **A4 🔶** — server side driven and gated nightly (481/517, floor held), the
-`autobahn-client` half against `fuzzingserver` not built. Track B: **23 findings open**, none
+over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
+445/517, zero hard failures either way. Track B: **23 findings open**, none
 fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 
 | Gate | State |
@@ -26,7 +26,8 @@ fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 | Hermod `Tests.HTTP.*` | ✅ 536 tests |
 | `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
 | third-party: curl | ✅ 58/58 per build, two builds, both transports |
-| third-party: Autobahn | ✅ 481/517 + 36 declined, nightly, gated |
+| third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated |
+| third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocks A5 and A6 |
 
@@ -178,7 +179,7 @@ build (8.21, no HTTP/2) is ideal: it cannot silently upgrade.
 - assertions on both the status/body **and** the `-v` wire trace
 - `docs/TestingAgainst_curl.md`
 
-## 🔶 A4 · Autobahn TestSuite · P1 · server half done 2026-09-22
+## ✅ A4 · Autobahn TestSuite · P1 · done 2026-09-23
 
 Hermod's WebSocket README already claims 296 + 242 + 126 + 126 cases with 0
 failures. Those numbers were unreproducible from a clean checkout — this
@@ -191,12 +192,15 @@ demo host's echo server on `:8081` and the nightly gates on a floor of 481 of
 built to find: the demo never offered `permessage-deflate`, which took the
 score from 301 to 481 with one line.
 
-**Client side: not built.** That is what keeps this track open — and it is the
-more interesting half now, because nothing anywhere points a foreign suite at
-`WebSocketClient`.
+**Client side: done 2026-09-23.** `tests/autobahn-client.sh` starts the suite in
+`fuzzingserver` mode and drives `tests/autobahn-client/` — our `WebSocketClient`
+— through all 517 cases: **445 passing, 72 declined, 0 hard failures**, gated on
+a floor of 445 in the nightly. The 72 are sections 13.3–13.6, declined by the
+suite because our client's offer is a fixed constant that never carries
+`server_max_window_bits`; see min_pass in that script for the wire evidence.
 
 - ✅ echo server for `fuzzingclient` — the demo host's `:8081`, not a separate project
-- ⬜ `tests/autobahn-client/` — client driver on `WebSocketClient` against `fuzzingserver`
+- ✅ `tests/autobahn-client/` — client driver on `WebSocketClient` against `fuzzingserver`
 - `tests/autobahn/fuzzingclient.json` + `fuzzingserver.json`
 - `tests/autobahn.sh` (runs in WSL/Debian) + `tests/autobahn.ps1` (thin
   `wsl -d Debian` wrapper, so Windows and Linux drive the same script)

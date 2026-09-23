@@ -120,3 +120,69 @@ jobs:
           path: |
             tests/autobahn/reports/
             artifacts/autobahn.txt
+
+  # The other direction, and the half that had never been measured at all.
+  #
+  # tests/autobahn.sh points the suite's fuzzingclient at our echo SERVER. This
+  # job points our CLIENT at the suite's fuzzingserver. They are separate
+  # implementations inside the same subsystem — WebSocketServer and
+  # WebSocketClient — so certifying one says nothing about the other, and until
+  # 2026-09-23 only the first had ever met a foreign suite. Hermod's WebSocket
+  # README had been quoting client numbers that no command in any repository
+  # could reproduce.
+  #
+  # Its own job rather than a second step in the one above: the two bind
+  # different ports and run for minutes each, and a failure in one should not
+  # cost the other its result.
+  autobahn-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      # The floor is 445 of 517, with 72 declined and zero hard failures — see
+      # min_pass in tests/autobahn-client.sh for what the 72 are. Short version:
+      # sections 13.3–13.6 ask for a client offer carrying server_max_window_bits,
+      # our offer is a fixed constant that never carries it, and the suite
+      # therefore declines the extension. Nothing is wrong on the wire; the
+      # compression those sections wanted to test simply never gets negotiated.
+      #
+      # Exit code captured BEFORE the summary is written, and the step ends on
+      # it — the summary commands would otherwise overwrite $?.
+      - name: Autobahn fuzzingserver (517 cases, floor 445)
+        timeout-minutes: 45
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          set +e
+          tests/autobahn-client.sh --no-build 2>&1 | tee artifacts/autobahn-client.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          {
+            echo '## Autobahn TestSuite — RFC 6455 client'
+            echo
+            echo '```'
+            tail -30 artifacts/autobahn-client.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+      # always(), not !cancelled(): a step that overruns its timeout-minutes
+      # counts as a cancellation, which is exactly when this upload is the only
+      # evidence there is.
+      - name: Upload Autobahn client report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: autobahn-client-report
+          path: |
+            tests/autobahn/reports-client/
+            artifacts/autobahn-client.txt
