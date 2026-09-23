@@ -44,7 +44,8 @@ On top of that, the coverage inside Hermod itself:
 | `HermodTests/` namespace `Tests.HTTP.*` | **536** NUnit tests | everything HTTP/1.x — see the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
 | ↳ the HTTP/1.x protocol regression selection | **299** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, .NET interop |
 | ↳ `Tests.HTTP.WebSockets` | **49** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| Autobahn against the demo host | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
+| Autobahn vs. the **server** (demo host `:8081`) | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
+| Autobahn vs. the **client** (`fuzzingserver`) | — | not built; `WebSocketClient` is covered by no foreign suite (PLAN.md A4) |
 
 Counts are **run** counts — `dotnet test` with that filter, measured against
 this checkout on 2026-09-23, after the Hermod pin advanced 181 commits.

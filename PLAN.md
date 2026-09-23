@@ -14,7 +14,8 @@ current as work proceeds.
 
 **Current state (2026-08-13):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
 14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
-over cleartext *and* TLS**. **A4 ⬜** next. Track B: **23 findings open**, none
+over cleartext *and* TLS**. **A4 🔶** — server side driven and gated nightly (481/517, floor held), the
+`autobahn-client` half against `fuzzingserver` not built. Track B: **23 findings open**, none
 fixed upstream yet — H-1 and H-23 are the cheapest starting points.
 
 | Gate | State |
@@ -177,14 +178,25 @@ build (8.21, no HTTP/2) is ideal: it cannot silently upgrade.
 - assertions on both the status/body **and** the `-v` wire trace
 - `docs/TestingAgainst_curl.md`
 
-## ⬜ A4 · Autobahn TestSuite · P1 · ~1–2 d
+## 🔶 A4 · Autobahn TestSuite · P1 · server half done 2026-09-22
 
 Hermod's WebSocket README already claims 296 + 242 + 126 + 126 cases with 0
-failures. Those numbers are currently unreproducible from a clean checkout —
-this repository is where they become a command.
+failures. Those numbers were unreproducible from a clean checkout — this
+repository is where they become a command.
 
-- `tests/autobahn-server/` — echo server on `WebSocketServer` for `fuzzingclient`
-- `tests/autobahn-client/` — client driver on `WebSocketClient` against `fuzzingserver`
+**Server side: done.** `tests/autobahn.sh` drives `fuzzingclient` against the
+demo host's echo server on `:8081` and the nightly gates on a floor of 481 of
+517, with the 36 declines being the RFC 7692 §7.1.2.1 refusals of
+`server_max_window_bits=9`. The first run also found the real defect it was
+built to find: the demo never offered `permessage-deflate`, which took the
+score from 301 to 481 with one line.
+
+**Client side: not built.** That is what keeps this track open — and it is the
+more interesting half now, because nothing anywhere points a foreign suite at
+`WebSocketClient`.
+
+- ✅ echo server for `fuzzingclient` — the demo host's `:8081`, not a separate project
+- ⬜ `tests/autobahn-client/` — client driver on `WebSocketClient` against `fuzzingserver`
 - `tests/autobahn/fuzzingclient.json` + `fuzzingserver.json`
 - `tests/autobahn.sh` (runs in WSL/Debian) + `tests/autobahn.ps1` (thin
   `wsl -d Debian` wrapper, so Windows and Linux drive the same script)
