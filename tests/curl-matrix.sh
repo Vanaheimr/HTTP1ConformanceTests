@@ -312,11 +312,18 @@ hasnt "no Content-Encoding is claimed" "Content-Encoding:" --compressed -D- "$BA
 # Redirects
 # ---------------------------------------------------------------------------
 echo "  -- redirects --"
-for code in 301 302 303 307; do
+for code in 301 302 303 307 308; do
     wo "redirect $code"                '%{http_code}' "$code" "$BASE/redirect/$code"
 done
 wo    "-L follows to the target"       '%{http_code}' "200" -L "$BASE/redirect/301"
 wo    "-L counts one redirect"         '%{num_redirects}' "1" -L "$BASE/redirect/302"
+
+# 308 is the one of the five a client can plausibly not know: it is the newest
+# (RFC 7538, 2015), and an unknown 3xx is required to be treated as 300 rather
+# than followed. Asserting that curl reaches the target is therefore worth a
+# line of its own — it says a real foreign client acts on what we emit, which
+# "the status line said 308" does not.
+wo    "-L follows a 308"               '%{http_code}' "200" -L "$BASE/redirect/308"
 
 # ---------------------------------------------------------------------------
 # curl's own verdicts

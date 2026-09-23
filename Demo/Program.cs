@@ -590,7 +590,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
-            #region GET /redirect/{code}  — 301 302 303 307 (308 blocked on H-1)
+            #region GET /redirect/{code}  — 301 302 303 307 308
 
             API.AddHandler(
                 HTTPMethod.GET,
@@ -602,13 +602,21 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                      ? parsed
                                      : (UInt16) 302;
 
-                    // 308 is deliberately absent from the list: Hermod has no
-                    // HTTPStatusCode for it (PLAN.md, H-1). Once that lands, add
-                    // it here and the harness picks it up.
+                    // 308 joined the list on 2026-09-23, when H-1 gave Hermod an
+                    // HTTPStatusCode for it. Worth being precise about what that
+                    // did and did not add: 307 and 308 behave identically on the
+                    // wire from a server's point of view — both preserve the
+                    // method and body (RFC 9110, Sections 15.4.8 and 15.4.9) —
+                    // and differ only in permanence, which is a statement to
+                    // caches and to whoever updates the link. So this is a new
+                    // status code for the drivers to see, not new behaviour here.
+                    // The pair that really differ in method handling is 301 and
+                    // 308, and that difference lives in the client that follows.
                     var redirect = status switch {
                                        301 => HTTPStatusCode.MovedPermanently,
                                        303 => HTTPStatusCode.SeeOther,
                                        307 => HTTPStatusCode.TemporaryRedirect,
+                                       308 => HTTPStatusCode.PermanentRedirect,
                                        _   => HTTPStatusCode.Found
                                    };
 

@@ -313,7 +313,7 @@ checks.Status(
 
 // --- §15.4 Redirects ---------------------------------------------------------
 
-foreach (var (code, expected) in new (String, UInt16)[] { ("301", 301), ("302", 302), ("303", 303), ("307", 307) })
+foreach (var (code, expected) in new (String, UInt16)[] { ("301", 301), ("302", 302), ("303", 303), ("307", 307), ("308", 308) })
 {
 
     var response = await target.RoundTripAsync($"GET /redirect/{code} HTTP/1.1\r\nHost: {host}\r\n\r\n");

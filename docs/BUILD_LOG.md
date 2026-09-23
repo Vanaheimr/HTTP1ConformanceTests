@@ -165,6 +165,12 @@ reason.
 `HTTPStatusCode` for it (H-1). The route falls back to `302`. Once H-1 lands the
 entry gets added and the harness picks it up.
 
+*(H-1 landed 2026-09-23. The entry is in, and the harness did pick it up: two
+checks in `h1semantics` and two in the curl matrix, which is where 257 became
+261. Worth noting for anyone reading this in order — the entries below stop at
+2026-08-13, so A4, the Autobahn drivers, H-1/H-2 and the 12.4.18 investigation
+are in `PLAN.md` and `tests/TestingAgainst_Autobahn.md` rather than here.)*
+
 ### The handlers implement semantics on purpose
 
 `ServeResource` does conditional evaluation and Range slicing by hand — 304 with

@@ -127,8 +127,8 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
-**A2 done** — the raw-wire harnesses (199 checks).
-**A3 done** — the curl matrix (58 checks). The gate is **257/257 over both
+**A2 done** — the raw-wire harnesses (201 checks).
+**A3 done** — the curl matrix (60 checks). The gate is **261/261 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
@@ -163,8 +163,8 @@ pointed at a foreign suite. See
 | | |
 |---|---|
 | Hermod's own NUnit suites | 551 `Tests.HTTP.` / 319 regression selection / 49 WebSockets, all run counts — 552 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
-| this repo's gate | **257/257**, cleartext and TLS (199 raw-wire + 58 curl) |
-| with `--wsl` (second curl build) | **315/315** |
+| this repo's gate | **261/261**, cleartext and TLS (201 raw-wire + 60 curl) |
+| with `--wsl` (second curl build) | **321/321** |
 | Autobahn (server) | **481/517** + 36 declined — nightly, gated on the floor, but see **H-25**: 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 

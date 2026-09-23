@@ -31,7 +31,7 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/secret` | GET | `401` + `WWW-Authenticate`, Basic (`alice:secret`) and Bearer (`valid-token-123`) |
 | `/search` | GET QUERY | RFC 10008 QUERY + `Content-Location` |
 | `/expect` | POST | `Expect: 100-continue` |
-| `/redirect/{code}` | GET | `301` `302` `303` `307` |
+| `/redirect/{code}` | GET | `301` `302` `303` `307` `308` |
 | `/status/{code}` | GET | arbitrary status codes, for the drivers |
 | `/events` | GET | SSE — `retry`, `id`, `event`, a 2 s ticker |
 

@@ -13,7 +13,7 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-09-23):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
+14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **261/261 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
 nightly for both Autobahn directions. Track B: **25 findings, 2 fixed upstream**
@@ -23,12 +23,12 @@ and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 257/257, ~103 s |
-| `tests/run-tests.sh --tls` | ✅ 257/257, ~270 s |
+| `tests/run-tests.sh` | ✅ 261/261, ~103 s |
+| `tests/run-tests.sh --tls` | ✅ 261/261, ~270 s |
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 552, both legs — 537 before H-1/H-2 |
 | ↳ `Tests.HTTP.` alone | ✅ 551 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
-| third-party: curl | ✅ 58/58 per build, two builds, both transports |
+| `tests/run-tests.sh --wsl` | ✅ 321/321 — adds the Debian curl |
+| third-party: curl | ✅ 60/60 per build, two builds, both transports |
 | third-party: Autobahn (server) | 🔶 481/517 + 36 declined, nightly, gated — but 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23, see **H-25** |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
@@ -113,7 +113,7 @@ comparable. All ✅ and exercised by the A2 harnesses:
 | `/search` | `QUERY` (RFC 10008), fixed-length and chunked |
 | `/events` | SSE — history, `Last-Event-ID`, retry, heartbeat |
 | `/expect` | `Expect: 100-continue` and `417` |
-| `/redirect/{code}` | `301` `302` `303` `307` — ⬜ `308` blocked on **H-1** |
+| `/redirect/{code}` | `301` `302` `303` `307` `308` — the last since H-1 landed on 2026-09-23 |
 | `/status/{code}` | arbitrary status codes, for the third-party drivers |
 
 Also: `--fast-timeouts` shortens the read deadlines from 30 s to 3 s so the
@@ -125,8 +125,9 @@ WebSocket on `:8081`. Once H-16 lands, `/ws` moves onto `:8080`.
 
 ## ✅ A2 · Raw-wire harnesses
 
-**199/199 checks pass over both transports** — `tests/run-tests.sh`, ~97 s
-cleartext, ~300 s over TLS. See [`tests/README.md`](tests/README.md) for the
+**201/201 checks pass over both transports** — `tests/run-tests.sh`, ~97 s
+cleartext, ~300 s over TLS. It read 199 when A2 closed; the two since are the
+`308` redirect checks that H-1 unblocked. See [`tests/README.md`](tests/README.md) for the
 per-harness breakdown and what the checks do and do not establish. One new
 upstream finding: **H-23**.
 
@@ -160,11 +161,12 @@ library failure.
 
 ## ✅ A3 · curl matrix
 
-**58/58 checks pass over both transports**, wired into `tests/run-tests.sh` —
-the gate now stands at **257/257** (199 raw-wire + 58 curl). See
+**60/60 checks pass over both transports**, wired into `tests/run-tests.sh` —
+the gate stands at **261/261** (201 raw-wire + 60 curl). It read 257 when A3
+closed; the four since are `308` joining `/redirect/{code}` once H-1 landed. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **315/315**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **321/321**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -373,7 +375,7 @@ nothing is waiting on them any more.
 **First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 ✅ + H-2 🔶 — a
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Five and a half of six: H-2 turned out to
-be two fixes, and only the decoding one is in. The number is now **257/257**, and 58 of those come from a
+be two fixes, and only the decoding one is in. The number is now **261/261**, and 60 of those come from a
 client nobody here wrote — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ⬜ A5 — Autobahn reproducible from a
