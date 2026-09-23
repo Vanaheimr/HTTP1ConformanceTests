@@ -267,13 +267,19 @@ no records at all, which looked like broken wiring. It was not. The Debug line t
 guaranteed — `RemoveConnection`, "Removing HTTP WebSocket connection with …" — is on a method
 **nothing calls**. A passing case logs nothing because a passing case has nothing to say.
 
-### Reproduction: failed, 13 attempts
+### Reproduction: failed, 14 attempts
 
 Stated plainly, because a mechanism that fits is not a mechanism that was demonstrated:
 
 - 10 × section 12.4 (18 cases) with the demo host pinned to two CPUs, harsher than the runner's
-  four: 18/18 every time, no warnings.
-- Full 517-case runs, likewise squeezed: green.
+  four: 18/18 every time, and not one warning in the log.
+- 2 full 517-case runs, likewise squeezed: 481/517, 0 hard failures, 128 records each. A third was
+  spoiled by a port collision with a slice run concurrently, and is not counted.
+- 1 full run unconstrained: the same.
+- The CI nightly of 2026-09-23 16:37, the first with the instrument switched on: green — and its
+  artifact carries 151 log lines where the failing run of 13:35 carried 22. Its 128 records match
+  the local runs exactly, which is a consistency check worth having: the same 517 cases provoke the
+  same number of refusals on both machines.
 
 So 12.4.18 is **not diagnosed**. What changed is that the next occurrence names itself: the
 record is written, the level captures it, and the file is in the artifact. That is the same move
