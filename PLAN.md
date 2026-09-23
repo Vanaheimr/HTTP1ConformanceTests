@@ -16,8 +16,9 @@ current as work proceeds.
 14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **257/257 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
-nightly for both Autobahn directions. Track B: **23 findings open**, none
-fixed upstream yet — H-1 and H-23 are the cheapest starting points.
+nightly for both Autobahn directions. Track B: **24 findings, 2 fixed upstream**
+and awaiting the merge of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
+— H-1 whole, H-2 in the half that was missing.
 
 | Gate | State |
 |---|---|
@@ -320,10 +321,14 @@ Two of them may end as "documented as deliberately out of scope" rather than
 implemented — **H-9** (`TRACE` has a real XST security history) and the
 never-standardized parts of **H-5**. Everything else is a fix.
 
+A finding is 🔶 once the fix and its regression test are merged into Hermod, and
+✅ only once the submodule pointer here moves onto it: until then this repository
+still builds against the pin, so nothing is verified from a clean checkout.
+
 | | # | Gap | Spec | P | Effort | Note |
 |---|---|---|---|---|---|---|
-| ⬜ | **H-1** | Missing status codes: `103` `308` `421` `451` `511` `208` `508`; **`425` is defined but named `NoCode`** | RFC 8297, 9110 §15.4.9/§15.5.20, 7725, 6585, 8470, 5842 | P1 | XS | `308` and the `425` misnomer are outright bugs. Pure data addition |
-| ⬜ | **H-2** | No content coding for HTTP/1 bodies — neither client nor server compresses or decompresses | RFC 9110 §8.4, 1952, 7932, 8878 | P1 | S | **`HTTP2/Core/HTTPContentCoding.cs` already implements `br`/`gzip`/`deflate` with a zlib/raw-deflate sniffer.** Lift it into a shared location and wire it into `AHTTPPDU`. Biggest impact per line of code in this list |
+| 🔶 | **H-1** | Missing status codes: `103` `308` `421` `451` `511` `208` `508`; **`425` is defined but named `NoCode`** | RFC 8297, 9110 §15.4.9/§15.5.20, 7725, 6585, 8470, 5842 | P1 | XS | **Fixed 2026-09-23, [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29).** `NoCode` → `TooEarly`; 102 and 226 added alongside the seven, so the whole IANA registry is now defined rather than all-but-two. `IsNotSuccessful` was `Code < 200 && Code >= 300` — constant false for every code — and is fixed with it. 7 tests |
+| 🔶 | **H-2** | No content coding for HTTP/1 bodies — *decoding* was missing in both roles; the "neither compresses" half of this finding was wrong, see the note | RFC 9110 §8.4, 1952, 7932, 8878 | P1 | S | **Decoding fixed 2026-09-23, [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29).** `HTTPContentCoding` lifted to `HTTP/General/` (the shared tree had been reaching into the HTTP/2 namespace for it) and wired into `AHTTPPDU`: `DecodeBody`/`TryDecodeBody`, reverse order, unknown codings refused, 64 MiB ceiling. 8 tests. **Still open:** the client offers no `Accept-Encoding` and does not decode a *streamed* body (belongs inside `HTTPBodyStream`, and that path carries chunked/SSE/close-delimited/keep-alive), and there is no general server-side compression filter — `SinglePageAppHandler` has compressed static files all along, which is the part the finding got wrong |
 | ⬜ | **H-3** | `HTTPDigestAuthentication` is *not* RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/nc/cnonce/response | RFC 7616 | P1 | M | Either implement RFC 7616 properly, or rename to something non-colliding. The current name will mislead every reader; curl's `--digest` will not interoperate |
 | ⬜ | **H-4** | `Forwarded` not implemented (only `X-Forwarded-For`) | RFC 7239 | P2 | S | Already marked `//ToDo` at `HTTP1/Request/HTTPRequest.cs:1125` |
 | ⬜ | **H-5** | No RFC 9111 cache (client- or server-side) | RFC 9111, 5861, 8246 | P2 | L | `HTTP2/Core/HTTPCache.cs` + `HTTPCacheControl`/`HTTPCacheDecision`/`HTTPStoredResponse` exist. Same lift as H-2, much larger. Verifiable against `cache-tests.fyi` |
@@ -344,6 +349,7 @@ never-standardized parts of **H-5**. Everything else is a fix.
 | ⬜ | **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | |
 | ⬜ | **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split |
 | ⬜ | **H-22** | A chunked response silently produces an **empty body** unless `ContentStream` is a `ChunkedTransferEncodingStream` — setting `TransferEncoding = "chunked"` + `ChunkWorker` alone emits correct headers and nothing else, with no error | — | P2 | S | Found while building A1. The server dispatches the worker on the stream type, not the header field. Either wire the two together or fail loudly when they disagree; a silent empty body is the worst of the three options |
+| ⬜ | **H-24** | Six status-code reason phrases predate RFC 9110: 413 `Request Entity Too Large`, 414 `Request-URI Too Long`, 416 `Requested Range Not Satisfiable`, 422 `Unprocessable Entity`, plus 306/418 carrying draft names for codes the RFC reserves | RFC 9110 §15 | P3 | XS | Found while doing H-1. Not a defect — §15 says a client SHOULD ignore the reason phrase — but it is what goes out on the wire, since the status line is `{Code} {Name}`. Renaming the fields is breaking for every downstream Vanaheimr project, so it is a decision rather than a fix; `HTTPStatusCodeTests` pins the exact divergence set meanwhile, so it cannot drift further unnoticed |
 | ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 
 ---
@@ -357,14 +363,14 @@ never-standardized parts of **H-5**. Everything else is a fix.
                 │
                 └──▶ ⬜A5, ⬜A6, ⬜A7, ⬜A8  (external suites)
 
-Track B in parallel: ⬜H-1 and ⬜H-2 first (small, high leverage),
+Track B in parallel: 🔶H-1 and 🔶H-2 done (small, high leverage),
 ⬜H-3 and ⬜H-16 as decisions — A3 and A4 turned out to need neither, so
 nothing is waiting on them any more.
 ```
 
-**First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 ⬜ + H-2 ⬜ — a
+**First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 🔶 + H-2 🔶 — a
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
-that are cheap and obviously right. Four of six done. The number is now **257/257**, and 58 of those come from a
+that are cheap and obviously right. Six of six, pending the pointer bump. The number is now **257/257**, and 58 of those come from a
 client nobody here wrote — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ⬜ A5 — Autobahn reproducible from a
