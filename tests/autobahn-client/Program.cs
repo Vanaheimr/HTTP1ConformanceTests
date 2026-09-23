@@ -56,7 +56,25 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #region Data
 
-        private static readonly TimeSpan  caseTimeout      = TimeSpan.FromSeconds(30);
+        /// <summary>
+        /// How long one case may take before we give up on it and hang up ourselves.
+        /// <para>
+        /// 120 s, and the number is bounded from below by the suite rather than chosen. Every case
+        /// in sections 12 and 13 says "Timeout case after 60 secs" in its own description, so a
+        /// driver deadline under 60 s is tighter than the thing it is driving and turns a slow case
+        /// into a reported stall.
+        /// </para>
+        /// <para>
+        /// It was 30 s for exactly one CI run, which is how this got measured. Locally all 517 cases
+        /// finished with zero stalls; on the hosted runner case 500 — that is 13.7.1, a thousand
+        /// compressed messages with permessage-deflate negotiated — did not, and the forced
+        /// disconnect left the fuzzingserver unable to serve the remaining seventeen cases, so
+        /// /updateReports produced nothing and the whole run reported no result at all. One case
+        /// over its deadline cost 517 cases their report.
+        /// </para>
+        /// </summary>
+        private static readonly TimeSpan  caseTimeout      = TimeSpan.FromSeconds(120);
+
         private static readonly TimeSpan  controlTimeout   = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan  pollInterval     = TimeSpan.FromMilliseconds(20);
 
@@ -130,8 +148,17 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
                 {
                     if (!await RunCase(baseURL, n, agent, deflate))
                     {
+
                         stalled.Add(n);
                         Console.WriteLine($"  case {n}: still connected after {caseTimeout.TotalSeconds:0}s — disconnected by us");
+
+                        // A case we hang up on mid-flight is the one thing that can take the WHOLE
+                        // run down with it: the 2026-09-23 nightly lost all 517 results because a
+                        // forced disconnect left the fuzzingserver unable to serve the seventeen
+                        // cases after it, so /updateReports wrote nothing. Cheap insurance, and it
+                        // costs nothing on a run with no stalls.
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+
                     }
                 }
                 catch (Exception e)

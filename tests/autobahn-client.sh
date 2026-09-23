@@ -210,6 +210,17 @@ args="--host 127.0.0.1 --port $port --agent $agent"
 [ "$first" -gt 0 ] && args="$args --first $first"
 [ "$last"  -gt 0 ] && args="$args --last $last"
 
+# A slice cannot reach a floor that counts the whole suite, so applying one to it
+# reports FAIL for a reason that has nothing to do with conformance. --first and
+# --last exist for debugging one section; the gate always runs everything.
+if [ "$first" -gt 0 ] || [ "$last" -gt 0 ]; then
+    if [ "$min_pass" -gt 0 ]; then
+        echo "Slice requested (--first/--last): the floor of $min_pass does not apply to a partial run."
+        echo "Hard failures are still fatal."
+        min_pass=0
+    fi
+fi
+
 runner=""
 if [ "$run_timeout" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
     runner="timeout --signal=TERM --kill-after=30s ${run_timeout}s"
