@@ -28,11 +28,17 @@ The two are also not the same code. Hermod carries **three separate WebSocket im
 |---|---|---|
 | `HTTP1/WebSocket/` | 24 files, ~12 000 lines — own `WebSocketFrame`, own `WebSocketPerMessageDeflate`, server + client + applications | **this driver, since 2026-09-22** |
 | `HTTP2/WebSocket/` | 6 files, ~860 lines | the HTTP/2 sibling's nightly |
-| `HTTP3/WebSocket/` | 4 files — a byte-identical copy of the HTTP/2 one | nothing |
+| `HTTP3/WebSocket/` | 4 files — a byte-identical copy of the HTTP/2 one | nothing, but see below |
 
 Until this driver existed, the widely-quoted "Autobahn 517/517" certified the *smallest* of the
 three, and the largest — the one with the production server, client and applications on top — was
 covered by nothing.
+
+The HTTP/3 copy still has no suite pointed at it, but it is no longer uncovered on the point this
+page is about: since 2026-09-23 `HermodTests/HTTP2/WebSocketDeflateNegotiationTests` asserts one
+table of 21 extension offers against **both** the HTTP/2 and the HTTP/3 copy of `WebSocketDeflate`,
+and compares the two against each other, so the negotiation cannot drift between them again
+unnoticed.
 
 ## The target
 
@@ -89,15 +95,26 @@ to no compression. That is exactly what `TryNegotiateAsServer` does, and `UNIMPL
 Autobahn's accurate word for "the server declined the extension for this offer" — not `FAILED`.
 
 **So there is nothing to fix here.** An earlier version of this file named the parameter
-`client_max_window_bits` and suggested the HTTP/2 sibling handled it better because it reports
+`client_max_window_bits` and suggested the HTTP/2 sibling handled it better because it reported
 517/517. Both halves were wrong. The parameter is `server_max_window_bits`, and the sibling's
-higher score comes from the opposite of a better implementation: its `WebSocketDeflate.ShouldAccept`
-accepts any offer whose value merely contains the string `permessage-deflate`, without parsing the
-parameters at all. Faced with `server_max_window_bits=9` it answers "accepted" and then compresses
-with a 15-bit window — which a client that had allocated a 9-bit inflate window could not decode.
-Autobahn does not catch it because Python's zlib inflates with a large window regardless.
+higher score came from the opposite of a better implementation: its `WebSocketDeflate.ShouldAccept`
+accepted any offer whose value merely contained the string `permessage-deflate`, without parsing
+the parameters at all. Faced with `server_max_window_bits=9` it answered "accepted" and then
+compressed with a 15-bit window — which a client that had allocated a 9-bit inflate window could
+not decode. Autobahn does not catch that, because Python's zlib inflates with a large window
+regardless.
 
-The honest comparison is therefore the other way round: 481/517 here is the *stricter* result.
+**That is now settled, and it settled in this file's favour.** Hermod `eb7bf410` taught the
+sibling's `ShouldAccept` to parse the offer, `8405935e` mirrored the fix into the HTTP/3 copy and
+pinned both with a test, and the HTTP/2 conformance repository bumped its pin on 2026-09-23. Its
+Autobahn run now reports **481/517** with the same verdict breakdown as this one, to the digit:
+476 `OK`, 3 `INFORMATIONAL`, 2 `NON-STRICT`, 36 `UNIMPLEMENTED`. Its floor was lowered from 517 to
+481 deliberately, with the reason recorded in its `autobahn.sh`.
+
+Two implementations written independently of each other — 24 files against 6, sharing no code —
+converging on the same number against the same 517 cases is a stronger statement than either of
+them scoring 517. `TryNegotiateAsServer` here was right the whole time; what changed is that the
+sibling stopped disagreeing with it.
 
 ## In CI: the nightly, gated on a floor
 

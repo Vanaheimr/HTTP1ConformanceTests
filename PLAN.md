@@ -354,4 +354,4 @@ checkout, CI green, proxy interop.
 1. **Lift or duplicate?** H-2 and H-5 exist in usable form in `Hermod/HTTP2/Core/`.
    Move them to a version-neutral namespace shared by HTTP/1, /2 and /3, or
    reimplement per version? The shared route is better but touches the HTTP/2
-   stack, which is currently at 146/146 h2spec and 517/517 Autobahn.
+   stack, which is currently at 146/146 h2spec and 481/517 Autobahn (+36 declined).
