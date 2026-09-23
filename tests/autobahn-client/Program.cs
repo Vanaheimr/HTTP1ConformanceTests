@@ -17,6 +17,8 @@
 
 #region Usings
 
+using System.Threading.Channels;
+
 using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using org.GraphDefined.Vanaheimr.Hermod.WebSocket;
@@ -248,35 +250,90 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
                              EnablePerMessageDeflate = Deflate
                          };
 
-            // Echoing from inside the receive handler is what keeps the order right: the handler is
-            // awaited by the read loop, so message N is back on the wire before N+1 is delivered.
-            // A queue plus a pump task would need its own ordering guarantee to say the same thing.
+            // The echo goes through an UNBOUNDED queue, drained by a task of its own, and that is
+            // the whole design rather than a detail.
             //
-            // Both sends are wrapped, because a case ending mid-echo is normal here rather than
-            // exceptional: several cases close the connection the moment they have seen enough, and
-            // a write into that close is not a finding.
-            client.OnTextMessageReceived += async (timestamp, cl, connection, frame, eventTrackingId, text, ct) => {
-                try { await cl.SendTextMessage(text); } catch { }
+            // The obvious version — await the send from inside the receive handler — deadlocks, and
+            // an earlier revision of this file did exactly that while asserting in a comment that it
+            // was the right way to keep ordering. The read loop awaits the handler, so a send that
+            // blocks parks the reader. With a thousand messages of up to 128 KiB in flight the
+            // peer's receive buffer fills while it is still sending; our write blocks on a socket
+            // nobody is draining, and we cannot drain theirs because we are parked inside the
+            // handler. Neither side moves again.
+            //
+            // It only bit under CPU contention. Locally the whole of section 12.4 ran in 37 s with
+            // the slowest case at 3.8 s; on a two-core hosted runner, 12.4.12 — 1.1 s here — sat
+            // past a 120 s deadline, along with 12.4.14 and 12.4.17. A hundredfold gap is not a
+            // slow machine, it is a hang that a fast machine happens to race past.
+            //
+            // A Channel keeps the order the handler saw (FIFO), and unbounded is deliberate:
+            // bounding it would push the blocking back into the handler and rebuild the deadlock
+            // one layer up. The cost is memory — a case can queue about 128 MB before the pump
+            // catches up, which this driver can afford and a library could not.
+            var received = 0;
+            var echoed   = 0;
+
+            var echoQueue = Channel.CreateUnbounded<(Boolean IsText, String? Text, Byte[]? Bytes)>(
+                                new UnboundedChannelOptions { SingleReader = true }
+                            );
+
+            client.OnTextMessageReceived += (timestamp, cl, connection, frame, eventTrackingId, text, ct) => {
+                Interlocked.Increment(ref received);
+                echoQueue.Writer.TryWrite((true, text, null));
+                return Task.CompletedTask;
             };
 
-            client.OnBinaryMessageReceived += async (timestamp, cl, connection, frame, eventTrackingId, bytes, ct) => {
-                try { await cl.SendBinaryMessage(bytes); } catch { }
+            client.OnBinaryMessageReceived += (timestamp, cl, connection, frame, eventTrackingId, bytes, ct) => {
+                Interlocked.Increment(ref received);
+                echoQueue.Writer.TryWrite((false, null, bytes));
+                return Task.CompletedTask;
             };
 
             await client.Connect();
+
+            // Sends are swallowed, because a case ending mid-echo is normal here rather than
+            // exceptional: several cases close the moment they have seen enough, and a write into
+            // that close is not a finding.
+            var pump = Task.Run(async () => {
+                await foreach (var item in echoQueue.Reader.ReadAllAsync())
+                {
+                    try
+                    {
+                        if (item.IsText)
+                            await client.SendTextMessage(item.Text!);
+                        else
+                            await client.SendBinaryMessage(item.Bytes!);
+                        Interlocked.Increment(ref echoed);
+                    }
+                    catch { }
+                }
+            });
 
             var deadline = DateTime.UtcNow + caseTimeout;
 
             while (client.Connected && DateTime.UtcNow < deadline)
                 await Task.Delay(pollInterval);
 
-            if (client.Connected)
+            var finished = !client.Connected;
+
+            if (!finished)
             {
+                // The two counters are the point of this branch. The hangs seen on CI (12.4.12,
+                // 12.4.14, 12.4.17 in one run, 13.7.1 in another) have never reproduced locally,
+                // not even with the driver pinned to a single core, so the mechanism is a
+                // hypothesis rather than a finding. These numbers settle it on the next occurrence
+                // instead of leaving it open: received far ahead of echoed means the send side is
+                // wedged, the two close together means we are simply waiting on a peer that has
+                // stopped talking. Guessing between those two from a timestamp is what this is
+                // meant to replace.
+                Console.WriteLine($"  case {Number}: received {Volatile.Read(ref received)}, echoed {Volatile.Read(ref echoed)}, queued {Volatile.Read(ref received) - Volatile.Read(ref echoed)}");
                 await CloseQuietly(client);
-                return false;
             }
 
-            return true;
+            echoQueue.Writer.TryComplete();
+            await pump.WaitAsync(TimeSpan.FromSeconds(10)).ContinueWith(_ => { });
+
+            return finished;
 
         }
 
