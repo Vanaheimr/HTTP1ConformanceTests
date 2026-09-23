@@ -25,7 +25,8 @@ and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
 | `tests/run-tests.sh` | ✅ 257/257, ~103 s |
 | `tests/run-tests.sh --tls` | ✅ 257/257, ~270 s |
-| Hermod `Tests.HTTP.*` | ✅ 552 tests, both CI legs (537 before H-1/H-2) |
+| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 552, both legs — 537 before H-1/H-2 |
+| ↳ `Tests.HTTP.` alone | ✅ 551 — the missing one is all of `Tests.HTTPS.` |
 | `tests/run-tests.sh --wsl` | ✅ 315/315 — adds the Debian curl |
 | third-party: curl | ✅ 58/58 per build, two builds, both transports |
 | third-party: Autobahn (server) | 🔶 481/517 + 36 declined, nightly, gated — but 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23, see **H-25** |
@@ -394,9 +395,10 @@ three.
   to the Windows curl 8.21, which has no HTTP/2 at all: the Windows one cannot
   accidentally upgrade, the Debian one proves `--http1.1` and ALPN are honoured.
 - **Test placement follows the HTTP/2 repo.** In-process unit and integration
-  tests live with the stack in `HermodTests/` (namespace `Tests.HTTP.*`, 536
-  today); this repository holds only the demo-driven raw-wire harnesses, the
-  third-party suite drivers and the tooling. A2 produces harnesses, not NUnit
+  tests live with the stack in `HermodTests/` (filter
+  `FullyQualifiedName~Hermod.Tests.HTTP.`, 551 today); this repository holds
+  only the demo-driven raw-wire harnesses, the third-party suite drivers and the
+  tooling. A2 produces harnesses, not NUnit
   fixtures — a Track B fix's regression test goes upstream with the fix.
 - **Remotes.** `origin` → GitHub, plus `git1`/`git2` on graphdefined.com, as in
   the other Vanaheimr repositories. Default branch `master`.
