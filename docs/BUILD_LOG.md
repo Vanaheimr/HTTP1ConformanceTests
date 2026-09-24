@@ -1263,6 +1263,179 @@ curl builds. Deleting the route again fails exactly those four and nothing else.
 
 The gate goes 266 → **270**, `--wsl` 331 → **339**, curl 65 → **69** per build.
 
+## 2026-09-24 — H-2, the other three quarters
+
+H-2 was estimated **S** and read "no content coding for HTTP/1 bodies". The first
+pass, on 2026-09-23, made `AHTTPPDU` decode a body it already held, and the row
+was left at 🔶 with an honest note about what remained. What remained was three
+more fixes, each larger than the one that had been done.
+
+### Decoding a body that is not an array
+
+`DecodeBody(...)` works on `HTTPBody`. A chunked, close-delimited or
+event-stream body is not `HTTPBody` — it is a stream that has not finished
+arriving, and buffering one in order to decode it undoes the reason it was
+streamed. So `TryDecodeBodyStream(...)` puts the reversal *inside*
+`HTTPBodyStream`, where everything downstream gets it for free.
+
+Two field lines have to go with it, and the second is not a tidiness question:
+
+- `Content-Encoding`, because the body is the identity representation from there
+  on. What it arrived as is kept in the new `DecodedContentEncoding`, so nothing
+  is lost.
+- `Content-Length`, because it counted the **encoded** octets — and the
+  buffering loop in `TryReadHTTPBodyStreamAsync` stops reading at it. Leave it in
+  place and a gzip body is truncated at its compressed size: a silently short
+  body, which is the worst failure mode on the menu. There is a test that builds
+  64 KiB of text, checks that it really did compress by a factor of ten, and then
+  requires all 64 KiB back.
+
+`RawHTTPHeader` keeps both, deliberately. It is the record of what came off the
+socket, which does not change because we decoded it — and since the parsed view
+and the raw text now disagree on purpose, a test pins the disagreement rather
+than leaving it to be discovered by somebody grepping a log.
+
+Four smaller things surfaced while doing it, and each is the kind that hides:
+
+- **Wrapping a stream hides what it is.** The buffering loop recognises a chunked
+  body by the *type* of the stream in order to collect its trailers, so a decoder
+  in front of it costs the trailers. The chunked stream is remembered before it
+  disappears. Reverting that one line fails one test, and only that one.
+- **`RemoveHeaderField` removed nothing.** It dropped the raw field and left the
+  parsed copy in the cache that `GetHeaderField` consults first — so the field
+  vanished for anything reading the header text and stayed for everything reading
+  the typed property. It had had no callers until this.
+- **`InvalidDataException` is not an `IOException`.** A body that is not valid for
+  its declared coding reached the catch-all at the bottom of the read loop, and
+  the caller got a null body with no reason for it.
+- **The decoders disagree about their own exception.** gzip, zlib and deflate
+  raise `InvalidDataException`; `BrotliStream` raises `InvalidOperationException`
+  for the identical condition. `ContentDecodingStream` translates it, so "this
+  body is not what it said it was" has one answer. That class also holds the
+  deflate sniff — RFC 9110 names zlib, much of the web sends raw — which a stream
+  cannot do at construction time, because the two bytes it needs have not
+  necessarily arrived.
+
+### A bound that a well-formed chain cannot justify
+
+Every decoding step is bounded separately, not just the last one. That looks
+redundant, and against an honest peer it is: `Content-Encoding: c0, c1` means the
+intermediate is `c0` applied to the final output, so with a real compressor the
+intermediate is never the bigger of the two. Nothing obliges a peer to be honest.
+
+A gzip member made of empty stored deflate blocks (RFC 1951 §3.2.4 — five bytes
+each, no output) is four megabytes that decode to nothing, and it compresses to
+almost nothing itself. Wrapped in a second gzip layer it is a few kilobytes on
+the wire, four megabytes in the middle, and zero bytes at the end: a ceiling that
+watched only the final output would see an empty body and be satisfied. The test
+builds exactly that member by hand, in a dozen lines, and bounding only the
+outermost layer fails it and nothing else.
+
+### The client asks
+
+`AutomaticDecompression`, off by default — it changes what goes out on the wire
+and what the caller gets back, which makes it the caller's decision. Named after
+the HTTP/2 client's option, because it is the same decision. Never written over a
+caller's own `Accept-Encoding`: `identity` is how compression is switched off for
+one request, and a client that overwrote it would make that impossible to say.
+
+It decodes in three places, because a body arrives in three shapes and only one
+is an array. The ordinary case wraps the stream *before* the body is read, so the
+buffered and the streamed path are one implementation. An event stream has no
+alternative — it is not supposed to end, so there is no later. And a chunked body
+consumed the moment it arrives was already an array before anything could wrap
+it, so that one takes `TryDecodeBodyInPlace`, which corrects `Content-Length`
+rather than dropping it, the length being known there. Two routes to one result
+is the arrangement that drifts, so both are driven from outside — and the test
+tells them apart by exactly that field.
+
+The client tests run against a bare `TcpListener` rather than a Hermod server,
+because what is under test is what the *client* does with a response, including
+framings no well-behaved server would produce. A gzipped event stream is not
+exotic: it is what nginx puts in front of one.
+
+### The server offers
+
+`AutomaticContentCompression`, off by default, on `AHTTPServer` — so every
+handler in the process gets it without knowing about it. `SinglePageAppHandler`
+has compressed static files all along and keeps doing it the better way,
+compressing each once at startup rather than once per response; a response that
+already carries a coding is left alone.
+
+The list of things it declines to compress is longer than the compressing, and
+every entry is a way to be **wrong** rather than merely slow: a body still being
+streamed, a chunked response whose length must not be restated, a handler's own
+coding, a `206` (a range is part of the selected representation; a coding applies
+to the whole of it), an already-compressed media type, anything under a kilobyte,
+a `q=0` refusal, and a result that came out no smaller.
+
+Three fields follow the octets. `Vary` gains `Accept-Encoding`, merged rather
+than overwritten, or a cache hands gzip to a client that never asked. A strong
+`ETag` gains the coding, because encoded and identity are two representations and
+a range request against a cached identity copy must not be answered out of the
+compressed one. And `HEAD` is compressed exactly like `GET`: there is no body to
+send, but §9.3.2 asks for the fields a `GET` would have sent, and
+`Content-Length` is the field a `HEAD` is usually asked for.
+
+It rebuilds the response rather than editing it. An `HTTPResponse` serialises
+from the header text it was built with, so a field changed afterwards reaches the
+log and not the wire — which makes "did everything else come along" the thing
+most likely to break, so a header nothing else cares about is asserted on the far
+side.
+
+### The thing nineteen unit tests missed and six wire checks caught
+
+The filter went in green: nineteen tests, and a falsification pass showing that
+turning it off failed the seven asserting compression and none of the twelve
+asserting restraint. Then `tests/run-tests.sh` reported **5/7**, with `/chunked`
+and `/trailers` answering `200` with no `Transfer-Encoding`, no chunks and no
+trailers.
+
+`ShouldCompress` asked "is there a body worth compressing" before "is this
+response still being written". Both answers were right. The first question
+consumed the response.
+
+`HTTPBody` is not a field. It is a property that *makes* the body an array if it
+is not one yet, by draining `HTTPBodyStream` to the end and then running
+`CloseActionAfterBodyWasRead`. For a live chunked response or an event source
+that stream is the connection, and the worker that was about to write to it found
+it gone.
+
+So the order of the checks is correctness rather than arrangement now, and the
+code says so: everything decidable from the header is decided first — the body
+stream, `text/event-stream`, an upgrade worker, the status, chunked, an existing
+coding, a `206`, the media type — and the body is not looked at until looking is
+harmless. Two of those guards are new rather than moved: `text/event-stream` is
+`text/*`, so the media-type test would have waved an event source through, and an
+`UpgradeWorker` means what is on this connection has stopped being HTTP.
+
+The interesting part is not the bug. It is that nineteen tests could not see it,
+because every one of them handed the filter a response whose body was already an
+array — which is the only shape you reach for when you are writing unit tests for
+a compression filter. The harnesses drive a real demo over a real socket, and a
+route that stops being chunked is visible there and nowhere else. The regression
+test that now exists therefore asserts the thing that was wrong rather than the
+verdict, which was right all along: it hands `ShouldCompress` a body stream that
+counts its reads, and requires the count to stay at zero.
+
+### Numbers
+
+Hermod's gate filter 562 → **605**; `Tests.HTTP.` 561 → **604**; the HTTP/1
+regression selection 329 → **372**, the three new fixtures joining the eight it
+already named. This repo: gate 270 → **279**, `--tls` **279**, `--wsl` 339 →
+**357**, curl 69 → **78** per build (79 in the CI Debian container).
+
+One number here was wrong before this touched it and is worth naming: the demo
+was described as having "14 routes" in two places, and had eighteen. The `/ws`
+route of 2026-09-23 had not moved it either. Nothing measures that one, so it is
+corrected rather than claimed.
+
+The demo gained `/prose`, because `/large` is `application/octet-stream` and
+rightly stays identity however hard a client asks — the filter decides on the
+media type, not on how well the bytes would happen to compress.
+
+Track B: **26 findings, 5 fixed upstream** — and all five whole.
+
 ## Next
 
 **A5–A8, the remaining third-party suites** — intermediary interop, request
@@ -1271,29 +1444,31 @@ its own nightly job; the workflow has room for them and the demo already binds
 `0.0.0.0` on demand, which is what A5 and A6 were waiting for. Then A9
 (benchmarks) and A10 (parser fuzzing).
 
-**Track B: 26 findings, 3 fixed upstream.** H-1 whole; H-2 in the half that was
-actually missing, with the client's `Accept-Encoding` and the streamed decode
-still open; H-3 whole, and it moved the RFC 9110 §11 framework into the shared
-library on the way. Three of the 26 are new from this week — **H-24**, six reason
-phrases that predate RFC 9110 and are a decision rather than a fix; **H-25**, the
-Warden killing live connections, now fixed; and **H-26**, the two ways the
-Warden's own scheduling does not do what it says.
+**Track B: 26 findings, 5 fixed upstream, all of them whole.** H-1; H-2 as of
+2026-09-24, which took four fixes against an estimate of one; H-3 whole, and it
+moved the RFC 9110 §11 framework into the shared library on the way; H-16, which
+had been fixed upstream for a week before anybody re-read the row; and H-25, the
+Warden killing live connections.
 
-**The next red night answered it.** H-25 went from "not diagnosed" to a named
-race and a fix inside a day, because the instrument was in place when it
-happened. The Autobahn server gate stays 🔶 only until the pin moves onto
-[Hermod#31](https://github.com/Vanaheimr/Hermod/pull/31).
+What that leaves, roughly by value: **H-26** (the two ways the Warden's own
+scheduling does not do what it says — `EveryMinutes(1, …)` ignores
+`WardenCheckEvery`, and `EverySeconds` measures in minutes), **H-24** (six reason
+phrases that predate RFC 9110, a decision rather than a fix), and nineteen more
+Track B findings. Then A5–A10.
 
-What that leaves, roughly by value: the open half of **H-2** (the client offers no
-`Accept-Encoding` and does not decode a *streamed* body), **H-26** (the Warden's
-own scheduling), **H-24** (the six pre-RFC-9110 reason phrases, a decision rather
-than a fix), and eighteen more Track B findings. Then A5–A10.
+**Two lessons from this week are worth keeping in view, because both cost real
+time and both are cheap to avoid.**
 
-**H-16 is off that list, and how it got there is worth a sentence.** It read "the
-general HTTP server has no `Upgrade` dispatch" — and Hermod had grown exactly that
-on 2026-09-16, `WebSocketUpgrade.For(...)`, with its own tests. The finding
-described the state of a pin that had not moved since 2026-08-13. The bump of
-2026-09-23 brought the fix in and nobody re-read the row. Third time this week a
-finding outlived the thing it described, after A11 and after H-2's first half:
-**a bump is not finished until the findings it might have closed have been
-re-read.**
+*A bump is not finished until the findings it might have closed have been
+re-read.* H-16 read "the general HTTP server has no `Upgrade` dispatch" while
+Hermod had grown exactly that on 2026-09-16, with its own tests. The row
+described the state of a pin that had not moved since 2026-08-13; the bump of
+2026-09-23 brought the fix in and nobody looked. Third time in a week a finding
+outlived the thing it described, after A11 and after H-2's first half.
+
+*Unit tests reach for the shape that is easy to construct.* Nineteen tests for
+the server-side compression filter all handed it a response whose body was
+already a byte array, which is the only shape you naturally build in a test —
+and the defect was in the path where the body is still a stream. The wire
+harnesses found it on the first run. That is what they are for, and it is an
+argument for running them before a feature is called done rather than after.

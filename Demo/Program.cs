@@ -218,6 +218,12 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                          LoggerFactory:      loggerFactory
                                      );
 
+            // RFC 9110, Section 8.4. Off by default in Hermod, because compressing
+            // per response rather than once per representation is a trade only the
+            // operator can make. A conformance target makes it, so that the checks
+            // have something to negotiate against.
+            httpServer.AutomaticContentCompression = true;
+
             ConfigureAPI(httpServer.AddHTTPAPI());
 
             Console.WriteLine($"  ✓ cleartext listener on :{httpServer.TCPPort}");
@@ -234,6 +240,8 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                          BodyReadTimeout:            readTimeout,
                                          LoggerFactory:              loggerFactory
                                      );
+
+            httpsServer.AutomaticContentCompression = true;
 
             ConfigureAPI(httpsServer.AddHTTPAPI());
 
@@ -376,6 +384,37 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                         }.AsImmutable
                     )
                 );
+
+            #endregion
+
+            #region GET /prose  — compressible, and big enough to be worth it
+
+            // /large is deliberately application/octet-stream and stays identity
+            // however hard the client asks: the filter decides on the media type,
+            // not on how well the bytes would happen to compress. This is its
+            // opposite number — text/plain, repetitive, and well over the kilobyte
+            // below which compressing costs more than it saves.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "prose",
+                HTTPDelegate: request => {
+
+                    var text = new StringBuilder();
+
+                    for (var i = 0; i < 200; i++)
+                        text.AppendLine($"line {i}: the quick brown fox jumps over the lazy dog");
+
+                    return Task.FromResult(
+                        new HTTPResponse.Builder(request) {
+                            HTTPStatusCode  = HTTPStatusCode.OK,
+                            ContentType     = HTTPContentType.Text.PLAIN,
+                            ETag            = "\"prose-1\"",
+                            Content         = text.ToString().ToUTF8Bytes()
+                        }.AsImmutable
+                    );
+
+                }
+            );
 
             #endregion
 

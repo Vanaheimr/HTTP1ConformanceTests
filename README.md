@@ -25,15 +25,15 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 270/270 checks, ~103 s
+tests/run-tests.sh        # 279/279 checks, ~103 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **69/69** (70 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **270/270** — and **339/339** with `--wsl`, which adds a second curl build |
-| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes |
+| `tests/curl-matrix.sh` | **78/78** (79 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **279/279** — and **357/357** with `--wsl`, which adds a second curl build |
+| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 18 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |
 
@@ -41,15 +41,15 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Measured by | Count | What |
 |---|---|---:|---|
-| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **561** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
-| ↳ the protocol regression selection | the eight-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **329** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings, .NET interop |
+| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **604** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| ↳ the protocol regression selection | the eleven-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **372** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings in both roles, .NET interop |
 | ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **49** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **562** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 561 and 562, and it is why this table and a CI log used to disagree by one for no visible reason |
+| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **605** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 604 and 605, and it is why this table and a CI log used to disagree by one for no visible reason |
 | Autobahn vs. the **server** (demo host `:8081`) | `tests/autobahn.sh` | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
-Every count above is a **run** count, re-measured on 2026-09-23 against Hermod
-`ddf28280` by running the filter in its own row — which is now printed, because
+Every count above is a **run** count, re-measured on 2026-09-24 against Hermod
+`46200a51` by running the filter in its own row — which is now printed, because
 every time a figure here drifted it was a figure whose filter nobody could check.
 
 `--list-tests` and `dotnet test` disagree on this checkout, and by a stable

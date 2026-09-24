@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **561 NUnit tests** in `libs/Hermod/HermodTests/`
-under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **329** are the HTTP/1.x
+**Tests:** most coverage is the **604 NUnit tests** in `libs/Hermod/HermodTests/`
+under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **372** are the HTTP/1.x
 protocol regression selection and **49** cover RFC 6455/7692 WebSockets. CI gates
-on 561 + the single test in `Tests.HTTPS.` = **562**. These are run counts, not
+on 604 + the single test in `Tests.HTTPS.` = **605**. These are run counts, not
 `--list-tests` counts; see the note under the coverage table in
 [`README.md`](README.md) for why the two differ by three here:
 
@@ -128,8 +128,8 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
-**A3 done** — the curl matrix (69 checks, 70 where curl has HTTP/2 *and* the
-target is local — see [`tests/README.md`](tests/README.md)). The gate is **270/270 over both
+**A3 done** — the curl matrix (78 checks, 79 where curl has HTTP/2 *and* the
+target is local — see [`tests/README.md`](tests/README.md)). The gate is **279/279 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
@@ -163,9 +163,9 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 561 `Tests.HTTP.` / 329 regression selection / 49 WebSockets, all run counts — 562 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
-| this repo's gate | **270/270**, cleartext and TLS (201 raw-wire + 69 curl) |
-| with `--wsl` (second curl build) | **339/339** |
+| Hermod's own NUnit suites | 604 `Tests.HTTP.` / 372 regression selection / 49 WebSockets, all run counts — 605 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
+| this repo's gate | **279/279**, cleartext and TLS (201 raw-wire + 78 curl) |
+| with `--wsl` (second curl build) | **357/357** |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 
@@ -175,14 +175,16 @@ first consumer of these APIs that is not also a test written by their author.
 
 ### What the state analysis found
 
-Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-20 in
-[`PLAN.md`](PLAN.md). The four that matter most:
+Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-26 in
+[`PLAN.md`](PLAN.md). The four that mattered most are the four that are done —
+kept here struck through rather than deleted, because what each one turned out to
+be is more useful than what it was reported as:
 
 | | |
 |---|---|
-| **H-2** | **no content coding at all** for HTTP/1 bodies — `Content-Encoding`/`Accept-Encoding` are header models with no codec behind them. `HTTP2/Core/HTTPContentCoding.cs` already implements `br`/`gzip`/`deflate` |
-| **H-3** | `HTTPDigestAuthentication` is **not** RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/response. curl's `--digest` will not interoperate |
-| **H-1** | `308` missing entirely; `425` exists under the stale name `NoCode` (RFC 8470 calls it *Too Early*). Also absent: `103` `421` `451` `511` |
+| ~~**H-2**~~ | *no content coding at all for HTTP/1 bodies* — half wrong when written (`SinglePageAppHandler` had compressed static files all along) and four fixes rather than one: decoding a buffered body, decoding a streamed one, the client's `Accept-Encoding`, and a server-wide compression filter. Whole 2026-09-24 |
+| ~~**H-3**~~ | *`HTTPDigestAuthentication` is not RFC 7616* — it was dead code nothing referenced. Fixed 2026-09-24 by moving the RFC 9110 §11 framework out of `HTTP2/`, where it had made the already-correct scheme unreachable. curl authenticates with SHA-256 |
+| ~~**H-1**~~ | *`308` missing, `425` under the stale name `NoCode`* — fixed 2026-09-23, with the rest of the IANA registry and an `IsNotSuccessful` that was constant false |
 | ~~**H-16**~~ | *the general HTTP server has no `Upgrade` dispatch* — fixed upstream 2026-09-16, and the demo's `/ws` route landed 2026-09-24 |
 
 ### The distinction the matrix exists to preserve

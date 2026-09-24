@@ -385,12 +385,49 @@ wo    "Upgrade without the token → 426"  '%{http_code}' "426" --max-time 5 \
 # Content coding
 # ---------------------------------------------------------------------------
 echo "  -- content coding --"
-# The server has no codec at all (H-2). What matters is that it degrades
-# cleanly rather than emitting something it cannot produce: curl asks for
-# gzip/br/zstd and must still get a correct identity response.
+# The server compresses what the client said it could decompress (RFC 9110,
+# Section 8.4). Only the checks that read a *header* use --compressed: passing
+# an Accept-Encoding by hand means curl does not decode, which keeps these
+# deterministic across two curl builds that do not offer the same codings.
+#
+# The root document is 26 bytes and stays identity however hard anyone asks:
+# below a kilobyte the gzip framing costs more than it saves.
 wo    "--compressed still succeeds"    '%{http_code}' "200" --compressed "$BASE/"
 has   "--compressed yields identity content" "Hermod HTTP/1.1 demo host" --compressed "$BASE/"
-hasnt "no Content-Encoding is claimed" "Content-Encoding:" --compressed -D- "$BASE/"
+hasnt "a body under the threshold stays identity" "Content-Encoding:" --compressed -D- "$BASE/"
+
+# /prose is text/plain and well over that threshold.
+has   "a compressible body is compressed" "Content-Encoding: br" \
+      -H "Accept-Encoding: br" -D- -o /dev/null "$BASE/prose"
+has   "the coding is the client's choice, not ours" "Content-Encoding: gzip" \
+      -H "Accept-Encoding: gzip" -D- -o /dev/null "$BASE/prose"
+
+# Labelled as encoded is not the same as encoded. curl does not decode what it
+# did not ask for with --compressed, so this reads the actual octets.
+hasnt "and the text is really not on the wire" "the quick brown fox" \
+      -H "Accept-Encoding: gzip" "$BASE/prose"
+has   "--compressed round-trips it back" "the quick brown fox" --compressed "$BASE/prose"
+
+# RFC 9110, Section 12.4.2: q=0 rules a coding out rather than asking for it.
+hasnt "q=0 is a refusal, not a preference" "Content-Encoding:" \
+      -H "Accept-Encoding: gzip;q=0, br;q=0" -D- -o /dev/null "$BASE/prose"
+
+# Section 12.5.5: a cache that does not know this will hand gzip to a client
+# that never asked for it.
+has   "Vary names what the answer depends on" "Vary: Accept-Encoding" \
+      -H "Accept-Encoding: br" -D- -o /dev/null "$BASE/prose"
+
+# Section 8.8.3: encoded and identity are two representations, so a strong
+# validator has to tell them apart.
+has   "the encoded representation has its own ETag" 'ETag: "prose-1-br"' \
+      -H "Accept-Encoding: br" -D- -o /dev/null "$BASE/prose"
+has   "the identity one keeps the plain ETag" 'ETag: "prose-1"' \
+      -D- -o /dev/null "$BASE/prose"
+
+# /large would compress beautifully — 128 KiB of a repeating alphabet — and is
+# left alone anyway, because the decision is made on the media type.
+hasnt "an octet-stream body is left alone" "Content-Encoding:" \
+      -H "Accept-Encoding: br, gzip" -D- -o /dev/null "$BASE/large"
 
 # ---------------------------------------------------------------------------
 # Redirects
