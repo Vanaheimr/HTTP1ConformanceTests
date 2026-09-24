@@ -267,7 +267,7 @@ no records at all, which looked like broken wiring. It was not. The Debug line t
 guaranteed — `RemoveConnection`, "Removing HTTP WebSocket connection with …" — is on a method
 **nothing calls**. A passing case logs nothing because a passing case has nothing to say.
 
-### Reproduction: failed, 14 attempts
+### Reproduction: failed, 14 attempts — and then the instrument answered
 
 Stated plainly, because a mechanism that fits is not a mechanism that was demonstrated:
 
@@ -291,6 +291,67 @@ hypotheses.
 minute instead of eight. A slice does not carry the floor — a floor is a statement about the
 whole suite — but a hard failure in one is still fatal, which is the half that matters when
 chasing one case.
+
+### The next occurrence, 2026-09-24 02:37 — and it named itself
+
+Case **12.5.15** this time, not 12.4.18, and the same signature to the letter: `FAILED`,
+`droppedByMe: false`, no opcode 8 in either direction, "peer dropped the TCP connection without
+previous WebSocket closing handshake", 3342 ms into a case whose own deadline is 480 s.
+
+The log the previous entry added is what turned that into an answer. Three lines, one socket:
+
+```
+02:34:56.847   case 12.5.15 starts
+02:35:00.198   dbug  Read error on WebSocket connection 127.0.0.1:41346.
+               System.ObjectDisposedException: Cannot access a disposed object.
+               Object name: 'System.Net.Sockets.NetworkStream'.
+                 at WebSocketServerConnection.ReadAsync  …/WebSocketServerConnection.cs:706
+                 at AWebSocketServer.RunConnectionAsync  …/AWebSocketServer.cs:1203
+02:35:00.210   dbug  ATCPServer: Cleaned up stale client 127.0.0.1:41346.
+```
+
+`AWebSocketServer.cs:1203` is one of the exactly two paths that can end that read loop without a
+close frame — the one the previous entry found logs at Debug. It is reached because something
+disposed the socket underneath an in-flight read, and twelve milliseconds later the TCP server
+says what that something was: its Warden reaped the connection as *stale* while the case was
+running.
+
+### The cause: a liveness check racing the reader it is checking on
+
+`ATCPServer`'s Warden walks its active connections and closes the ones it believes are gone
+(`ATCPServer.cs:570`). What it believes is `TCPConnection.IsConnectionClosed()`:
+
+```csharp
+return socket.Poll(0, SelectMode.SelectRead) &&
+      (socket.Available == 0);
+```
+
+This is the textbook idiom for "has the peer vanished", and it is a **race against the
+connection's own reader**. `Poll(SelectRead)` is true when the socket is readable — which means
+either data has arrived *or* the peer closed. `Available == 0` is what separates the two. Between
+those two statements the WebSocket read loop drains the socket, so the Warden sees "readable, and
+nothing available", concludes the peer is gone, and calls `TCPClient.Close()` on a connection that
+is very much alive.
+
+Every property of the failure follows from that and none of them had to be guessed:
+
+| observed | because |
+|---|---|
+| only under load | the window needs a reader actively consuming — section 12.x sends a thousand large compressed messages |
+| intermittent, ~1 run in 4 | it is the gap between two statements |
+| mid-case, never at a boundary | the Warden runs on its own timer, unrelated to case boundaries |
+| no close frame | the socket is already disposed when the loop notices |
+| `droppedByMe: false` | correct — the suite did not drop it; we did |
+| silent until 2026-09-23 | the record is a Debug one, and the demo host logged into a `NullLoggerFactory` |
+
+**The exposure is wider than WebSocket.** `AHTTPServer : ATCPServer` too, so the same Warden with
+the same predicate watches every plain HTTP/1.1 connection this stack serves: a large download, a
+keep-alive connection mid-body, an SSE stream. Autobahn found it because section 12 keeps a reader
+busier than anything else this repository runs, not because WebSocket is special.
+
+Recorded as **H-25**. The fix is a decision about what the Warden should do with a connection that
+has a read in flight — the reader detects a vanished peer by itself, so the net is only needed for
+connections nobody is reading.
 
 ## Reading the report
 
