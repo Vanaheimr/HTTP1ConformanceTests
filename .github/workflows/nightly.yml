@@ -186,3 +186,82 @@ jobs:
           path: |
             tests/autobahn/reports-client/
             artifacts/autobahn-client.txt
+
+  against-hermod-master:
+    # The two jobs above test the revision the gitlink pins, which is the right
+    # question for "would a fresh clone build". It is the wrong question for what
+    # this repository is: an independent suite that can be pointed at any Hermod
+    # revision, and whose Track B workflow ENDS in "bump the pin". Nothing else
+    # asks whether that bump is safe — a push to Hermod does not touch this
+    # repository, and a bump happens only when a human decides to make one.
+    #
+    # Both sibling repositories have had this job for a while and this one did
+    # not, which showed on 2026-09-23: Hermod master took a breaking rename
+    # (H-1 turned HTTPStatusCode.NoCode into TooEarly) and a type moved namespace
+    # (HTTPContentCoding, HTTP2 -> HTTP), both from work driven out of THIS
+    # repository, and nothing here would have said a word if they had broken it.
+    #
+    # Red here is a FINDING, not a broken build — the gate stays on the pin and
+    # stays deterministic. That is why this is a separate job.
+    name: against-hermod-master
+
+    # One leg, and Windows. The question is whether a library change breaks this
+    # repository, which is not platform-specific, so a second leg buys a second
+    # copy of the same answer. The only check the Debian leg has and this one
+    # does not is "--http1.1 honoured by an HTTP/2-capable curl", and that one
+    # measures curl rather than Hermod — see tests/README.md for the two
+    # conditional checks and why the totals differ by leg.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Move the submodules to master
+        shell: bash
+        run: |
+          git config --global --add safe.directory '*'
+          git submodule foreach 'git fetch origin master && git checkout FETCH_HEAD'
+          {
+            echo '### Submodule revisions under test'
+            echo
+            echo '```'
+            git submodule status
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Debug, without --configuration, exactly as ci.yml builds it. Not a
+      # preference: tests/run-tests.sh looks for the demo host at
+      # Demo/bin/Debug/net10.0/, so a Release build followed by --no-build fails
+      # with "Demo host not built" — which is how the HTTP/3 sibling's copy of
+      # this job would have behaved here, since its runner reads bin/Release.
+      #
+      # The build is also half the answer on its own. A moved Hermod breaks the
+      # compile before it breaks a test, and a rename like H-1's is exactly the
+      # kind that never reaches a test run.
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      - name: Test (HTTP/1.x, against Hermod master)
+        timeout-minutes: 30
+        run: dotnet test libs/Hermod/HermodTests/HermodTests.csproj --no-build --filter "FullyQualifiedName~Hermod.Tests.HTTP.|FullyQualifiedName~Hermod.Tests.HTTPS." --logger "console;verbosity=normal" --logger "trx;LogFileName=against-hermod-master.trx" --results-directory artifacts
+
+      # The harnesses are the half Hermod's own CI cannot run: a live demo host
+      # over a real socket. A library change that compiles and passes the
+      # in-process tests can still change what goes on the wire.
+      - name: Harnesses
+        timeout-minutes: 20
+        shell: bash
+        run: tests/run-tests.sh --no-build
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-against-hermod-master
+          path: artifacts/*.trx
