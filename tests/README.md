@@ -25,31 +25,33 @@ scrapes output for a marker character.
 
 ## Status
 
-**261/261 checks pass, over both transports** — 201 raw-wire + 60 curl.
-With `--wsl`, a second curl build joins in: **321/321**.
+**266/266 checks pass, over both transports** — 201 raw-wire + 65 curl.
+With `--wsl`, a second curl build joins in: **331/331**.
 
-The curl figure is 60 **here** and 61 on the CI Debian leg, and that is not a
-discrepancy to reconcile. Two of the matrix's checks are conditional:
+The curl figure is 65 **here** and 66 on the CI Debian leg, and that is not a
+discrepancy to reconcile. Two of the matrix's checks are conditional, and a
+third is always present but expects a different answer per build:
 
 | Check | Runs when |
 |---|---|
 | `--http1.1 honoured by an HTTP/2-capable curl` | the curl under test was built with nghttp2 — a build that *cannot* upgrade proves nothing by not upgrading |
 | `curl stored the ETag` | the target is local, so `--etag-save` writes somewhere this script can read |
+| `--digest SHA-256` | *always runs*, but expects 200 from a build that implements RFC 7616 with SHA-256 and 401 from one that does not. curl 8.14 (OpenSSL) does; curl 8.21 (Schannel) sends no `Authorization` at all. Predicted from the TLS backend in the version banner and then asserted, so a build that breaks the pattern fails rather than being quietly accommodated |
 
-So 59 checks always run, and the two flags give three real combinations:
+So 64 checks always run, and the two counting flags give three real combinations:
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the CI Windows leg | no | yes | 60 | **261** |
-| the Debian curl reached through WSL (`--wsl`) | yes | no | 60 | — |
-| the CI `debian:13` container | yes | yes | 61 | **262** |
+| Windows / Git Bash, and the CI Windows leg | no | yes | 65 | **266** |
+| the Debian curl reached through WSL (`--wsl`) | yes | no | 65 | — |
+| the CI `debian:13` container | yes | yes | 66 | **267** |
 
 The first two agree at 60 for opposite reasons, which is worth knowing before
 someone reconciles them into one number.
 
 | Harness | Checks | Covers |
 |---|---:|---|
-| `curl-matrix.sh` | 60–61 | **third-party**: version handling, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
+| `curl-matrix.sh` | 65–66 | **third-party**: version handling, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |
@@ -96,7 +98,7 @@ interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
 ```bash
-tests/run-tests.sh --wsl        # 321/321 — both curl builds
+tests/run-tests.sh --wsl        # 331/331 — both curl builds
 ```
 
 `--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the

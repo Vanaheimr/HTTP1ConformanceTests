@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **551 NUnit tests** live with the stack in Hermod
+suite drivers; the **561 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **551 NUnit tests** in `libs/Hermod/HermodTests/`
-under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **319** are the HTTP/1.x
+**Tests:** most coverage is the **561 NUnit tests** in `libs/Hermod/HermodTests/`
+under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **329** are the HTTP/1.x
 protocol regression selection and **49** cover RFC 6455/7692 WebSockets. CI gates
-on 551 + the single test in `Tests.HTTPS.` = **552**. These are run counts, not
+on 561 + the single test in `Tests.HTTPS.` = **562**. These are run counts, not
 `--list-tests` counts; see the note under the coverage table in
 [`README.md`](README.md) for why the two differ by three here:
 
@@ -128,8 +128,8 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
-**A3 done** — the curl matrix (60 checks, 61 where curl has HTTP/2 *and* the
-target is local — see [`tests/README.md`](tests/README.md)). The gate is **261/261 over both
+**A3 done** — the curl matrix (65 checks, 66 where curl has HTTP/2 *and* the
+target is local — see [`tests/README.md`](tests/README.md)). The gate is **266/266 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
@@ -163,9 +163,9 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 551 `Tests.HTTP.` / 319 regression selection / 49 WebSockets, all run counts — 552 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
-| this repo's gate | **261/261**, cleartext and TLS (201 raw-wire + 60 curl) |
-| with `--wsl` (second curl build) | **321/321** |
+| Hermod's own NUnit suites | 561 `Tests.HTTP.` / 329 regression selection / 49 WebSockets, all run counts — 562 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
+| this repo's gate | **266/266**, cleartext and TLS (201 raw-wire + 65 curl) |
+| with `--wsl` (second curl build) | **331/331** |
 | Autobahn (server) | **481/517** + 36 declined — nightly, gated on the floor, but see **H-25**: 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 

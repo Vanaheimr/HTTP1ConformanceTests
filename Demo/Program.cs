@@ -84,6 +84,33 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
         #endregion
 
 
+        #region Data
+
+        /// <summary>
+        /// The protection space /secret advertises, shared by all three schemes
+        /// it accepts. Digest folds the realm into HA1, so a client that hashed a
+        /// different one produces a response that cannot match — which makes this
+        /// constant load-bearing rather than cosmetic.
+        /// </summary>
+        private const String DemoRealm = "Hermod HTTP/1.1 demo";
+
+        /// <summary>
+        /// RFC 7616 Digest for /secret. One instance for the whole host, and that
+        /// is not tidiness: the nonce is stateless and signed with a secret this
+        /// object generates for itself, so a second instance would reject every
+        /// nonce the first one minted. ConfigureAPI runs twice, once per listener.
+        /// </summary>
+        private static readonly DigestAuthenticationScheme digestScheme =
+
+            new (Realm:           DemoRealm,
+                 LookupPassword:  (username, cancellationToken) => Task.FromResult<String?>(
+                                      username == "alice"
+                                          ? "secret"
+                                          : null
+                                  ));
+
+        #endregion
+
         #region Main(Arguments)
 
         public static async Task<Int32> Main(String[] Arguments)
@@ -524,7 +551,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                     return Task.FromResult(
                         new HTTPResponse.Builder(request) {
                             HTTPStatusCode   = HTTPStatusCode.Unauthorized,
-                            WWWAuthenticate  = WWWAuthenticate.Basic("Hermod HTTP/1.1 demo"),
+                            WWWAuthenticate  = WWWAuthenticate.Basic(DemoRealm),
                             ContentType      = HTTPContentType.Text.PLAIN,
                             Content          = "unauthorized\n".ToUTF8Bytes()
                         }.AsImmutable
@@ -532,6 +559,87 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
                 }
             );
+
+            #endregion
+
+            #region GET /secret/digest[-md5]  — RFC 7616 Digest, one scheme per route
+
+            // Digest lives at its own routes rather than joining /secret, and the
+            // reason is measured rather than stylistic. curl 8.21 answers a
+            // WWW-Authenticate field only when it carries EXACTLY ONE challenge:
+            //
+            //   Digest(MD5) alone                     -> 200
+            //   Digest(SHA-256) alone                 -> 401, no Authorization sent
+            //   Digest(SHA-256), Digest(MD5)          -> 401
+            //   Digest(MD5), Digest(SHA-256)          -> 401
+            //   Digest(MD5), Basic                    -> 401
+            //
+            // Adding Digest to /secret's challenge would therefore have broken
+            // curl's --anyauth against it, a check that passes today. RFC 9110
+            // Section 11.6.1 allows several challenges in one field and notes in
+            // the same breath that parsing them is ambiguous, because auth-params
+            // are comma-separated too; separate header lines are the unambiguous
+            // form, and this response builder models WWW-Authenticate as a
+            // single-valued field. So: one route, one challenge, no ambiguity.
+            //
+            // Two routes because the algorithm is the whole point of the split.
+            // SHA-256 is what RFC 7616 introduced and what this server prefers;
+            // MD5 is what a widely deployed client can actually use. Publishing
+            // only one of them would hide either the capability or the gap.
+            foreach (var (path, algorithm) in new[] {
+                                                  ("digest",     "SHA-256"),
+                                                  ("digest-md5", "MD5")
+                                              })
+            {
+
+                API.AddHandler(
+                    HTTPMethod.GET,
+                    HTTPPath.Root + "secret" + path,
+                    HTTPDelegate: async request => {
+
+                        // Digest cannot be answered by comparing fields the way
+                        // Basic and Bearer are: the response is a hash over a nonce
+                        // this server issued, so validating it means recomputing it.
+                        // The scheme owns the nonce secret, its age and the
+                        // arithmetic of RFC 7616 Section 3.4; the handler only
+                        // decides what a valid identity is allowed to see.
+                        if (request.Authorization is HTTPDigestAuthentication digest &&
+                            await digestScheme.AuthenticateAsync(
+                                      digest.Credentials,
+                                      request.HTTPMethod,
+                                      request.Path.ToString(),
+                                      request.CancellationToken
+                                  ) is not null)
+                        {
+                            return new HTTPResponse.Builder(request) {
+                                       HTTPStatusCode  = HTTPStatusCode.OK,
+                                       ContentType     = HTTPContentType.Text.PLAIN,
+                                       Content         = $"the secret, via {algorithm}\n".ToUTF8Bytes()
+                                   }.AsImmutable;
+                        }
+
+                        // Raw text rather than WWWAuthenticate.Digest(...): that
+                        // type's serializer quotes every parameter, and RFC 7616
+                        // Section 3.3 makes `algorithm` a token, so
+                        // `algorithm="SHA-256"` would be wrong on the wire.
+                        // BuildChallenges emits it unquoted.
+                        var unauthorized = new HTTPResponse.Builder(request) {
+                                               HTTPStatusCode  = HTTPStatusCode.Unauthorized,
+                                               ContentType     = HTTPContentType.Text.PLAIN,
+                                               Content         = "unauthorized\n".ToUTF8Bytes()
+                                           };
+
+                        unauthorized.SetHeaderField(
+                            "WWW-Authenticate",
+                            digestScheme.BuildChallenges(DemoRealm, algorithm)
+                        );
+
+                        return unauthorized.AsImmutable;
+
+                    }
+                );
+
+            }
 
             #endregion
 

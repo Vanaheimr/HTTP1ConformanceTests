@@ -13,7 +13,7 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-09-23):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **261/261 checks green
+14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **266/266 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
 nightly for both Autobahn directions. Track B: **25 findings, 2 fixed upstream**
@@ -23,12 +23,12 @@ and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 261/261, ~103 s |
-| `tests/run-tests.sh --tls` | ✅ 261/261, ~270 s |
-| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 552, both legs — 537 before H-1/H-2 |
-| ↳ `Tests.HTTP.` alone | ✅ 551 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 321/321 — adds the Debian curl |
-| third-party: curl | ✅ 60/60 per build, two builds, both transports — 61 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the two conditional checks |
+| `tests/run-tests.sh` | ✅ 266/266, ~103 s |
+| `tests/run-tests.sh --tls` | ✅ 266/266, ~270 s |
+| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 562, both legs — 537 before H-1/H-2 |
+| ↳ `Tests.HTTP.` alone | ✅ 561 — the missing one is all of `Tests.HTTPS.` |
+| `tests/run-tests.sh --wsl` | ✅ 331/331 — adds the Debian curl |
+| third-party: curl | ✅ 65/65 per build, two builds, both transports — 66 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | 🔶 481/517 + 36 declined, nightly, gated — but 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23, see **H-25** |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
@@ -161,12 +161,13 @@ library failure.
 
 ## ✅ A3 · curl matrix
 
-**60/60 checks pass over both transports**, wired into `tests/run-tests.sh` —
-the gate stands at **261/261** (201 raw-wire + 60 curl). It read 257 when A3
-closed; the four since are `308` joining `/redirect/{code}` once H-1 landed. See
+**65/65 checks pass over both transports**, wired into `tests/run-tests.sh` —
+the gate stands at **266/266** (201 raw-wire + 65 curl). It read 257 when A3
+closed; the nine since are `308` joining `/redirect/{code}` once H-1 landed, and
+the five Digest checks that H-3 made possible. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **321/321**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **331/331**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -332,7 +333,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 |---|---|---|---|---|---|---|
 | ✅ | **H-1** | Missing status codes: `103` `308` `421` `451` `511` `208` `508`; **`425` is defined but named `NoCode`** | RFC 8297, 9110 §15.4.9/§15.5.20, 7725, 6585, 8470, 5842 | P1 | XS | **Fixed 2026-09-23, merged and pinned, [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29).** `NoCode` → `TooEarly`; 102 and 226 added alongside the seven, so the whole IANA registry is now defined rather than all-but-two. `IsNotSuccessful` was `Code < 200 && Code >= 300` — constant false for every code — and is fixed with it. 7 tests |
 | 🔶 | **H-2** | No content coding for HTTP/1 bodies — *decoding* was missing in both roles; the "neither compresses" half of this finding was wrong, see the note | RFC 9110 §8.4, 1952, 7932, 8878 | P1 | S | **Decoding fixed 2026-09-23, merged and pinned, [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29).** `HTTPContentCoding` lifted to `HTTP/General/` (the shared tree had been reaching into the HTTP/2 namespace for it) and wired into `AHTTPPDU`: `DecodeBody`/`TryDecodeBody`, reverse order, unknown codings refused, 64 MiB ceiling. 8 tests. **Still open:** the client offers no `Accept-Encoding` and does not decode a *streamed* body (belongs inside `HTTPBodyStream`, and that path carries chunked/SSE/close-delimited/keep-alive), and there is no general server-side compression filter — `SinglePageAppHandler` has compressed static files all along, which is the part the finding got wrong |
-| ⬜ | **H-3** | `HTTPDigestAuthentication` is *not* RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/nc/cnonce/response | RFC 7616 | P1 | M | Either implement RFC 7616 properly, or rename to something non-colliding. The current name will mislead every reader; curl's `--digest` will not interoperate |
+| 🔶 | **H-3** | `HTTPDigestAuthentication` is *not* RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/nc/cnonce/response | RFC 7616 | P1 | M | **Fixed 2026-09-24, [Hermod#30](https://github.com/Vanaheimr/Hermod/pull/30)** — 🔶 until the pin moves. It was dead code, referenced by nothing, not even the `Authorization` dispatcher. The RFC 9110 §11 framework moved from `HTTP2/` to `HTTP/Authentication/` (it was version-independent all along and said so in its own summary), which is what had made the existing correct `DigestAuthenticationScheme` unreachable from HTTP/1.x. 10 tests, and curl 8.14 authenticates with **SHA-256**. See the note on multiple challenges in `HTTP1/README.md` |
 | ⬜ | **H-4** | `Forwarded` not implemented (only `X-Forwarded-For`) | RFC 7239 | P2 | S | Already marked `//ToDo` at `HTTP1/Request/HTTPRequest.cs:1125` |
 | ⬜ | **H-5** | No RFC 9111 cache (client- or server-side) | RFC 9111, 5861, 8246 | P2 | L | `HTTP2/Core/HTTPCache.cs` + `HTTPCacheControl`/`HTTPCacheDecision`/`HTTPStoredResponse` exist. Same lift as H-2, much larger. Verifiable against `cache-tests.fyi` |
 | ⬜ | **H-6** | No Structured Field Values parser/serializer | RFC 9651 | P2 | M | Prerequisite for most modern fields (9530, 9211, 9213, 9218, Client Hints) |
@@ -375,7 +376,7 @@ nothing is waiting on them any more.
 **First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 ✅ + H-2 🔶 — a
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Five and a half of six: H-2 turned out to
-be two fixes, and only the decoding one is in. The number is now **261/261**, and 60 of those come from a
+be two fixes, and only the decoding one is in. The number is now **266/266**, and 65 of those come from a
 client nobody here wrote — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ⬜ A5 — Autobahn reproducible from a
@@ -398,7 +399,7 @@ three.
   accidentally upgrade, the Debian one proves `--http1.1` and ALPN are honoured.
 - **Test placement follows the HTTP/2 repo.** In-process unit and integration
   tests live with the stack in `HermodTests/` (filter
-  `FullyQualifiedName~Hermod.Tests.HTTP.`, 551 today); this repository holds
+  `FullyQualifiedName~Hermod.Tests.HTTP.`, 561 today); this repository holds
   only the demo-driven raw-wire harnesses, the third-party suite drivers and the
   tooling. A2 produces harnesses, not NUnit
   fixtures — a Track B fix's regression test goes upstream with the fix.

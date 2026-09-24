@@ -25,14 +25,14 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 261/261 checks, ~103 s
+tests/run-tests.sh        # 266/266 checks, ~103 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **60/60** (61 on the CI Debian leg — two checks are conditional) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **261/261** — and **321/321** with `--wsl`, which adds a second curl build |
+| `tests/curl-matrix.sh` | **65/65** (66 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **266/266** — and **331/331** with `--wsl`, which adds a second curl build |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |
@@ -41,10 +41,10 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Measured by | Count | What |
 |---|---|---:|---|
-| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **551** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
-| ↳ the protocol regression selection | the seven-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **319** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings, .NET interop |
+| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **561** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| ↳ the protocol regression selection | the eight-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **329** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings, .NET interop |
 | ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **49** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **552** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 551 and 552, and it is why this table and a CI log used to disagree by one for no visible reason |
+| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **562** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 561 and 562, and it is why this table and a CI log used to disagree by one for no visible reason |
 | Autobahn vs. the **server** (demo host `:8081`) | `tests/autobahn.sh` | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
@@ -53,22 +53,25 @@ Every count above is a **run** count, re-measured on 2026-09-23 against Hermod
 every time a figure here drifted it was a figure whose filter nobody could check.
 
 `--list-tests` and `dotnet test` disagree on this checkout, and by a stable
-amount: 554 listed against 551 run for `Tests.HTTP.`, and 322 against 319 for the
-regression selection. Nothing is skipped in either run, so the listing counts
+amount: three, whatever the totals are — re-measured 2026-09-24 at 564 listed
+against 561 run for `Tests.HTTP.`, and 332 against 329 for the regression
+selection. Nothing is skipped in either run, so the listing counts
 three entries that never become a test case — and the same three both times,
 since they sit inside the regression files. `Tests.HTTP.WebSockets` agrees at 49.
 A number that is not the number the gate produces is not the number to publish.
 
-**Why the regression selection moved from 299 to 319**, since a reader is owed
-more than "it went up": **five of those twenty are not new tests.** The filter
-itself gained two files on 2026-09-23 — `HTTPStatusCodeTests` (7 tests, all new)
-and `ContentEncodingHeaderTests` (13, of which 8 are new and 5 existed all along
-but had never been in the selection). So 15 tests were written and 5 were merely
-included. Run the five-file filter this figure used to name and it still answers
-299, exactly as before: the selection grew, the older tests did not multiply.
+**Why the regression selection moved from 299 to 329**, since a reader is owed
+more than "it went up": **five of those thirty are not new tests.** The filter
+itself gained three files. On 2026-09-23, `HTTPStatusCodeTests` (7 tests, all
+new) and `ContentEncodingHeaderTests` (13, of which 8 are new and 5 existed all
+along but had never been in the selection); on 2026-09-24,
+`HTTPDigestAuthenticationTests` (10, all new). So 25 tests were written and 5
+were merely included. Run the five-file filter this figure used to name and it
+still answers 299, exactly as before: the selection grew, the older tests did
+not multiply.
 
 That filter lives in [`libs/Hermod/Hermod/HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md),
-which recorded **295** on 2026-07-18 and now records 319. Those two are not
+which recorded **295** on 2026-07-18 and now records 329. Those two are not
 comparable either: the 295 was a list count.
 
 ## Requirements

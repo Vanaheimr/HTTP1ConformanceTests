@@ -29,6 +29,8 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/files/resource.txt` | GET HEAD OPTIONS | `ETag`/`Last-Modified`, conditional requests, `Range` → `206`/`416` |
 | `/files/greeting` | GET | proactive negotiation (`Accept`, `Accept-Language`) + `Vary` |
 | `/secret` | GET | `401` + `WWW-Authenticate`, Basic (`alice:secret`) and Bearer (`valid-token-123`) |
+| `/secret/digest` | GET | RFC 7616 Digest, `algorithm=SHA-256` (`alice:secret`) |
+| `/secret/digest-md5` | GET | the same with `algorithm=MD5` — what a Schannel-built curl can actually use |
 | `/search` | GET QUERY | RFC 10008 QUERY + `Content-Location` |
 | `/expect` | POST | `Expect: 100-continue` |
 | `/redirect/{code}` | GET | `301` `302` `303` `307` `308` |

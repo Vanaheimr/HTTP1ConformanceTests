@@ -52,6 +52,24 @@ else
     HAS_H2="no"
 fi
 
+# Whether this curl can answer a Digest challenge that advertises SHA-256.
+#
+# Measured, both ways, on 2026-09-24: curl 8.14.1 (x86_64-pc-linux-gnu,
+# OpenSSL) authenticates and gets 200; curl 8.21.0 (x86_64-w64-mingw32,
+# Schannel) sends no Authorization header at all and takes the 401 again. MD5
+# works in both. The discriminator below is the TLS backend in the version
+# banner — which is what separates the two builds this matrix runs, not a claim
+# about curl's internals.
+#
+# It is a PREDICTION, and then both branches assert. A build that breaks the
+# pattern fails a check and says so, instead of the matrix quietly agreeing with
+# whatever happened — which is what a probe that reads the outcome would do.
+if $CURL --version 2>/dev/null | grep -qi "Schannel"; then
+    HAS_DIGEST_SHA256="no"
+else
+    HAS_DIGEST_SHA256="yes"
+fi
+
 TMP="$(mktemp -d -t curlmatrix.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -291,11 +309,46 @@ wo    "Bearer token → 200"             '%{http_code}' "200" -H "Authorization:
 # independent implementation.
 wo    "--anyauth negotiates from the challenge" '%{http_code}' "200" --anyauth -u alice:secret "$BASE/secret"
 
-# --digest is an expected failure, and it is documented as one: Hermod's
-# HTTPDigestAuthentication is not RFC 7616 (PLAN.md, H-3), so curl's Digest
-# implementation cannot authenticate against it. Pinning it here means the day
-# H-3 is fixed, this check starts failing and says so.
-wo    "--digest fails (expected — H-3, not RFC 7616)" '%{http_code}' "401" --digest -u alice:secret "$BASE/secret"
+# H-3 landed on 2026-09-24: Digest is RFC 7616 now, and the pinned expected
+# failure that stood here did exactly what it was written to do — it turned red
+# and said so. What replaced it is three checks, because what curl can and
+# cannot do turned out to be worth stating separately.
+#
+# /secret still answers 401 to --digest, and no longer because we cannot do
+# Digest: it advertises Basic only. Digest lives at its own routes, and that is
+# forced by curl rather than chosen — curl 8.21 answers a WWW-Authenticate field
+# only when it carries EXACTLY ONE challenge, so adding Digest to /secret's
+# challenge would break the --anyauth check three lines above. Measured, all
+# five combinations, see Demo/Program.cs.
+wo    "--digest against Basic-only /secret → 401" '%{http_code}' "401" --digest -u alice:secret "$BASE/secret"
+
+echo "  -- digest (RFC 7616) --"
+# The interop claim, and the one that matters: a foreign client computes
+# H(HA1:nonce:nc:cnonce:qop:HA2) and our server recomputes it from the password
+# it looks up. Passing means the arithmetic agrees with an implementation that
+# did not write it.
+wo    "--digest MD5 → 200"             '%{http_code}' "200" --digest -u alice:secret "$BASE/secret/digest-md5"
+wo    "--digest wrong password → 401"  '%{http_code}' "401" --digest -u alice:wrong  "$BASE/secret/digest-md5"
+wo    "--anyauth picks Digest → 200"   '%{http_code}' "200" --anyauth -u alice:secret "$BASE/secret/digest-md5"
+
+# SHA-256 is what RFC 7616 introduced and what this server prefers. Whether a
+# check here is a success or an expected failure is a property of the curl
+# build, not of the server — see HAS_DIGEST_SHA256 at the top of this file.
+if [ "$HAS_DIGEST_SHA256" = "yes" ]; then
+    # The stronger claim of the two: a foreign client computes the RFC 7616
+    # SHA-256 response and our server recomputes it. Nothing else in this
+    # repository establishes that.
+    wo "--digest SHA-256 → 200"                       '%{http_code}' "200" --digest -u alice:secret "$BASE/secret/digest"
+else
+    # Asserted rather than skipped, for the same reason the old H-3 expected
+    # failure was asserted: the day this build gains SHA-256 Digest, the check
+    # turns red and tells us instead of passing by omission.
+    wo "--digest SHA-256 → 401 (this curl build's gap)" '%{http_code}' "401" --digest -u alice:secret "$BASE/secret/digest"
+fi
+
+# Server-side, and true on every build: RFC 7616 Section 3.3 makes `algorithm`
+# a token, so a quoted one would be wrong on the wire.
+has   "the SHA-256 challenge is offered unquoted"     "algorithm=SHA-256" -D- "$BASE/secret/digest"
 
 # ---------------------------------------------------------------------------
 # Content coding
