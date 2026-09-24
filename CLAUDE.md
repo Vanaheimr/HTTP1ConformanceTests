@@ -166,7 +166,7 @@ pointed at a foreign suite. See
 | Hermod's own NUnit suites | 561 `Tests.HTTP.` / 329 regression selection / 49 WebSockets, all run counts — 562 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
 | this repo's gate | **266/266**, cleartext and TLS (201 raw-wire + 65 curl) |
 | with `--wsl` (second curl build) | **331/331** |
-| Autobahn (server) | **481/517** + 36 declined — nightly, gated on the floor, but see **H-25**: 12.4.18 dropped the connection in 1 of 4 runs on 2026-09-23 |
+| Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 
 Building A1 and A2 produced three upstream findings between them (**H-21**,
