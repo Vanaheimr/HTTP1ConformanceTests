@@ -56,7 +56,7 @@ jobs:
       #
       # curl is not optional here the way it is in the siblings: this runner
       # probes the demo host with it *and* drives tests/curl-matrix.sh through
-      # it, which is 59 of this leg's 258 checks. The rest are the .NET runtime
+      # it, which is 61 of this leg's 262 checks. The rest are the .NET runtime
       # prerequisites — ICU and tzdata for globalization, OpenSSL for crypto,
       # ca-certificates for NuGet over HTTPS.
       - name: Install prerequisites (Debian container)
