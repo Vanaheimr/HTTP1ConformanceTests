@@ -27,7 +27,7 @@ jobs:
     # The same two legs as the HTTP/2 and HTTP/3 sibling repositories:
     #
     #  * Windows, where the stack has been developed and where the suite is
-    #    known to be 7/7 harnesses (266 checks there, 267 on Debian — see
+    #    known to be 7/7 harnesses (270 checks there, 271 on Debian — see
     #    the harness step).
     #  * Debian 13, matching the siblings. GitHub offers no Debian runner image,
     #    so this runs on an Ubuntu runner inside a debian:13 container —
@@ -56,7 +56,7 @@ jobs:
       #
       # curl is not optional here the way it is in the siblings: this runner
       # probes the demo host with it *and* drives tests/curl-matrix.sh through
-      # it, which is 66 of this leg's 267 checks. The rest are the .NET runtime
+      # it, which is 70 of this leg's 271 checks. The rest are the .NET runtime
       # prerequisites — ICU and tzdata for globalization, OpenSSL for crypto,
       # ca-certificates for NuGet over HTTPS.
       - name: Install prerequisites (Debian container)

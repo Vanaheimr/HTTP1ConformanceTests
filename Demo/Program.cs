@@ -111,6 +111,28 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
         #endregion
 
+        /// <summary>
+        /// The WebSocket the general HTTP server lends its <c>/ws</c> path to.
+        ///
+        /// **Not started, and that is the whole idea.** It never accepts anything
+        /// itself; what it is here for is its protocol, which the HTTP server
+        /// borrows for one path once <c>WebSocketUpgrade.For(...)</c> has handed
+        /// the connection over. A second listener is the thing this route exists
+        /// not to need.
+        ///
+        /// It is separate from the one on :8081 rather than the same object,
+        /// because that one IS started and this contract says the lent server
+        /// must not be. Both speak the same echo.
+        /// </summary>
+        private static readonly WebSocketServer upgradeWebSocketServer =
+
+            new (HTTPServerName:         "Hermod HTTP/1.1 Demo (WebSocket via Upgrade)",
+                 RequireAuthentication:  false,
+                 SecWebSocketProtocols:  [ "echo", "demo" ],
+                 AutoStart:              false) {
+                     EnablePerMessageDeflate = true
+                 };
+
         #region Main(Arguments)
 
         public static async Task<Int32> Main(String[] Arguments)
@@ -246,7 +268,17 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             webSocketServer.OnBinaryMessageReceived += async (timestamp, server, connection, frame, eventTrackingId, data, ct) =>
                 await webSocketServer.SendBinaryMessage(connection, data,   eventTrackingId, ct);
 
+            // The same echo for the lent server, so /ws on the HTTP port and
+            // :8081 answer alike and a difference between them would be a finding
+            // rather than a configuration.
+            upgradeWebSocketServer.OnTextMessageReceived   += async (timestamp, server, connection, frame, eventTrackingId, text, ct) =>
+                await upgradeWebSocketServer.SendTextMessage  (connection, text,   eventTrackingId, ct);
+
+            upgradeWebSocketServer.OnBinaryMessageReceived += async (timestamp, server, connection, frame, eventTrackingId, data, ct) =>
+                await upgradeWebSocketServer.SendBinaryMessage(connection, data,   eventTrackingId, ct);
+
             Console.WriteLine($"  ✓ WebSocket listener on :{wsPort}");
+            Console.WriteLine($"  ✓ WebSocket via Upgrade on /ws (both HTTP listeners)");
 
             // Say so in the log itself. "Was the instrument even switched on?"
             // is a question a silent log cannot answer, and this repository has
@@ -521,6 +553,30 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                     );
 
                 }
+            );
+
+            #endregion
+
+            #region GET /ws  — RFC 9110 §7.8 Upgrade: a WebSocket on the HTTP port
+
+            // The demo's WebSocket listener on :8081 is a second TCP server. That
+            // is not how a deployment does it: a real one serves HTTP and
+            // WebSocket on one port and switches protocol per request, which is
+            // what RFC 9110 Section 7.8 and RFC 9112 Section 9.6 describe.
+            //
+            // Hermod grew the seam for that on 2026-09-16 and nothing here used
+            // it. WebSocketUpgrade.For(...) answers the handshake by handing the
+            // connection to the WebSocket server's own implementation of RFC 6455
+            // Section 4.2.1 — the same one :8081 uses. There is deliberately no
+            // second copy of the handshake: two implementations of one security
+            // negotiation is how the older of them ends up a version behind.
+            //
+            // Both listeners get this route, because ConfigureAPI runs for each,
+            // so the upgrade is reachable over cleartext and over TLS.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "ws",
+                HTTPDelegate: WebSocketUpgrade.For(upgradeWebSocketServer)
             );
 
             #endregion

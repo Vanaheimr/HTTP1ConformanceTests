@@ -351,6 +351,37 @@ fi
 has   "the SHA-256 challenge is offered unquoted"     "algorithm=SHA-256" -D- "$BASE/secret/digest"
 
 # ---------------------------------------------------------------------------
+# Upgrade (RFC 9110 Section 7.8, RFC 9112 Section 9.6)
+# ---------------------------------------------------------------------------
+echo "  -- upgrade --"
+# A WebSocket on the HTTP port rather than on a listener of its own, which is
+# what a deployment does. These run over whatever $BASE is, so cleartext and TLS
+# both get them.
+#
+# The accept value is not an arbitrary string: RFC 6455 Section 1.3 works the
+# example through, and base64(SHA-1(key + GUID)) for the key below is exactly
+# s3pPLMBiTxaQ9kYGzzhZRbK+xOo=. Asserting the computed value rather than merely
+# "a 101 arrived" is what makes this a check of the handshake instead of a check
+# of the status line.
+WSKEY='Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=='
+
+has   "Upgrade on the HTTP port → 101"   "101 Switching Protocols" -D- --max-time 5 \
+      -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "$WSKEY" "$BASE/ws"
+
+has   "the accept value is RFC 6455's"   "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" -D- --max-time 5 \
+      -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "$WSKEY" "$BASE/ws"
+
+# A plain GET on an upgrade-only path is 426, not 404 or 400: the resource is
+# there, the protocol is wrong (RFC 9110, Section 15.5.23).
+wo    "a plain GET on /ws → 426"         '%{http_code}' "426" --max-time 5 "$BASE/ws"
+
+# Upgrade without the Connection token is not an upgrade request (RFC 6455,
+# Section 4.1 requires both). Refusing it is the strict reading, and the one
+# that keeps a stray header from switching protocols by accident.
+wo    "Upgrade without the token → 426"  '%{http_code}' "426" --max-time 5 \
+      -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "$WSKEY" "$BASE/ws"
+
+# ---------------------------------------------------------------------------
 # Content coding
 # ---------------------------------------------------------------------------
 echo "  -- content coding --"

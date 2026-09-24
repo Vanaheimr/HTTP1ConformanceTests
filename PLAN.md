@@ -13,22 +13,22 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-09-23):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **266/266 checks green
+14 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **270/270 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
-nightly for both Autobahn directions. Track B: **26 findings, 4 fixed upstream**
+nightly for both Autobahn directions. Track B: **26 findings, 5 fixed upstream**
 and pinned here as of [Hermod#29](https://github.com/Vanaheimr/Hermod/pull/29)
 — H-1 whole, H-2 in the half that was missing.
 
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 266/266, ~103 s |
-| `tests/run-tests.sh --tls` | ✅ 266/266, ~270 s |
+| `tests/run-tests.sh` | ✅ 270/270, ~103 s |
+| `tests/run-tests.sh --tls` | ✅ 270/270, ~270 s |
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 562, both legs — 537 before H-1/H-2 |
 | ↳ `Tests.HTTP.` alone | ✅ 561 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 331/331 — adds the Debian curl |
-| third-party: curl | ✅ 65/65 per build, two builds, both transports — 66 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
+| `tests/run-tests.sh --wsl` | ✅ 339/339 — adds the Debian curl |
+| third-party: curl | ✅ 69/69 per build, two builds, both transports — 70 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
@@ -119,9 +119,15 @@ comparable. All ✅ and exercised by the A2 harnesses:
 Also: `--fast-timeouts` shortens the read deadlines from 30 s to 3 s so the
 timeout checks resolve quickly; the runner passes it.
 
-⬜ **`/ws` on the main port is blocked on H-16** — the general HTTP server and
-the WebSocket server are separate listeners in Hermod today, so the demo exposes
-WebSocket on `:8081`. Once H-16 lands, `/ws` moves onto `:8080`.
+✅ **`/ws` on the main port**, since 2026-09-24. `WebSocketUpgrade.For(...)` hands
+the connection to the WebSocket server's own RFC 6455 §4.2.1 implementation —
+there is deliberately no second copy of the handshake. Both HTTP listeners carry
+it, so the upgrade works over cleartext and TLS; `:8081` stays as the Autobahn
+fuzzingclient's target.
+
+This was "blocked on H-16" for longer than it was blocked: Hermod grew the seam
+on 2026-09-16 and the pin here only reached it on 2026-09-23, after which nobody
+re-read the finding.
 
 ## ✅ A2 · Raw-wire harnesses
 
@@ -162,12 +168,12 @@ library failure.
 ## ✅ A3 · curl matrix
 
 **65/65 checks pass over both transports**, wired into `tests/run-tests.sh` —
-the gate stands at **266/266** (201 raw-wire + 65 curl). It read 257 when A3
-closed; the nine since are `308` joining `/redirect/{code}` once H-1 landed, and
-the five Digest checks that H-3 made possible. See
+the gate stands at **270/270** (201 raw-wire + 69 curl). It read 257 when A3
+closed; the thirteen since are `308` joining `/redirect/{code}` once H-1 landed,
+the five Digest checks that H-3 made possible, and four on the `/ws` upgrade. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **331/331**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **339/339**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -346,7 +352,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ⬜ | **H-13** | `Content-MD5` typed (obsolete), RFC 9530 digest fields missing | RFC 9530 | P3 | S | Depends on **H-6** |
 | ⬜ | **H-14** | No `Link` header | RFC 8288 | P3 | S | |
 | ⬜ | **H-15** | No Problem Details | RFC 9457 | P3 | S | Relevant for the `HTTPAPI` layer |
-| ⬜ | **H-16** | General HTTP server has no `Upgrade` dispatch — WebSocket is a separate listener | RFC 9110 §7.8, 9112 §9.6 | P2 | M | Blocks a `/ws` route on the main demo port (**A1**), and it is how every real deployment does it |
+| ✅ | **H-16** | General HTTP server has no `Upgrade` dispatch — WebSocket is a separate listener | RFC 9110 §7.8, 9112 §9.6 | P2 | M | **Was already fixed upstream on 2026-09-16** (Hermod `3bc56fdb`, "A WebSocket can live on an HTTP path"), with its own `WebSocketOnAnHTTPPathTests`. This row described the state of a pin that had not moved since 2026-08-13; the bump of 2026-09-23 brought the fix in and nobody re-read the finding. What was genuinely left — the demo's own `/ws` route — landed 2026-09-24, with 4 curl checks and Autobahn's sections 1, 2 and 7 (64/64) driven through the upgrade |
 | ⬜ | **H-17** | Server does not negotiate ALPN `http/1.1` | RFC 7301 | P3 | XS | Client side is configurable; the server never offers it |
 | ⬜ | **H-18** | `HTTP1/Server/URLMapping_old/` alongside `URLMapping/` — two routing generations in the tree | — | P3 | S | ~4 000 lines of probable dead code. Clarify before the harnesses depend on either |
 | ⬜ | **H-19** | No RFC 8187 parameter encoding / RFC 6266 `filename*` | RFC 8187, 6266 | P3 | S | |
@@ -370,14 +376,14 @@ still builds against the pin, so nothing is verified from a clean checkout.
                 └──▶ ⬜A5, ⬜A6, ⬜A7, ⬜A8  (external suites)
 
 Track B in parallel: ✅H-1 and 🔶H-2 done (small, high leverage),
-⬜H-3 and ⬜H-16 as decisions — A3 and A4 turned out to need neither, so
-nothing is waiting on them any more.
+✅H-3 and ✅H-16 are in; A3 and A4 turned out to need neither, so nothing was
+waiting on them even before that.
 ```
 
 **First milestone:** 🔶 A0 ✅ + A1 ✅ + A2 ✅ + A3 ✅ + H-1 ✅ + H-2 🔶 — a
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Five and a half of six: H-2 turned out to
-be two fixes, and only the decoding one is in. The number is now **266/266**, and 65 of those come from a
+be two fixes, and only the decoding one is in. The number is now **270/270**, and 69 of those come from a
 client nobody here wrote — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ⬜ A5 — Autobahn reproducible from a

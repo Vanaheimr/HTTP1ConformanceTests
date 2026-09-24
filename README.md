@@ -25,14 +25,14 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 266/266 checks, ~103 s
+tests/run-tests.sh        # 270/270 checks, ~103 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **65/65** (66 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **266/266** — and **331/331** with `--wsl`, which adds a second curl build |
+| `tests/curl-matrix.sh` | **69/69** (70 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **270/270** — and **339/339** with `--wsl`, which adds a second curl build |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 14 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |

@@ -1201,6 +1201,68 @@ reproduction above needed a source edit rather than a constructor argument — a
 has never done what its name says. Its only caller was the line briefly written
 during this work. **H-26.**
 
+## 2026-09-24 — H-16, and a finding that outlived what it described
+
+**H-16** read: "General HTTP server has no `Upgrade` dispatch — WebSocket is a
+separate listener. Blocks a `/ws` route on the main demo port." The estimate was
+M, and it sat at P2 for weeks.
+
+It was already done. Hermod grew `WebSocketUpgrade.For(...)` on **2026-09-16**,
+commit `3bc56fdb`, "A WebSocket can live on an HTTP path", complete with
+`HermodTests/WebSocket/WebSocketOnAnHTTPPathTests.cs` and a usage example in its
+own doc comment. The row described the state of a pin that had not moved since
+2026-08-13; the bump of 2026-09-23 brought the fix in, and nobody re-read the
+finding.
+
+That is the third time this week — after A11, which had been complete for a day
+while marked open, and after H-2, half of whose text was wrong about what the
+code did. The lesson is cheap and worth writing down: **a pin bump is not
+finished until the findings it might have closed have been re-read.** 182 commits
+arrived on 2026-09-23 and the Track B table was not part of what that change
+touched.
+
+### What was actually left
+
+The demo's own route, which is the A1 item the finding blocked. Three lines:
+
+```csharp
+API.AddHandler(HTTPMethod.GET,
+               HTTPPath.Root + "ws",
+               HTTPDelegate: WebSocketUpgrade.For(upgradeWebSocketServer));
+```
+
+The lent server is a second `WebSocketServer` instance with `AutoStart: false` —
+not the one on `:8081`, because that one is started and the contract says the lent
+one must not be. It never accepts anything; the HTTP server borrows its protocol
+for one path, and the handshake itself stays in the WebSocket server's single
+implementation of RFC 6455 §4.2.1. Two copies of a security negotiation is how the
+older one ends up a version behind.
+
+`ConfigureAPI` runs once per listener, so the upgrade is reachable over cleartext
+and over TLS without saying so twice.
+
+### Verified from outside, three ways
+
+**The handshake, deterministically.** RFC 6455 §1.3 works its example through:
+`base64(SHA-1(key + GUID))` for `dGhlIHNhbXBsZSBub25jZQ==` is
+`s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. That exact value came back with the 101, which
+makes it a check of the handshake rather than of the status line.
+
+**The frames, by a foreign suite.** `tests/autobahn.sh` gained a `--ws-path`, and
+`--ws-port 8080 --ws-path /ws` pointed the fuzzingclient at the upgraded path:
+sections 1, 2 and 7 — framing, ping/pong, close handling — **64/64**. Real frames
+through a connection that began as HTTP.
+
+**The refusals.** A plain `GET /ws` is **426**, not 404: the resource is there and
+the protocol is wrong (RFC 9110 §15.5.23). `Upgrade: websocket` *without* the
+`Connection` token is also 426, which is the strict reading of RFC 6455 §4.1 and
+the one that stops a stray header from switching protocols by accident.
+
+Four of those are now curl-matrix checks, so they run on both transports and both
+curl builds. Deleting the route again fails exactly those four and nothing else.
+
+The gate goes 266 → **270**, `--wsl` 331 → **339**, curl 65 → **69** per build.
+
 ## Next
 
 **A5–A8, the remaining third-party suites** — intermediary interop, request
@@ -1222,8 +1284,16 @@ race and a fix inside a day, because the instrument was in place when it
 happened. The Autobahn server gate stays 🔶 only until the pin moves onto
 [Hermod#31](https://github.com/Vanaheimr/Hermod/pull/31).
 
-What that leaves, roughly by value: **H-16** (no `Upgrade` dispatch, which blocks
-a `/ws` route on the main demo port and is how every real deployment does it),
-the open half of **H-2** (the client offers no `Accept-Encoding` and does not
-decode a *streamed* body), **H-3's** neighbours in the same file, and nineteen
-more Track B findings. Then A5–A10.
+What that leaves, roughly by value: the open half of **H-2** (the client offers no
+`Accept-Encoding` and does not decode a *streamed* body), **H-26** (the Warden's
+own scheduling), **H-24** (the six pre-RFC-9110 reason phrases, a decision rather
+than a fix), and eighteen more Track B findings. Then A5–A10.
+
+**H-16 is off that list, and how it got there is worth a sentence.** It read "the
+general HTTP server has no `Upgrade` dispatch" — and Hermod had grown exactly that
+on 2026-09-16, `WebSocketUpgrade.For(...)`, with its own tests. The finding
+described the state of a pin that had not moved since 2026-08-13. The bump of
+2026-09-23 brought the fix in and nobody re-read the row. Third time this week a
+finding outlived the thing it described, after A11 and after H-2's first half:
+**a bump is not finished until the findings it might have closed have been
+re-read.**

@@ -35,10 +35,16 @@
 #   tests/autobahn.sh --ws-port 8081 --image crossbario/autobahn-testsuite
 #   tests/autobahn.sh --run-timeout 1200   # cap the fuzzingclient (0 = off)
 #   tests/autobahn.sh --cases '12.4.*'     # one slice, for chasing one case
+#   tests/autobahn.sh --ws-port 8080 --ws-path /ws   # through the HTTP Upgrade
 #
 set -euo pipefail
 
 ws_port=8081
+
+# The path the suite connects to. Empty is the :8081 listener's root; "/ws" is
+# the same WebSocket implementation reached through an HTTP Upgrade on the main
+# port, which is what a deployment does (RFC 9110 Section 7.8).
+ws_path=""
 http_port=8080
 tls_port=8443
 image="crossbario/autobahn-testsuite"
@@ -82,6 +88,7 @@ while [ $# -gt 0 ]; do
         --image)       image="$2";       shift 2 ;;
         --run-timeout) run_timeout="$2"; shift 2 ;;
         --min-pass)    min_pass="$2";    shift 2 ;;
+        --ws-path)     ws_path="$2";     shift 2 ;;
         --cases)       cases="$(printf '%s' "$2" | awk -F',' '{ for (i=1;i<=NF;i++) printf "%s\"%s\"", (i>1 ? ", " : ""), $i }')"
                        sliced=1;         shift 2 ;;
         --no-build)    nobuild=1;        shift ;;
@@ -245,7 +252,7 @@ rm -rf "$REPDIR"; mkdir -p "$REPDIR"
 cat >"$REPDIR/fuzzingclient.json" <<JSON
 {
     "outdir": "/reports",
-    "servers": [{ "agent": "Hermod.HTTP1", "url": "ws://$ws_host:$ws_port" }],
+    "servers": [{ "agent": "Hermod.HTTP1", "url": "ws://$ws_host:$ws_port$ws_path" }],
     "cases": [$cases],
     "exclude-cases": [],
     "exclude-agent-cases": {}
@@ -260,7 +267,7 @@ if [ "$run_timeout" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
     runner="timeout --signal=TERM --kill-after=30s ${run_timeout}s"
 fi
 
-echo "Running Autobahn fuzzingclient (image $image, ws://$ws_host:$ws_port)..."
+echo "Running Autobahn fuzzingclient (image $image, ws://$ws_host:$ws_port$ws_path)..."
 # PYTHONUNBUFFERED, because without it wstest's "Running test case ID X" lines
 # arrive in blocks and the last one printed is NOT the case it is working on.
 # That cost the HTTP/2 sibling a wrong diagnosis: three logs ended on the same

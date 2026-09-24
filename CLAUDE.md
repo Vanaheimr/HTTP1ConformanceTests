@@ -128,8 +128,8 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
-**A3 done** — the curl matrix (65 checks, 66 where curl has HTTP/2 *and* the
-target is local — see [`tests/README.md`](tests/README.md)). The gate is **266/266 over both
+**A3 done** — the curl matrix (69 checks, 70 where curl has HTTP/2 *and* the
+target is local — see [`tests/README.md`](tests/README.md)). The gate is **270/270 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
@@ -164,8 +164,8 @@ pointed at a foreign suite. See
 | | |
 |---|---|
 | Hermod's own NUnit suites | 561 `Tests.HTTP.` / 329 regression selection / 49 WebSockets, all run counts — 562 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
-| this repo's gate | **266/266**, cleartext and TLS (201 raw-wire + 65 curl) |
-| with `--wsl` (second curl build) | **331/331** |
+| this repo's gate | **270/270**, cleartext and TLS (201 raw-wire + 69 curl) |
+| with `--wsl` (second curl build) | **339/339** |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 
@@ -183,7 +183,7 @@ Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-20 in
 | **H-2** | **no content coding at all** for HTTP/1 bodies — `Content-Encoding`/`Accept-Encoding` are header models with no codec behind them. `HTTP2/Core/HTTPContentCoding.cs` already implements `br`/`gzip`/`deflate` |
 | **H-3** | `HTTPDigestAuthentication` is **not** RFC 7616 — it is `Digest base64(user):base64(secret)`, no realm/nonce/qop/response. curl's `--digest` will not interoperate |
 | **H-1** | `308` missing entirely; `425` exists under the stale name `NoCode` (RFC 8470 calls it *Too Early*). Also absent: `103` `421` `451` `511` |
-| **H-16** | the general HTTP server has no `Upgrade` dispatch — WebSocket is a separate listener |
+| ~~**H-16**~~ | *the general HTTP server has no `Upgrade` dispatch* — fixed upstream 2026-09-16, and the demo's `/ws` route landed 2026-09-24 |
 
 ### The distinction the matrix exists to preserve
 

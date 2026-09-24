@@ -36,6 +36,7 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/redirect/{code}` | GET | `301` `302` `303` `307` `308` |
 | `/status/{code}` | GET | arbitrary status codes, for the drivers |
 | `/events` | GET | SSE — `retry`, `id`, `event`, a 2 s ticker |
+| `/ws` | GET | RFC 9110 §7.8 `Upgrade` — a WebSocket echo on the HTTP port itself, cleartext and TLS. A plain GET gets `426` |
 
 ## Why the handlers implement semantics themselves
 
