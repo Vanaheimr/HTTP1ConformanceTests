@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **604 NUnit tests** in `libs/Hermod/HermodTests/`
+**Tests:** most coverage is the **610 NUnit tests** in `libs/Hermod/HermodTests/`
 under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **372** are the HTTP/1.x
 protocol regression selection and **49** cover RFC 6455/7692 WebSockets. CI gates
-on 604 + the single test in `Tests.HTTPS.` = **605**. These are run counts, not
+on 610 + the single test in `Tests.HTTPS.` = **611**. These are run counts, not
 `--list-tests` counts; see the note under the coverage table in
 [`README.md`](README.md) for why the two differ by three here:
 
@@ -163,7 +163,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 604 `Tests.HTTP.` / 372 regression selection / 49 WebSockets, all run counts — 605 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
+| Hermod's own NUnit suites | 610 `Tests.HTTP.` / 372 regression selection / 49 WebSockets, all run counts — 611 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
 | this repo's gate | **279/279**, cleartext and TLS (201 raw-wire + 78 curl) |
 | with `--wsl` (second curl build) | **357/357** |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |

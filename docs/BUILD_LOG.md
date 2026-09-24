@@ -1420,9 +1420,12 @@ counts its reads, and requires the count to stay at zero.
 
 ### Numbers
 
-Hermod's gate filter 562 → **605**; `Tests.HTTP.` 561 → **604**; the HTTP/1
+Hermod's gate filter 562 → **611**; `Tests.HTTP.` 561 → **610**; the HTTP/1
 regression selection 329 → **372**, the three new fixtures joining the eight it
-already named. This repo: gate 270 → **279**, `--tls` **279**, `--wsl` 339 →
+already named. Six of those are not this work: `SSEProxyTests` landed on Hermod
+master while #32 was open, and the merge brought it along. Measured before the
+merge the gate read 605, and publishing that would have been a figure that was
+true of a branch and of nothing else. This repo: gate 270 → **279**, `--tls` **279**, `--wsl` 339 →
 **357**, curl 69 → **78** per build (79 in the CI Debian container).
 
 One number here was wrong before this touched it and is worth naming: the demo

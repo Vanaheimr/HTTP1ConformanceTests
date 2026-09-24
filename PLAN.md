@@ -25,8 +25,8 @@ with [Hermod#32](https://github.com/Vanaheimr/Hermod/pull/32) on 2026-09-24.
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
 | `tests/run-tests.sh` | ✅ 279/279, ~103 s |
 | `tests/run-tests.sh --tls` | ✅ 279/279, ~270 s |
-| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 605, both legs — 537 before H-1, 562 before H-2's second half |
-| ↳ `Tests.HTTP.` alone | ✅ 604 — the missing one is all of `Tests.HTTPS.` |
+| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 611, both legs — 537 before H-1, 562 before H-2's second half, and 6 of the rest are `SSEProxyTests`, which arrived on Hermod master while [#32](https://github.com/Vanaheimr/Hermod/pull/32) was open |
+| ↳ `Tests.HTTP.` alone | ✅ 610 — the missing one is all of `Tests.HTTPS.` |
 | `tests/run-tests.sh --wsl` | ✅ 357/357 — adds the Debian curl |
 | third-party: curl | ✅ 78/78 per build, two builds, both transports — 79 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
