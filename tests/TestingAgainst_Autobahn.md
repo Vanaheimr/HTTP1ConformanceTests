@@ -349,9 +349,46 @@ the same predicate watches every plain HTTP/1.1 connection this stack serves: a 
 keep-alive connection mid-body, an SSE stream. Autobahn found it because section 12 keeps a reader
 busier than anything else this repository runs, not because WebSocket is special.
 
-Recorded as **H-25**. The fix is a decision about what the Warden should do with a connection that
-has a read in flight — the reader detects a vanished peer by itself, so the net is only needed for
-connections nobody is reading.
+Recorded as **H-25**.
+
+### The fix, and the verification that had to be thrown away first
+
+The Warden no longer asks the socket. It asks the **handler task** — which it already held, and
+already awaits two lines further down. Completed means the connection is finished and its entry can
+go; running means the connection is owned, and the owner is what notices a peer that went away
+(`AWebSocketServer` pings and tears down a silent peer; `AHTTPServer` has its idle and Slowloris
+deadlines). The trade is in the safe direction: a half-open connection is now held until its handler
+times out, rather than a live one being killed while it works. [Hermod#31](https://github.com/Vanaheimr/Hermod/pull/31).
+
+**The end-to-end evidence did not carry it, and saying so is the point.** Forcing the Warden to a
+one-second period — roughly five hundred chances per run instead of eight — and running sections
+12.4 and 12.5:
+
+| | |
+|---|---|
+| old criterion | 1 hard failure (12.4.8) in **4** runs |
+| new criterion | 0 in **4** runs |
+
+One in four is the base rate the nightly already had. Four clean runs of anything proves nothing
+against it. And the first attempt at that table was worse than inconclusive: the two variants were
+copied from Git Bash's `/tmp` while the script ran in WSL, so every `cp` failed silently, six runs
+of one build were labelled three-and-three, and all six came back clean. It was caught only because
+`cp` printed its errors. The rerun prints the md5 of the source file it installed on every line —
+a label that carries its evidence instead of asserting it.
+
+So the verification is a test that asks the predicate directly rather than hoping a 517-case suite
+trips it: `HermodTests/TCP/ConnectionLivenessTests.cs` stands up a real `TCPEchoTestServer`, lets a
+peer flood it so the handler is genuinely reading, and samples `IsConnectionClosed()` until it lies.
+**It lies in 160–250 ms, five runs out of five.** It also asserts that the peer was still connected,
+because a "closed" reading on a connection that had really closed would prove nothing at all.
+
+That test asserts a defect deliberately, the way the curl matrix pins an expected failure: if it
+ever fails, the predicate stopped lying and the Warden could go back to asking it.
+
+Two further defects turned up in the same corner and are **not** fixed with it, one per commit:
+`WardenCheckEvery` is a documented property that the check registration ignores (`EveryMinutes(1,
+…)`), which is why the reproduction above needed a source edit rather than a constructor argument;
+and `Warden.EverySeconds(N, …)` tests `timestamp.Minute % N` rather than `Second`. **H-26.**
 
 ## Reading the report
 

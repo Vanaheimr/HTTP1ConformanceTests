@@ -1029,6 +1029,178 @@ comment from 2026-09-22, and it is the only reason the mismatch was noticed.
 
 ---
 
+## 2026-09-24 — The job that watches Hermod master, and what it is for
+
+Both sibling repositories have carried an `against-hermod-master` nightly job for
+a while; this one did not, and it is the repository where the gap costs most:
+Track B's whole workflow ends in "bump the pin", and nothing here asked whether
+the pin was safe to move onto.
+
+The gap showed the same day. Hermod master had taken a breaking rename —
+`HTTPStatusCode.NoCode` → `TooEarly` — and a type had moved namespace, both from
+work driven out of *this* repository, and nothing here would have said a word if
+either had broken it. What existed instead was me grepping for the old names by
+hand.
+
+One leg, `windows-latest`. The question is whether a library change breaks this
+repository, which is not platform-specific, so a second leg buys a second copy of
+the same answer; the only check the Debian leg has and this one does not measures
+curl rather than Hermod.
+
+### Not a copy of the sibling's job, and that is the interesting part
+
+The HTTP/3 version builds `--configuration Release` and then runs its harnesses
+with `--no-build`. That works there because its `tests/run-tests.sh` reads
+`bin/Release`. This repository's runner reads `bin/Debug` (`run-tests.sh:106`), so
+the same two steps would have failed with "Demo host not built" — a job red for a
+reason that has nothing to do with Hermod, which is precisely what this job must
+never be. Checked before copying rather than after the first red night.
+
+Green on its first run, and the three nightlies that day (this one, HTTP/2's and
+HTTP/3's) all passed `against-hermod-master`, which answered the question the
+merge had opened.
+
+---
+
+## 2026-09-24 — RFC 7616 Digest (H-3), by moving the framework where it belonged
+
+**H-3** read "`HTTPDigestAuthentication` is not RFC 7616 — it is
+`Digest base64(user):base64(secret)`". True, and worse than it reads: a password
+in the clear under the name of the one scheme whose entire purpose is not to send
+one, and the type's own documentation called the second field "a time-based
+one-time password", which it was not either.
+
+It was also completely dead — referenced by nothing, not even the `Authorization`
+dispatcher, in any of the ten Hermod checkouts on this machine.
+
+### Why it was never just "write RFC 7616"
+
+A correct implementation already existed, three directories away and unreachable.
+`HTTP2/Auth/DigestAuthenticationScheme.cs` has done stateless signed nonces,
+`qop=auth` with `nc`/`cnonce`, the legacy RFC 2069 form, `-sess`, SHA-256 and MD5
+for a long time. What kept HTTP/1.x from it was *where it lived*.
+
+So the RFC 9110 §11 framework moved to `HTTP/Authentication/` — the scheme
+interface, four schemes, the authenticator, the credential parser, the identity.
+It is version-independent by construction, and `HTTPAuthenticator`'s own summary
+said so ("this is version-independent (RFC 9110), so it lives in the shared
+library") while sitting under `HTTP2/`. One file stayed behind, the HTTP/2 wiring.
+1016/1016 immediately after the move, before anything else was touched.
+
+### Three things the demo's routes were forced into
+
+curl 8.21 answers a `WWW-Authenticate` field only when it carries **exactly one
+challenge**. Measured, all five combinations: `Digest(MD5)` alone → 200;
+`Digest(SHA-256)` alone → 401 with no `Authorization` sent at all;
+`Digest(SHA-256), Digest(MD5)` → 401; the same reversed → 401; `Digest(MD5),
+Basic` → 401. RFC 9110 §11.6.1 permits several challenges per field and observes
+in the same breath that parsing them is ambiguous, because auth-params are
+comma-separated too.
+
+So Digest could not join `/secret`: it would have broken the `--anyauth` check
+that passes there today. It lives at `/secret/digest` (SHA-256) and
+`/secret/digest-md5`, two routes because the algorithm is the point — publishing
+one would hide either the capability or the gap.
+
+And the gap is one build's, not ours: the Debian curl the `--wsl` leg drives is
+8.14.1/OpenSSL and authenticates with **SHA-256**, 200. That is the load-bearing
+measurement — a foreign implementation computes the RFC 7616 response and this
+server recomputes it. The curl matrix's SHA-256 check is therefore a third
+conditional, *predicted* from the TLS backend in the version banner and then
+asserted both ways: a probe that read the outcome and asserted it would agree
+with whatever happened, which is not a check.
+
+### A test that could not fail
+
+Three deliberate breakages should have failed three tests and failed two. The
+nonce assertion passed against the broken code, because the nonce is
+`base64(ticks:HMAC(secret,ticks))` and two calls inside the same tick return the
+same value — "one nonce shared" and "two minted simultaneously" were
+indistinguishable. A `TimeProvider` that advances one tick per read separates
+them, and the third breakage then failed as it should.
+
+---
+
+## 2026-09-24 — H-25: the TCP Warden was killing connections that were alive
+
+The nightly of 02:37 failed case **12.5.15** — not 12.4.18, the same signature to
+the letter. And this time the log added the day before turned it into an answer.
+Three lines, one socket:
+
+```
+02:34:56.847   case 12.5.15 starts
+02:35:00.198   dbug  Read error on WebSocket connection 127.0.0.1:41346.
+               System.ObjectDisposedException: NetworkStream
+                 at WebSocketServerConnection.ReadAsync  :706
+                 at AWebSocketServer.RunConnectionAsync  :1203
+02:35:00.210   dbug  ATCPServer: Cleaned up stale client 127.0.0.1:41346.
+```
+
+`ATCPServer`'s Warden decided what to reap by asking
+`TCPConnection.IsConnectionClosed()`:
+
+```csharp
+socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0
+```
+
+the textbook "has the peer vanished" idiom, and a race against the connection's
+own reader. `Poll(SelectRead)` is true when the socket is readable — data arrived
+*or* the peer closed — and `Available` separates the two. The read loop drains the
+socket in between; the Warden sees "readable, nothing available" and closes a live
+connection.
+
+Every property followed and none had to be guessed: it needs a busy reader
+(section 12 sends a thousand large compressed messages), it is the gap between two
+statements, it lands mid-case because the Warden runs on its own timer, there is no
+close frame because the socket is gone before the loop notices, and it was silent
+because the record is a Debug one that used to go into a `NullLoggerFactory`.
+
+**Wider than WebSocket:** `AHTTPServer : ATCPServer` too, so every long-lived
+HTTP/1.1 connection was exposed — a large download, a keep-alive connection
+mid-body, an SSE stream. Autobahn found it because section 12 keeps a reader
+busier than anything else here runs.
+
+### The fix asks something that cannot race
+
+The Warden already held the answer and awaits it two lines further down: the
+handler task. Completed means finished; running means owned, and the owner
+notices a vanished peer — `AWebSocketServer` by ping, `AHTTPServer` by its idle
+and Slowloris deadlines. Both know what their protocol expects; a timer looking at
+a socket does not. The trade is in the safe direction.
+
+### The verification that had to be thrown away, twice
+
+Forcing the Warden to a one-second period — some five hundred chances per run
+instead of eight — and running sections 12.4 and 12.5 gave **one** hard failure in
+four runs of the old code and none in four of the new. One in four is the base rate
+the nightly already had; four clean runs prove nothing against it.
+
+The attempt before that was worse than inconclusive. The two variants were copied
+from Git Bash's `/tmp` while the script ran in WSL, so every `cp` failed, six runs
+of one build were labelled three-and-three, and all six came back clean. It was
+caught only because `cp` printed its errors to the same log. The rerun prints the
+md5 of the source file it installed on every line — a label that carries its
+evidence rather than asserting it.
+
+So the verification is a test that asks the predicate directly instead of hoping a
+517-case suite trips it. `HermodTests/TCP/ConnectionLivenessTests.cs` stands up a
+real `TCPEchoTestServer`, lets a peer flood it so the handler is genuinely reading,
+and samples `IsConnectionClosed()` until it lies. **It lies in 160–250 ms, five runs
+out of five** — and it asserts the peer was still connected, because a "closed"
+reading on a connection that had really closed would prove nothing.
+
+It asserts a defect on purpose, the way the curl matrix pins an expected failure.
+If it ever fails, the predicate stopped lying.
+
+### And two more in the same corner, deliberately left
+
+One defect per commit. `ATCPServer` registers its check as `EveryMinutes(1, …)` and
+ignores the `WardenCheckEvery` property it documents — which is exactly why the
+reproduction above needed a source edit rather than a constructor argument — and
+`Warden.EverySeconds(N, …)` tests `timestamp.Minute % N` rather than `Second`, so it
+has never done what its name says. Its only caller was the line briefly written
+during this work. **H-26.**
+
 ## Next
 
 **A5–A8, the remaining third-party suites** — intermediary interop, request
@@ -1037,14 +1209,21 @@ its own nightly job; the workflow has room for them and the demo already binds
 `0.0.0.0` on demand, which is what A5 and A6 were waiting for. Then A9
 (benchmarks) and A10 (parser fuzzing).
 
-**Track B: 25 findings, 2 fixed upstream.** H-1 whole; H-2 in the half that was
+**Track B: 26 findings, 3 fixed upstream.** H-1 whole; H-2 in the half that was
 actually missing, with the client's `Accept-Encoding` and the streamed decode
-still open. Two of the 25 are new from this week — **H-24**, six reason phrases
-that predate RFC 9110 and are a decision rather than a fix, and **H-25**, the
-12.4.18 drop.
+still open; H-3 whole, and it moved the RFC 9110 §11 framework into the shared
+library on the way. Three of the 26 are new from this week — **H-24**, six reason
+phrases that predate RFC 9110 and are a decision rather than a fix; **H-25**, the
+Warden killing live connections, now fixed; and **H-26**, the two ways the
+Warden's own scheduling does not do what it says.
 
-**H-25 is the one waiting on an event rather than on effort.** It has passed 14
-times since the single failure, so the next red nightly is the measurement; the
-instrument is in place and verified on both machines. Until then it is neither
-diagnosed nor papered over, and the Autobahn server gate reads 🔶 rather than ✅
-for that reason.
+**The next red night answered it.** H-25 went from "not diagnosed" to a named
+race and a fix inside a day, because the instrument was in place when it
+happened. The Autobahn server gate stays 🔶 only until the pin moves onto
+[Hermod#31](https://github.com/Vanaheimr/Hermod/pull/31).
+
+What that leaves, roughly by value: **H-16** (no `Upgrade` dispatch, which blocks
+a `/ws` route on the main demo port and is how every real deployment does it),
+the open half of **H-2** (the client offers no `Accept-Encoding` and does not
+decode a *streamed* body), **H-3's** neighbours in the same file, and nineteen
+more Track B findings. Then A5–A10.
