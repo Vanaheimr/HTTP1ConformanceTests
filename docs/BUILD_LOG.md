@@ -1439,6 +1439,127 @@ media type, not on how well the bytes would happen to compress.
 
 Track B: **26 findings, 5 fixed upstream** — and all five whole.
 
+## 2026-09-25 — H-26, and a schedule that was three different numbers
+
+H-26 was written down on 2026-09-24 as two things, while H-25 was being fixed:
+`ATCPServer` registers its connection check as `EveryMinutes(1, …)` and ignores
+the `WardenCheckEvery` property it documents, and `Warden.EverySeconds(N, …)`
+tests `timestamp.Minute % N`. Estimated XS. It was three, and the third one was
+the reason the other two had never been caught.
+
+### AllWardenChecks returned itself
+
+```csharp
+public IEnumerable<IWardenCheck>  AllWardenChecks
+    => AllWardenChecks;
+```
+
+No caller, no compiler warning. And no test can report it as a failure: a
+`StackOverflow` cannot be caught, so reverting the line does not turn a test red
+— it takes the test host down, "Testlauf abgebrochen" with NUnit's dispatcher
+still on the stack. That is the falsification, and it is also the argument for
+fixing it before something first enumerates the checks in anger.
+
+It goes first because the other two defects are only testable by reading the
+registered checks back and asking each one when it would run.
+
+### EverySeconds measured minutes
+
+Six of the eight overloads asked `timestamp.Minute % Seconds == Offset`. The
+other two ask about `timestamp.Second`, which is what was meant and which is what
+makes this a copy-and-paste slip rather than a design.
+
+So `EverySeconds(30, …)` did not run every thirty seconds. It ran on every Warden
+tick during minutes 0 and 30 of each hour, and never otherwise — a schedule that
+depended on what time it happened to be. No callers, so it has never worked.
+
+### The interval the server documents, and the two that it used instead
+
+Two ways of not honouring `WardenCheckEvery`, in the same block.
+
+**The defaults resolved twice.** The properties took `DefaultWardenCheckEvery`,
+30 seconds. Then the Warden constructor resolved the *parameters* again, against
+literals `FromMinutes(3)` and `FromMinutes(1)` sitting in the call. So
+`WardenCheckEvery` read 30 s while the Warden ticked once a minute, and
+`WardenInitialDelay` read 30 s while the first tick was three minutes away. The
+public documented properties win now, and the constructor uses them rather than
+re-deriving them.
+
+**The check had an interval of its own.** `EveryMinutes(1, …)` reads like "once a
+minute" and is two separate things: a predicate, `Minute % 1 == 0`, which is true
+on every tick, and a one-minute `SleepTime`, which was the actual schedule — and
+which no constructor argument can reach. Ask for a five-second Warden and you got
+a five-second timer and a reaper still running once a minute. The reaper is a
+plain check with no debounce now, so the tick is the interval.
+
+### Two tests about things that were never broken
+
+Ten tests, none of which waits for anything: the schedules are sampled over a
+synthetic timeline, so a figure here is a statement about the predicate and not
+about how long a test slept. Seven of them are the obvious ones — the slots of
+each family, the offset, the answer not depending on which minute it is.
+
+The two that are not about a defect are the ones worth having, because both were
+load-bearing and written down nowhere:
+
+- **`SleepTime` is what turns a slot into one run.** The predicate alone would
+  fire on every tick inside a matching slot, and "minute 0" is sixty seconds
+  wide. Four runs an hour instead of twenty-four is the debounce's doing, and the
+  two halves live in different files.
+- **The predicate is *sampled*.** A slot narrower than the Warden's own
+  `CheckEvery` is a slot that can be missed: at seconds divisible by three there
+  are twenty slots a minute, and a Warden ticking every ten seconds visits two.
+  Not a defect — it is what "run the checks every `CheckEvery`" means — but it is
+  why `EverySeconds` needs a Warden ticking at least that often, and why the
+  minute- and hour-aligned schedules were never in danger.
+
+### The same wall, hit from the other side, while this was open
+
+Hermod master gained 28 commits between the branch point and the merge, and one
+of them was `1ad3f3b8`, "A connection whose handler is still starting is not
+reaped" — a second fix to the same reaper, found by running a real gateway with
+"the Warden made to look every millisecond — **a source edit, the same in every
+build**".
+
+That is H-26's own symptom, written independently by someone who was not fixing
+H-26. A finding confirmed from a second direction while it was being fixed is
+worth more than the finding was.
+
+It also means the merge mattered more than usual: a textually clean merge of a
+change to the reaper's *schedule* into a change to the reaper's *criterion* is
+exactly where a semantic conflict would sit, and neither PR's CI had seen the
+other's code. So the suites were re-run against the merged tree rather than
+against the branch — including master's own `AConnectionWhoseHandlerIsStillStartingIsNotReaped`,
+which arranges for the Warden to look exactly once, a second after the server is
+made, and would have noticed a schedule that now looks sooner or oftener. It
+passes.
+
+That is yesterday's lesson applied one day later: a number, or a green run, that
+is true of a branch is not yet true of master.
+
+### Numbers
+
+Hermod's gate filter 611 → **657**; `Tests.HTTP.` 610 → **656**; WebSockets
+49 → **65**; the HTTP/1 regression selection unchanged at **372**. This repo's own
+gate is unchanged at **279/279**, 7/7, and Autobahn against the merged tree is
+**481/517** with 0 hard failures — the same floor, with the reaper now looking
+twice as often. That run happened to overlap a full NUnit suite on the same box,
+which makes it a slightly harder test than the clean one it was meant to be.
+
+**None of the +46 is this work.** The ten tests H-26 added live in
+`Tests.Warden` and `Tests.TCP`, and the filter this repository gates on selects
+`Tests.HTTP.` and `Tests.HTTPS.` — so they run in Hermod's CI and not in ours. The
+whole +46 is Hermod master's own growth over one day.
+
+That is worth writing down rather than quietly fixing, because it is a gap with an
+argument on both sides. `AHTTPServer` derives from `ATCPServer`; "wider than
+WebSocket" was the sharp end of H-25 precisely because of that inheritance. The
+layer that argument was about is the layer this gate does not cover. Widening the
+filter changes what CI means, so it belongs in a decision rather than in a commit
+that was about something else.
+
+Track B: **26 findings, 6 fixed upstream** — and all six whole.
+
 ## Next
 
 **A5–A8, the remaining third-party suites** — intermediary interop, request
@@ -1447,31 +1568,38 @@ its own nightly job; the workflow has room for them and the demo already binds
 `0.0.0.0` on demand, which is what A5 and A6 were waiting for. Then A9
 (benchmarks) and A10 (parser fuzzing).
 
-**Track B: 26 findings, 5 fixed upstream, all of them whole.** H-1; H-2 as of
-2026-09-24, which took four fixes against an estimate of one; H-3 whole, and it
-moved the RFC 9110 §11 framework into the shared library on the way; H-16, which
-had been fixed upstream for a week before anybody re-read the row; and H-25, the
-Warden killing live connections.
+**Track B: 26 findings, 6 fixed upstream, all of them whole.** H-1; H-2 as of
+2026-09-24, which took four fixes against an estimate of one; H-3, which moved the
+RFC 9110 §11 framework into the shared library on the way; H-16, which had been
+fixed upstream for a week before anybody re-read the row; H-25, the Warden killing
+live connections; and H-26, its scheduling, which was three defects against an
+estimate of two.
 
-What that leaves, roughly by value: **H-26** (the two ways the Warden's own
-scheduling does not do what it says — `EveryMinutes(1, …)` ignores
-`WardenCheckEvery`, and `EverySeconds` measures in minutes), **H-24** (six reason
-phrases that predate RFC 9110, a decision rather than a fix), and nineteen more
-Track B findings. Then A5–A10.
+What that leaves, roughly by value: **H-24** (six reason phrases that predate
+RFC 9110 — a decision rather than a fix), **H-23** (`HEAD` not derived from `GET`),
+**H-22** (a chunked response that silently produces an empty body), and seventeen
+more Track B findings. Then A5–A10.
 
-**Two lessons from this week are worth keeping in view, because both cost real
-time and both are cheap to avoid.**
+**Three lessons from these two weeks are worth keeping in view. All three cost
+real time and all three are cheap to avoid.**
 
 *A bump is not finished until the findings it might have closed have been
 re-read.* H-16 read "the general HTTP server has no `Upgrade` dispatch" while
-Hermod had grown exactly that on 2026-09-16, with its own tests. The row
-described the state of a pin that had not moved since 2026-08-13; the bump of
-2026-09-23 brought the fix in and nobody looked. Third time in a week a finding
-outlived the thing it described, after A11 and after H-2's first half.
+Hermod had grown exactly that on 2026-09-16, with its own tests. The row described
+the state of a pin that had not moved since 2026-08-13; the bump of 2026-09-23
+brought the fix in and nobody looked. Third time in a week a finding outlived the
+thing it described, after A11 and after H-2's first half.
 
-*Unit tests reach for the shape that is easy to construct.* Nineteen tests for
-the server-side compression filter all handed it a response whose body was
-already a byte array, which is the only shape you naturally build in a test —
-and the defect was in the path where the body is still a stream. The wire
-harnesses found it on the first run. That is what they are for, and it is an
-argument for running them before a feature is called done rather than after.
+*Unit tests reach for the shape that is easy to construct.* Nineteen tests for the
+server-side compression filter all handed it a response whose body was already a
+byte array, which is the only shape you naturally build in a test — and the defect
+was in the path where the body is still a stream. The wire harnesses found it on
+the first run.
+
+*A number that is true of a branch is not yet true of master.* The H-2 commit
+published a gate of 605, measured before the merge; CI printed 611, and the six
+were a commit that had landed on Hermod master while the PR was open. A day later
+the same thing happened with code rather than a count: 28 commits arrived under
+the H-26 branch, one of them a second fix to the very reaper H-26 reschedules. The
+merge was textually clean, which is not the same as correct, so everything was
+re-run against the merged tree — including master's own test for that other fix.
