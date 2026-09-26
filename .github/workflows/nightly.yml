@@ -228,7 +228,7 @@ jobs:
         run: dotnet build HTTP1.slnx
 
       - name: Foreign peers, both directions
-        run: bash tests/run-tests.sh --filter peers
+        run: bash tests/run-tests.sh --peers --filter peers
 
   fuzz:
     # A10 — the exploring half. The push gate runs h1fuzz with a fixed seed and

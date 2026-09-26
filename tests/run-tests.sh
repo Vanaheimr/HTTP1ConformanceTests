@@ -35,6 +35,7 @@ FILTER=""
 USE_TLS=0
 KEEP_DEMO=0
 USE_WSL=0
+USE_PEERS=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,7 +43,8 @@ while [ $# -gt 0 ]; do
         --filter)    FILTER="${2:-}"; shift ;;
         --tls)       USE_TLS=1 ;;
         --keep-demo) KEEP_DEMO=1 ;;
-        --wsl)       USE_WSL=1 ;;
+        --wsl)       USE_WSL=1; USE_PEERS=1 ;;
+        --peers)     USE_PEERS=1 ;;
         -h|--help)   sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)           echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -250,8 +252,19 @@ run_interop() {
         printf '  %sPASS%s  %-14s %s%s%s\n' "$GREEN" "$OFF" "$label" "$DIM" "$verdict" "$OFF"
     else
         FAILURES+=("$label")
-        printf '  %sFAIL%s  %-14s %s\n' "$RED" "$OFF" "$label" "$verdict"
-        printf '%s\n' "$output" | grep -E '✗' | sed 's/^/      /'
+        printf '  %sFAIL%s  %-14s %s\n' "$RED" "$OFF" "$label" "${verdict:-no verdict line — the driver did not get that far}"
+
+        # With a verdict, the failing checks are the interesting part. Without
+        # one the driver died before printing anything, and then the only
+        # useful thing to show is whatever it did manage to say. An empty FAIL
+        # line cost a round of guessing on 2026-09-26, when the answer turned
+        # out to be a missing executable bit on tests/interop.sh.
+        if [ -n "$verdict" ]; then
+            printf '%s\n' "$output" | grep -E '✗' | sed 's/^/      /'
+        else
+            printf '%s\n' "$output" | tail -5 | sed 's/^/      /'
+            printf '      %s(exit %d)%s\n' "$DIM" "$status" "$OFF"
+        fi
     fi
 }
 
@@ -327,14 +340,22 @@ section "Third-party (reference peers)"
 if [ "$USE_TLS" -eq 1 ]; then
     echo "  SKIP  interop — the peers drive the cleartext listener"
 
+elif [ "$USE_PEERS" -eq 0 ]; then
+    # Opt-in on every platform, and deliberately so. The push gate's Debian
+    # container ships none of the five runtimes, so running it there reports a
+    # check count that moves with the runner image - exactly what A7 says it
+    # does not want, and what this section did anyway until the Linux leg went
+    # red on 2026-09-26. --wsl implies it; the nightly passes --peers.
+    echo "  SKIP  interop — pass --peers (or --wsl) to run them"
+
 elif [ "$(uname -s)" = "Linux" ]; then
     run_interop "peers" --base "http://127.0.0.1:$HTTP_PORT"
 
-elif [ "$USE_WSL" -eq 1 ] && command -v wsl > /dev/null 2>&1; then
+elif command -v wsl > /dev/null 2>&1; then
     run_interop "peers" --base "http://127.0.0.1:$HTTP_PORT"
 
 else
-    echo "  SKIP  interop — pass --wsl to bind 0.0.0.0 and reach the peers in WSL"
+    echo "  SKIP  interop — no WSL, and the foreign toolchains live there"
 fi
 
 # ---------------------------------------------------------------------------
