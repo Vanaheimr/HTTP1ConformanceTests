@@ -119,7 +119,7 @@ jobs:
       # The Debian curl leg inside run-tests.sh stays skipped here (it needs
       # --wsl, which widens the demo's listener to 0.0.0.0); the container's
       # own curl is the foreign client on this leg.
-      - name: Harness suite (7 harnesses)
+      - name: Harness suite (8 harnesses)
         timeout-minutes: 30
         shell: bash
         run: tests/run-tests.sh --no-build
