@@ -171,6 +171,7 @@ pointed at a foreign suite. See
 | with `--wsl` (second curl build + foreign peers) | **415/415** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
 | benchmarks (A9) | `tests/h1bench`, not a gate — 0.240 ms p50 against Kestrel's 0.252 ms on the same loopback |
+| parser fuzzing (A10) | `tests/h1fuzz` — request, response and chunked parsers; deterministic in the gate, ten minutes per target nightly. Found **H-28** on its first run |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 

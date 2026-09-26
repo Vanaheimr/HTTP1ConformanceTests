@@ -202,6 +202,33 @@ run_harness h1attack
 # establishes something about an implementation written here; this establishes
 # that an independent one agrees.
 # ---------------------------------------------------------------------------
+run_fuzz() {
+    local label="$1"; shift
+
+    if [ -n "$FILTER" ] && [[ "fuzz" != *"$FILTER"* ]] && [[ "$label" != *"$FILTER"* ]]; then
+        return
+    fi
+
+    TOTAL=$((TOTAL + 1))
+
+    local output
+    output="$(dotnet run -c Release --project "$ROOT/tests/h1fuzz/h1fuzz.csproj" -- "$@" 2>&1)"
+    local status=$?
+
+    local verdict
+    verdict="$(printf '%s\n' "$output" | grep -E '^  h1fuzz:' | tail -1 | sed 's/^ *//')"
+
+    if [ $status -eq 0 ]; then
+        PASSED=$((PASSED + 1))
+        printf '  %sPASS%s  %-14s %s%s%s\n' "$GREEN" "$OFF" "$label" "$DIM" "$verdict" "$OFF"
+        printf '%s\n' "$output" | grep -E '^  ~ ' | sed 's/^  ~ /      /'
+    else
+        FAILURES+=("$label")
+        printf '  %sFAIL%s  %-14s %s\n' "$RED" "$OFF" "$label" "$verdict"
+        printf '%s\n' "$output" | grep -E '✗|NEW finding' | sed 's/^/      /'
+    fi
+}
+
 run_interop() {
     local label="$1"; shift
 
@@ -309,6 +336,24 @@ elif [ "$USE_WSL" -eq 1 ] && command -v wsl > /dev/null 2>&1; then
 else
     echo "  SKIP  interop — pass --wsl to bind 0.0.0.0 and reach the peers in WSL"
 fi
+
+# ---------------------------------------------------------------------------
+# Parser fuzzing (A10)
+#
+# In the gate it runs with a FIXED seed and a small budget, which makes it a
+# regression test rather than a fuzzer: the same inputs every run, so a red
+# gate means this change broke something and not that today's dice were
+# unkind. The nightly is where the exploring happens, with a seed that moves
+# and a budget in minutes.
+#
+# It needs no demo host — the targets are the parsers, called directly — but
+# it lives here rather than in its own script because a harness nobody runs
+# finds nothing.
+# ---------------------------------------------------------------------------
+
+section "Fuzzing"
+
+run_fuzz "fuzz" --seconds 5
 
 # ---------------------------------------------------------------------------
 # Summary

@@ -37,6 +37,7 @@ tests/run-tests.sh        # 279/279 checks, ~103 s
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
 | `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
+| `tests/h1fuzz` | ~1–2 M mutated inputs per target per minute against three parsers. Fixed seed in the gate, exploring nightly. 1 known finding (**H-28**), which it produced on its first run |
 | remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |
 
 On top of that, the coverage inside Hermod itself:

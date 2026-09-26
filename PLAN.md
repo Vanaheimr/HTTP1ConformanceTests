@@ -17,8 +17,9 @@ current as work proceeds.
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
 foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
-control. **A11 ✅** — CI per push on two legs,
-nightly for both Autobahn directions. Track B: **27 findings, 11 fixed upstream**
+control. **A10 ✅** — `tests/h1fuzz`, deterministic in the gate and exploring
+nightly; it found **H-28** on its first run. **A11 ✅** — CI per push on two legs,
+nightly for both Autobahn directions. Track B: **28 findings, 11 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -26,16 +27,17 @@ citation sweep last so that it covered what the other four added.
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 279/279, ~103 s |
+| `tests/run-tests.sh` | ✅ 279/279 + the fuzzer's fixed-seed pass, 8/8 harnesses, ~120 s |
 | `tests/run-tests.sh --tls` | ✅ 279/279, ~270 s |
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 738, both legs — 537 before H-1, 562 before H-2's second half, 657 at the previous pin. Of the 81 added since, 59 are this repo's five findings and 22 are Hermod master's own WebSocket work; nothing is unaccounted for. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so the ten tests H-26 added run in Hermod's CI and not in ours — worth knowing, given that `AHTTPServer` derives from `ATCPServer` |
 | ↳ `Tests.HTTP.` alone | ✅ 737 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 415/415 — adds the Debian curl *and* the foreign peers (A7) |
+| `tests/run-tests.sh --wsl` | ✅ 415/415 over 10/10 harnesses — adds the Debian curl, the foreign peers (A7) and the fuzzer (A10) |
 | third-party: curl | ✅ 78/78 per build, two builds, both transports — 79 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 58/58 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
 | benchmarks | ✅ `tests/h1bench`, not a gate — see A9 for the figures and the three findings |
+| parser fuzzing | ✅ `tests/h1fuzz` — fixed seed in the gate, ten minutes per target nightly; 1 known finding (**H-28**) |
 | third-party: proxies, http-garden, browsers | ⬜ A5, A6, A8 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 7 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
@@ -362,11 +364,49 @@ Still open here: the external load generators (`h2load --h1`, `bombardier`,
 `oha`), which would also stress keep-alive reuse and connection-table cleanup
 from outside this process.
 
-## ⬜ A10 · Parser fuzzing · P3 · ~2 d
+## ✅ A10 · Parser fuzzing · P3 · done 2026-09-26
 
-SharpFuzz + AFL++ against the request-parsing entry point, seeded from the
-`h1syntax`/`h1framing` corpora. Target: no unhandled exception, no hang, no
-connection-state leak on any input.
+`tests/h1fuzz` — a deterministic mutation fuzzer against three parsers, needing
+nothing installed:
+
+| Target | Entry point | What it promises |
+|---|---|---|
+| `request` | `HTTPRequest.TryParse` | a Boolean, so *any* exception is a finding |
+| `response` | `HTTPResponse.TryParse` | the same, on the client's side of the wire |
+| `chunked` | `ChunkedTransferEncodingStream` | to refuse malformed framing *as* malformed framing |
+
+Roughly 1–2 million inputs per target per minute, seeded from the request,
+response and chunk shapes the harnesses already use, mutated by operators
+chosen for HTTP rather than for generality: bare CR and LF injection, digit
+runs turned into enormous ones (`Content-Length`, chunk-size), truncation,
+line duplication, and splicing two corpus entries together — the shape a
+smuggling bug lives in.
+
+**Not SharpFuzz + AFL++, which is what this section asked for.** Written down
+so it is a decision and not a drift: AFL++ is a system install and Linux-only,
+so a clean checkout on Windows could not run it and CI would need a package
+step for a job measured in hours; and coverage-guided fuzzing has no budget at
+which it is a *gate*. What is here is weaker and cheap enough to gate on —
+every run is `--seed N`, every finding prints the seed and iteration that
+produced it and saves the exact bytes, and `--replay <file>` reproduces it with
+a stack trace. If AFL++ is ever installed, these three functions are the entry
+points to instrument and the saved corpus is the seed set to hand it.
+
+**In the gate** it runs with a fixed seed and five seconds per target, which
+makes it a regression test rather than a fuzzer: the same inputs every run, so
+red means this change broke something and not that today's dice were unkind.
+**Nightly** it runs ten minutes per target with a seed that moves with the
+date, which is where the exploring happens.
+
+A finding is not "the parser rejected it" — that is the right answer to almost
+all of this input. It is an exception the target does not promise, an input
+over the deadline, or output out of all proportion to input. Findings are
+deduplicated by signature: one defect reached by 386,214 inputs is one defect,
+and `tests/h1fuzz/known-findings.txt` holds the ones already filed, reported
+loudly but not failing the run — the same bargain `tests/autobahn.sh` strikes
+with its floor. Deleting a line there is how a fix gets verified.
+
+**First run, first finding: H-28**, in thirty seconds.
 
 ## ✅ A11 · CI · P2 · done 2026-09-23
 
@@ -439,6 +479,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-25** | **The TCP Warden reaps live connections.** `TCPConnection.IsConnectionClosed()` is `Poll(SelectRead) && Available == 0` — a race against the connection's own reader — and `ATCPServer.cs:570` closes the socket on it. Surfaced as Autobahn 12.4.18 and 12.5.15 dropping mid-case without a close handshake | RFC 6455 §7 | P1 | S | **Diagnosed 2026-09-24**, by the instrument added the day before, on its first red night: the log names an `ObjectDisposedException` on the NetworkStream inside the read loop and, twelve milliseconds later, `ATCPServer: Cleaned up stale client` on the same socket. `Poll` is true when data is readable *or* the peer closed; `Available == 0` separates them; the reader drains the socket in between. **Wider than WebSocket** — `AHTTPServer : ATCPServer`, so every long-lived HTTP/1.1 connection is exposed. Reproduction had failed 14 times before this, which is what the instrument was for. **Fixed 2026-09-24, merged and pinned, [Hermod#31](https://github.com/Vanaheimr/Hermod/pull/31).** The Warden reaps on the handler task it already holds, not on a socket it guesses about. Verified by `ConnectionLivenessTests`, which catches the predicate lying in 160–250 ms, 5 runs of 5; the end-to-end A/B could not carry it (1 failure in 4 forced runs of the old code, which is the base rate) and one attempt at it was invalid outright. See [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | ✅ | **H-26** | Warden scheduling does not do what it says: `ATCPServer` registers its connection check as `EveryMinutes(1, …)` and ignores the `WardenCheckEvery` property it documents, and `Warden.EverySeconds(N, …)` tests `timestamp.Minute % N` rather than `Second` | — | P2 | XS | **Fixed 2026-09-25, merged and pinned, [Hermod#42](https://github.com/Vanaheimr/Hermod/pull/42).** Two findings, three defects. *`EverySeconds`*: six of eight overloads measured minutes; the two that did not are what shows it was a slip. *The interval*: the defaults resolved twice, against different numbers — the properties took 30 s while the Warden took the literals 3 min and 1 min from the constructor call — and `EveryMinutes(1, …)` is not "once a minute" but a predicate that is always true plus a one-minute `SleepTime` no constructor argument can reach, which is why reproducing H-25 needed a source edit. *And the one that hid them*: `AllWardenChecks` returned `AllWardenChecks`, so nothing could enumerate the checks to ask when they run — a `StackOverflow` is uncatchable, so reverting it takes the test host down rather than turning a test red. 10 tests, two of them about things that were never broken: `SleepTime` is what turns a sixty-second-wide slot into one run, and the predicate is *sampled*, so a slot narrower than `CheckEvery` can be missed. The reaper now runs every 30 s and first runs after 30 s rather than 3 min |
 | ⬜ | **H-24** | Six status-code reason phrases predate RFC 9110: 413 `Request Entity Too Large`, 414 `Request-URI Too Long`, 416 `Requested Range Not Satisfiable`, 422 `Unprocessable Entity`, plus 306/418 carrying draft names for codes the RFC reserves | RFC 9110 §15 | P3 | XS | Found while doing H-1. Not a defect — §15 says a client SHOULD ignore the reason phrase — but it is what goes out on the wire, since the status line is `{Code} {Name}`. Renaming the fields is breaking for every downstream Vanaheimr project, so it is a decision rather than a fix; `HTTPStatusCodeTests` pins the exact divergence set meanwhile, so it cannot drift further unnoticed |
+| ⬜ | **H-28** | `ChunkedTransferEncodingStream` reports one malformed-framing case out of eleven as a bare `System.Exception`, which a caller cannot filter on | — | P3 | XS | Found by **A10** on its first run, 2026-09-26. Ten of the eleven throw sites use `HTTPInvalidChunkException`, which is a `FormatException` and therefore catchable as "this input was malformed"; `ChunkedTransferEncodingStream.cs:665` throws `new Exception("Expected CRLF")` thirty lines below a sibling that throws `HTTPInvalidChunkException` for the same condition. A caller wanting to distinguish bad input from a bug in the decoder has to catch `Exception`, which swallows both — and H-2's `ContentDecodingStream` exists precisely because the stack decided elsewhere that callers should have one exception type to catch. Listed in `tests/h1fuzz/known-findings.txt`; deleting that line is the regression test |
 | ⬜ | **H-27** | Every `HTTPClient` builds its own `DNSClient`, whose default searches the machine's network configuration for resolvers — ~38 ms per construction, even when the URL is a literal IP address that will never be resolved | — | P2 | S | Found by **A9** on 2026-09-26, and measured rather than inferred: a fresh client per request is 39.4 ms p50, of which 38.3 ms is the constructor and 1.06 ms the request, and passing one shared `DNSClient` takes the whole thing to 0.449 ms. The line is `ATCPClient.cs:319` — `DNSClient ?? new DNSClient(...)` — whose default is `SearchForIPv4DNSServers: true` and `SearchForIPv6DNSServers: true`. Harmless for a long-lived client, ruinous for anything building one per request, and avoidable three ways: resolve lazily, share one default instance, or skip the search when the target is already an address. `tests/h1bench -- connect` is the regression test |
 | ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 

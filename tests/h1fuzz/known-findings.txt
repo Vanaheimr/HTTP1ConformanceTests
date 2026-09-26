@@ -1,0 +1,22 @@
+# Findings h1fuzz has already reported and that are filed upstream.
+#
+# One signature per line, exactly as the harness prints it before the "(×N)".
+# A listed finding is still reported, with its count, but does not fail the
+# run — the same bargain tests/autobahn.sh strikes with its floor. A suite
+# that is red for a reason everybody has already read stops being read.
+#
+# Deleting a line is how a fix gets verified: the finding comes back as NEW
+# and the run goes red if it was not actually fixed.
+#
+# Note the asymmetry: a line disappearing from the output is *not* proof the
+# defect is gone. A blind mutator reaching an input is evidence; not reaching
+# it in one budget is not.
+
+# H-28 — ChunkedTransferEncodingStream throws a bare System.Exception for one
+# malformed-framing case out of eleven. The other ten throw
+# HTTPInvalidChunkException (a FormatException), which a caller can filter on;
+# this one can only be caught as Exception, which also swallows real bugs.
+# Found by h1fuzz on 2026-09-26, at ChunkedTransferEncodingStream.cs:665,
+# thirty lines below a sibling that throws HTTPInvalidChunkException for the
+# same condition.
+Exception: Expected CRLF

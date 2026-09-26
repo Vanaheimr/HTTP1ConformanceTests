@@ -230,6 +230,45 @@ jobs:
       - name: Foreign peers, both directions
         run: bash tests/run-tests.sh --filter peers
 
+  fuzz:
+    # A10 — the exploring half. The push gate runs h1fuzz with a fixed seed and
+    # five seconds per target, which makes it a regression test; this is where
+    # it actually looks for something new.
+    #
+    # The seed moves with the date, so each night covers ground the last one
+    # did not, and the run number disambiguates a re-run of the same day. A
+    # finding is therefore reproducible from the log alone: the seed and the
+    # iteration are printed with it, and the input is uploaded besides.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build tests/h1fuzz/h1fuzz.csproj -c Release
+
+      - name: Fuzz the parsers
+        run: |
+          SEED=$(( $(date -u +%Y%m%d) + ${{ github.run_number }} ))
+          echo "seed $SEED"
+          dotnet run -c Release --project tests/h1fuzz --no-build -- --seed "$SEED" --seconds 600
+
+      # On a red run these are the whole point, so always() rather than
+      # failure(): a run killed by timeout-minutes counts as cancelled, and
+      # !cancelled() would drop the evidence in exactly that case.
+      - name: The inputs that produced findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: h1fuzz-findings
+          path: artifacts/h1fuzz/
+          if-no-files-found: ignore
+
   against-hermod-master:
     # The two jobs above test the revision the gitlink pins, which is the right
     # question for "would a fresh clone build". It is the wrong question for what

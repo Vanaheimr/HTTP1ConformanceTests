@@ -25,8 +25,10 @@ scrapes output for a marker character.
 
 ## Status
 
-**279/279 checks pass, over both transports** — 201 raw-wire + 78 curl.
-With `--wsl`, a second curl build and the foreign peers join in: **415/415**.
+**279/279 checks pass, over both transports** — 201 raw-wire + 78 curl —
+across 8/8 harnesses, the eighth being the fuzzer's fixed-seed pass. With
+`--wsl`, a second curl build and the foreign peers join in: **415/415** over
+10/10.
 
 The curl figure is 78 **here** and 79 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional, and a
@@ -286,8 +288,45 @@ nothing beside it is how "slower than I expected" becomes "slow".
 See A9 in [`PLAN.md`](../PLAN.md) for the full table and the three things the
 numbers said that the code did not — one of which became finding **H-27**.
 
+## The fuzzer (A10)
+
+`tests/h1fuzz` throws malformed input at three parsers — `HTTPRequest.TryParse`,
+`HTTPResponse.TryParse` and `ChunkedTransferEncodingStream` — at roughly one to
+two million inputs per target per minute.
+
+```bash
+dotnet run -c Release --project tests/h1fuzz                   # 30 s per target
+dotnet run -c Release --project tests/h1fuzz -- --seconds 600
+dotnet run -c Release --project tests/h1fuzz -- chunked --seed 1234
+dotnet run -c Release --project tests/h1fuzz -- --replay artifacts/h1fuzz/<file>
+tests/run-tests.sh --filter fuzz                               # as the gate runs it
+```
+
+A finding is **not** "the parser rejected it": that is the correct answer to
+almost all of this input, and counting rejections would produce noise rather
+than signal. A finding is an exception the target does not promise — a
+`TryParse` promises a Boolean, so anything it throws counts; the chunked
+decoder promises to refuse malformed framing, so `IOException` and
+`FormatException` are it keeping its word and `NullReferenceException` is not —
+or an input over the deadline, or output out of all proportion to input.
+
+Findings are deduplicated by signature, because one defect reached by 386,214
+inputs is one defect. `known-findings.txt` lists the ones already filed: they
+are still printed, with their count, but do not fail the run. Deleting a line
+there is how a fix gets verified — the finding comes back as NEW if it was not
+actually fixed.
+
+In the gate the seed is fixed and the budget is five seconds per target, which
+makes it a regression test: the same inputs every run, so red means this change
+broke something rather than that today's dice were unkind. The nightly moves
+the seed with the date and runs ten minutes per target.
+
+It is deliberately not SharpFuzz driven by AFL++, which is what `PLAN.md`
+originally asked for; A10 there says why, and what would have to be installed
+to get the stronger instrument.
+
 ## Not here yet
 
 `PLAN.md` tracks the rest: reverse proxies (A5), http-garden and the smuggling
-scanners (A6), browsers (A8), parser fuzzing (A10). CI (A11) landed on
-2026-09-22, the reference peers (A7) and the benchmark (A9) on 2026-09-26.
+scanners (A6) and browsers (A8). CI (A11) landed on 2026-09-22; the
+reference peers (A7), the benchmark (A9) and the fuzzer (A10) on 2026-09-26.

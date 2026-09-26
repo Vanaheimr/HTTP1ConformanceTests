@@ -3,6 +3,11 @@ bin/
 obj/
 out/
 
+# Harness output: the fuzzer's saved inputs, CI's .trx files. A finding worth
+# keeping becomes a seed in tests/h1fuzz/ or a regression test upstream, not a
+# file that happens to still be on somebody's disk.
+artifacts/
+
 # Rider / VS / VS Code
 .idea/
 .vs/

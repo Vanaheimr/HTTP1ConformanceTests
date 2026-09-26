@@ -1831,19 +1831,109 @@ three `SetHeaderField("Accept-Ranges", …)` calls became the typed property tha
 H-21 added, and the comment saying the field "is only modeled as a *request*
 field in Hermod" went with them.
 
+## 2026-09-26 — A10: a fuzzer that is honest about being the weaker one
+
+The plan asked for SharpFuzz driven by AFL++. That is not what landed, and the
+reason is worth the paragraph rather than being discovered later from a diff.
+
+AFL++ is a system install and Linux-only. A clean checkout on Windows could not
+run it; CI would need a package step for a job measured in hours; and
+coverage-guided fuzzing has no budget at which it is a *gate* — its findings
+arrive days later, which is a fine thing to have and a useless thing to block a
+push on.
+
+`tests/h1fuzz` is the cheaper instrument, described as such: a deterministic
+mutation fuzzer needing nothing installed, against three parsers.
+
+| Target | Promise |
+|---|---|
+| `HTTPRequest.TryParse` | a Boolean — so *any* exception is a finding |
+| `HTTPResponse.TryParse` | the same, on the client's side |
+| `ChunkedTransferEncodingStream` | to refuse malformed framing *as* malformed framing |
+
+Roughly one to two million inputs per target per minute. The mutators are
+chosen for HTTP rather than for generality: bare CR and LF injection, digit
+runs turned into enormous ones (which is where `Content-Length` and chunk-size
+live), truncation, line duplication, and splicing two corpus entries — the
+shape a smuggling bug has.
+
+What makes it gateable is that it is reproducible. Every run is `--seed N`;
+every finding prints the seed and the iteration that produced it, saves the
+exact bytes, and `--replay <file>` reproduces the stack trace. In the gate the
+seed is fixed and the budget is five seconds per target, so the same inputs run
+every time and red means this change broke something — a fuzzer with a moving
+seed in a push gate is a coin toss with a build attached. The nightly moves the
+seed with the date and runs ten minutes per target.
+
+### It found something in thirty seconds
+
+`System.Exception: "Expected CRLF"`, out of the chunked decoder.
+
+That is **H-28**, and the shape of it is the interesting part. The decoder has
+its own `HTTPInvalidChunkException`, which derives from `FormatException`, and
+uses it at ten of its eleven throw sites. The eleventh —
+`ChunkedTransferEncodingStream.cs:665`, thirty lines below a sibling that
+throws `HTTPInvalidChunkException` for the same condition — throws a bare
+`System.Exception`. A caller wanting to tell "this input was malformed" from
+"the decoder lost its footing" has to catch `Exception` and gets both.
+
+The fuzzer isolated exactly the inconsistent one because the allowlist it
+checks against is the promise, not the implementation: `FormatException` is
+expected, so the ten correct throws passed silently and the one leak did not.
+H-2's `ContentDecodingStream` exists for this exact reason — the stack already
+decided elsewhere that callers should have one exception type to catch.
+
+### Two mechanisms the first run demanded
+
+**Deduplication.** The first run reported 42,472 findings, all the same defect.
+A report nobody reads is not a report. Findings are now keyed by
+`(kind, message)`, the first input producing each signature is the one saved —
+usually the smallest — and the count goes on the line. The same run now says
+"1 distinct finding from 386,214 inputs".
+
+**A known-findings list.** With H-28 open, a fuzzer in the gate is permanently
+red, which is how a suite stops being read. `tests/h1fuzz/known-findings.txt`
+holds the signatures already filed: printed loudly with their count, not
+failing the run. It is the same bargain `tests/autobahn.sh` strikes with its
+floor, and deleting a line is how a fix gets verified.
+
+Falsified all three: with H-28 listed the run exits 0; with the line removed it
+exits 1 and says "1 NEW finding"; and `--replay` on the saved input reproduces
+the exception with a stack trace naming line 665.
+
+### What the numbers say in passing
+
+The request parser runs ~10–34 k inputs/s against the response parser's
+~62–98 k, and the slowest single input in a run has been 40–175 ms. For a
+*parse* — no sockets, no I/O — that is a long time, and it is the same
+neighbourhood as A9's 18.7 KB allocated per parse. Not chased today; recorded
+so the next person starts from a number rather than an impression.
+
+### Numbers
+
+The gate is 279/279 checks over **8/8** harnesses now, the eighth being the
+fuzzer's fixed-seed pass, at roughly 120 s. With `--wsl` it is 415/415 over
+10/10.
+
+Track A: A5, A6 and A8 remain. Track B: **28 findings, 11 fixed** — H-28 is
+this entry's.
+
 ## Next
 
 **A5, A6 and A8, the remaining third-party suites** — intermediary interop,
 request smuggling / differential fuzzing, browsers. Each brings its own nightly
 job; the workflow has room for them and the demo already binds `0.0.0.0` on
-demand, which is what A5 and A6 were waiting for. Then A10 (parser fuzzing).
+demand, which is what A5 and A6 were waiting for. That is the whole of Track A
+that is left.
 
-**A7 and A9 landed on 2026-09-26.** A7 is five foreign clients and two foreign
-servers, 58/58, nightly on `ubuntu-latest`. A9 is `tests/h1bench`, not a gate,
-whose control column says our per-request latency beats Kestrel's on the same
-loopback and whose `connect` scenario produced finding **H-27**.
+**A7, A9 and A10 landed on 2026-09-26.** A7 is five foreign clients and two
+foreign servers, 58/58, nightly on `ubuntu-latest`. A9 is `tests/h1bench`, not
+a gate, whose control column says our per-request latency beats Kestrel's on
+the same loopback and whose `connect` scenario produced finding **H-27**. A10
+is `tests/h1fuzz`, deterministic in the gate and exploring nightly, which
+produced **H-28** thirty seconds into its first run.
 
-**Track B: 27 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
+**Track B: 28 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
 2026-09-24, which took four fixes against an estimate of one; H-3, which moved the
 RFC 9110 §11 framework into the shared library on the way; H-16, which had been
 fixed upstream for a week before anybody re-read the row; H-25, the Warden killing
