@@ -187,6 +187,49 @@ jobs:
             tests/autobahn/reports-client/
             artifacts/autobahn-client.txt
 
+  interop-peers:
+    # A7 — reference peers that are not .NET.
+    #
+    # ubuntu-latest rather than the debian:13 container ci.yml uses, and for a
+    # duller reason than the Autobahn job's: the GitHub Ubuntu image ships Go,
+    # Java, Node, Python and wget already, while the Debian container ships
+    # none of them. Installing five toolchains per push to gate on them would
+    # be a lot of minutes for a question that does not change between pushes.
+    #
+    # It is a nightly rather than a gate for the same reason Autobahn is: the
+    # answer is about the protocol, not about the commit. What a gate would add
+    # is a variable check count — interop.sh skips a runtime it cannot find,
+    # with a reason — and a figure that moves with the runner image is worse
+    # than no figure.
+    #
+    # tests/run-tests.sh does the demo-host lifecycle; --filter peers runs this
+    # section and nothing else.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # What the runner actually has, recorded in the log: a peer that silently
+      # stopped being installed would otherwise look like a peer that passed.
+      - name: Peer runtimes
+        run: |
+          go version
+          java -version
+          node --version
+          python3 --version
+          wget --version | head -1
+
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      - name: Foreign peers, both directions
+        run: bash tests/run-tests.sh --filter peers
+
   against-hermod-master:
     # The two jobs above test the revision the gitlink pins, which is the right
     # question for "would a fresh clone build". It is the wrong question for what

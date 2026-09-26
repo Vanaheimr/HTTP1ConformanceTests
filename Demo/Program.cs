@@ -546,13 +546,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
                     var builder = new HTTPResponse.Builder(request) {
                                       HTTPStatusCode  = HTTPStatusCode.NoContent,
-                                      Allow           = [ HTTPMethod.GET, HTTPMethod.HEAD, HTTPMethod.OPTIONS ]
+                                      Allow           = [ HTTPMethod.GET, HTTPMethod.HEAD, HTTPMethod.OPTIONS ],
+                                      AcceptRanges    = "bytes"
                                   };
-
-                    // Accept-Ranges is only modeled as a *request* field in Hermod
-                    // (it is a response field per RFC 9110 §14.3), so it goes on
-                    // the wire via the generic setter until that is fixed upstream.
-                    builder.SetHeaderField("Accept-Ranges", "bytes");
 
                     return Task.FromResult(builder.AsImmutable);
 
@@ -938,10 +934,9 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                               ContentType     = HTTPContentType.Text.PLAIN,
                               ETag            = resourceETag,
                               LastModified    = resourceDate,
-                              Content         = resourceBytes
+                              Content         = resourceBytes,
+                              AcceptRanges    = "bytes"
                           };
-
-            builder.SetHeaderField("Accept-Ranges", "bytes");
 
             return builder.AsImmutable;
 
@@ -1001,10 +996,10 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                               ContentType     = HTTPContentType.Text.PLAIN,
                               ETag            = resourceETag,
                               LastModified    = resourceDate,
-                              Content         = slice
+                              Content         = slice,
+                              AcceptRanges    = "bytes"
                           };
 
-            builder.SetHeaderField("Accept-Ranges", "bytes");
             builder.SetContentRange($"bytes {from}-{to}/{length}");
 
             return builder.AsImmutable;

@@ -15,8 +15,10 @@ current as work proceeds.
 **Current state (2026-09-26):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
 18 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **279/279 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
-445/517, zero hard failures either way. **A11 ✅** — CI per push on two legs,
-nightly for both Autobahn directions. Track B: **26 findings, 11 fixed upstream**
+445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
+foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
+control. **A11 ✅** — CI per push on two legs,
+nightly for both Autobahn directions. Track B: **27 findings, 11 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -28,11 +30,13 @@ citation sweep last so that it covered what the other four added.
 | `tests/run-tests.sh --tls` | ✅ 279/279, ~270 s |
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 738, both legs — 537 before H-1, 562 before H-2's second half, 657 at the previous pin. Of the 81 added since, 59 are this repo's five findings and 22 are Hermod master's own WebSocket work; nothing is unaccounted for. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so the ten tests H-26 added run in Hermod's CI and not in ours — worth knowing, given that `AHTTPServer` derives from `ATCPServer` |
 | ↳ `Tests.HTTP.` alone | ✅ 737 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 357/357 — adds the Debian curl |
+| `tests/run-tests.sh --wsl` | ✅ 415/415 — adds the Debian curl *and* the foreign peers (A7) |
 | third-party: curl | ✅ 78/78 per build, two builds, both transports — 79 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
-| third-party: proxies, http-garden, browsers | ⬜ A5–A8 |
+| third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 58/58 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
+| benchmarks | ✅ `tests/h1bench`, not a gate — see A9 for the figures and the three findings |
+| third-party: proxies, http-garden, browsers | ⬜ A5, A6, A8 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 7 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocks A5 and A6 |
@@ -258,18 +262,52 @@ an adversarial external tool.
   (h2c upgrade is absent); pin that as a regression
 - `docs/TestingAgainst_Smuggling.md`
 
-## ⬜ A7 · Non-.NET reference peers · P2 · ~2 d
+## ✅ A7 · Non-.NET reference peers · P2 · done 2026-09-26
 
-Every current interop test is .NET-vs-.NET. Independent implementations catch
-shared assumptions that two .NET stacks cannot.
+Every interop test before this was .NET against .NET, or curl. Independent
+implementations catch shared assumptions that two .NET stacks cannot — and the
+*client* half had no independent witness at all, which is the asymmetry this
+closes.
+
+`tests/interop.sh` drives both directions; the peers live in `tests/peers/` and
+are **stdlib-only on purpose**, so a clean checkout needs the runtimes and
+nothing else — no package fetch, no lockfile, no build step.
 
 | Peer | As client | As server |
 |---|---|---|
-| Go `net/http` | ✓ | ✓ |
-| Python `httpx` / `aiohttp` | ✓ | ✓ |
-| Rust `hyper` | ✓ | ✓ |
-| Java `HttpClient` / OkHttp | ✓ | — |
-| `wget`, `httpie`, `aria2c` (ranges) | ✓ | — |
+| Go `net/http` | ✅ 10 checks | ✅ `server.go`, 7 checks via `tests/h1peer` |
+| Node `node:http` | ✅ 11 checks | ✅ `server.mjs`, 7 checks via `tests/h1peer` |
+| Java `java.net.http` | ✅ 10 checks (+1 skip) | — the JDK ships no HTTP server worth pointing at |
+| Python `http.client` | ✅ 10 checks (+1 skip) | — the stdlib cannot frame chunked itself, so a Python server would be testing our framing rather than Python's |
+| `wget` | ✅ 3 checks | — |
+| Rust `hyper` | ⬜ needs crates.io, which breaks "clean checkout, nothing fetched" | ⬜ same |
+
+**58/58 checks, 3 skips**, each with its reason on the line. The skips are the
+honest part: `java.net.http` and `http.client` do not expose the trailer
+section, and `node:http` follows no redirects, so those say SKIP instead of
+passing on something else.
+
+Each client runs the *same* ten checks, so the matrix is comparable across
+stacks: baseline, chunked body, trailers, gzip round-trip, HEAD-matches-GET,
+`Range` → 206, `Accept-Ranges`, 404, redirect, connection reuse. The gzip check
+decodes by hand in every language rather than letting the transport do it — Go
+switches off its own transparent decompression when the header is set by hand,
+so leaving it to the transport would have the four peers measuring four
+different things.
+
+The other direction is `tests/h1peer`: our `HTTPClient` against `server.go` and
+`server.mjs` — their Content-Length framing, their chunked framing, their
+trailer section collected by us, their gzip undone by ours.
+
+**Where it runs.** Linux natively. On Windows the toolchains live in the Debian
+WSL distribution, the same one the second curl build comes from, so it needs
+`--wsl` for the same reason: the demo has to be bound to `0.0.0.0` for the WSL
+VM to have a route to it. Direction 2 is loopback *inside* the peer
+environment, crosses no VM boundary, and therefore works unchanged in CI.
+
+**CI:** a nightly job on `ubuntu-latest`, which ships all five runtimes. Not a
+push gate — the Debian container ships none of them, and a gate whose check
+count moves with the runner image is worse than no gate.
 
 ## ⬜ A8 · Browser interop · P2 · ~1–2 d
 
@@ -280,14 +318,49 @@ shared assumptions that two .NET stacks cannot.
 - the practical acceptance test — a browser is the least forgiving consumer of
   SSE and WebSocket in daily use
 
-## ⬜ A9 · Benchmarks · P3 · ~1 d
+## ✅ A9 · Benchmarks · P3 · done 2026-09-26
 
-`tests/h1bench`, model: `h2bench`. Small `GET` at 1/8/64 concurrent with latency
-percentiles, large download/upload, chunked throughput, parser microbenchmarks,
-allocation per request, plus **Kestrel as a control** on the same loopback — an
-absolute number without a control is how "slower than expected" gets mistaken
-for "slow". Additionally `h2load --h1`, `bombardier`, `oha` as external load
-generators (they also stress keep-alive reuse and connection-table cleanup).
+`tests/h1bench`, model: `h2bench`. Not a gate and not in CI: it is the baseline
+an optimisation has to beat, and the thing to re-run before believing one
+worked. Client and server share one process over loopback, so every figure
+covers both roles.
+
+Measured 2026-09-26, 16-core Windows box, .NET 10.0.12, Release:
+
+| | |
+|---|---|
+| request header parsing | **48,795 parses/s**, **18,696 bytes allocated** per parse of a 376-byte header |
+| chunked coding | **2,225 MiB/s** encode, **1,921 MiB/s** decode |
+| small GET, one client | **~5,000 req/s** at 1, 8 and 64 concurrent — flat, because one client is one connection |
+| small GET, a client each | **21,657 req/s** at 8, **20,245** at 64 · p50 0.29 ms / 2.07 ms |
+| 64 MiB download | **987 MiB/s**, 3.00× the payload allocated |
+| 64 MiB upload | **958 MiB/s**, 3.01× the payload allocated |
+| request on a kept-open connection | p50 **0.197 ms** |
+| **control**: .NET `HttpClient` → Hermod | p50 **0.240 ms** |
+| **control**: .NET `HttpClient` → Kestrel | p50 **0.252 ms** |
+
+Three things the numbers say that the code did not:
+
+**Per-request latency is not a problem.** Against Kestrel on the same loopback,
+in the same process, driven by the same `HttpClient`, our server is the
+marginally faster of the two. That is what a control is for: an absolute number
+with nothing beside it is how "slower than I expected" becomes "slow".
+
+**A fresh client costs 39 ms, and none of it is the connection.** Split: 38.3 ms
+constructing the `HTTPClient`, 1.06 ms for its first request. One shared
+`DNSClient` takes the whole thing to **0.449 ms** — 86× — which names the cause
+instead of guessing at it. Filed as **H-27**.
+
+**Flat throughput on one client is the protocol, not a defect.** HTTP/1.1 has no
+multiplexing, so 64 callers on one connection queue: req/s stays put and latency
+rises linearly, exactly as it should. Give each caller its own client and the
+server does four times the work. Worth stating, because the HTTP/2 sibling has a
+superficially identical curve that *is* a defect (`requestStartLock`), and the
+two must not be read as the same finding.
+
+Still open here: the external load generators (`h2load --h1`, `bombardier`,
+`oha`), which would also stress keep-alive reuse and connection-table cleanup
+from outside this process.
 
 ## ⬜ A10 · Parser fuzzing · P3 · ~2 d
 
@@ -366,6 +439,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-25** | **The TCP Warden reaps live connections.** `TCPConnection.IsConnectionClosed()` is `Poll(SelectRead) && Available == 0` — a race against the connection's own reader — and `ATCPServer.cs:570` closes the socket on it. Surfaced as Autobahn 12.4.18 and 12.5.15 dropping mid-case without a close handshake | RFC 6455 §7 | P1 | S | **Diagnosed 2026-09-24**, by the instrument added the day before, on its first red night: the log names an `ObjectDisposedException` on the NetworkStream inside the read loop and, twelve milliseconds later, `ATCPServer: Cleaned up stale client` on the same socket. `Poll` is true when data is readable *or* the peer closed; `Available == 0` separates them; the reader drains the socket in between. **Wider than WebSocket** — `AHTTPServer : ATCPServer`, so every long-lived HTTP/1.1 connection is exposed. Reproduction had failed 14 times before this, which is what the instrument was for. **Fixed 2026-09-24, merged and pinned, [Hermod#31](https://github.com/Vanaheimr/Hermod/pull/31).** The Warden reaps on the handler task it already holds, not on a socket it guesses about. Verified by `ConnectionLivenessTests`, which catches the predicate lying in 160–250 ms, 5 runs of 5; the end-to-end A/B could not carry it (1 failure in 4 forced runs of the old code, which is the base rate) and one attempt at it was invalid outright. See [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | ✅ | **H-26** | Warden scheduling does not do what it says: `ATCPServer` registers its connection check as `EveryMinutes(1, …)` and ignores the `WardenCheckEvery` property it documents, and `Warden.EverySeconds(N, …)` tests `timestamp.Minute % N` rather than `Second` | — | P2 | XS | **Fixed 2026-09-25, merged and pinned, [Hermod#42](https://github.com/Vanaheimr/Hermod/pull/42).** Two findings, three defects. *`EverySeconds`*: six of eight overloads measured minutes; the two that did not are what shows it was a slip. *The interval*: the defaults resolved twice, against different numbers — the properties took 30 s while the Warden took the literals 3 min and 1 min from the constructor call — and `EveryMinutes(1, …)` is not "once a minute" but a predicate that is always true plus a one-minute `SleepTime` no constructor argument can reach, which is why reproducing H-25 needed a source edit. *And the one that hid them*: `AllWardenChecks` returned `AllWardenChecks`, so nothing could enumerate the checks to ask when they run — a `StackOverflow` is uncatchable, so reverting it takes the test host down rather than turning a test red. 10 tests, two of them about things that were never broken: `SleepTime` is what turns a sixty-second-wide slot into one run, and the predicate is *sampled*, so a slot narrower than `CheckEvery` can be missed. The reaper now runs every 30 s and first runs after 30 s rather than 3 min |
 | ⬜ | **H-24** | Six status-code reason phrases predate RFC 9110: 413 `Request Entity Too Large`, 414 `Request-URI Too Long`, 416 `Requested Range Not Satisfiable`, 422 `Unprocessable Entity`, plus 306/418 carrying draft names for codes the RFC reserves | RFC 9110 §15 | P3 | XS | Found while doing H-1. Not a defect — §15 says a client SHOULD ignore the reason phrase — but it is what goes out on the wire, since the status line is `{Code} {Name}`. Renaming the fields is breaking for every downstream Vanaheimr project, so it is a decision rather than a fix; `HTTPStatusCodeTests` pins the exact divergence set meanwhile, so it cannot drift further unnoticed |
+| ⬜ | **H-27** | Every `HTTPClient` builds its own `DNSClient`, whose default searches the machine's network configuration for resolvers — ~38 ms per construction, even when the URL is a literal IP address that will never be resolved | — | P2 | S | Found by **A9** on 2026-09-26, and measured rather than inferred: a fresh client per request is 39.4 ms p50, of which 38.3 ms is the constructor and 1.06 ms the request, and passing one shared `DNSClient` takes the whole thing to 0.449 ms. The line is `ATCPClient.cs:319` — `DNSClient ?? new DNSClient(...)` — whose default is `SearchForIPv4DNSServers: true` and `SearchForIPv6DNSServers: true`. Harmless for a long-lived client, ruinous for anything building one per request, and avoidable three ways: resolve lazily, share one default instance, or skip the search when the target is already an address. `tests/h1bench -- connect` is the regression test |
 | ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 
 ---

@@ -32,9 +32,11 @@ tests/run-tests.sh        # 279/279 checks, ~103 s
 |---|---|
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
 | `tests/curl-matrix.sh` | **78/78** (79 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **279/279** — and **357/357** with `--wsl`, which adds a second curl build |
+| both, over cleartext *and* TLS | **279/279** — and **415/415** with `--wsl`, which adds a second curl build and the foreign peers |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 18 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
+| `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
+| `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
 | remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |
 
 On top of that, the coverage inside Hermod itself:

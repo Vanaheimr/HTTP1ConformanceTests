@@ -26,7 +26,7 @@ scrapes output for a marker character.
 ## Status
 
 **279/279 checks pass, over both transports** — 201 raw-wire + 78 curl.
-With `--wsl`, a second curl build joins in: **357/357**.
+With `--wsl`, a second curl build and the foreign peers join in: **415/415**.
 
 The curl figure is 78 **here** and 79 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional, and a
@@ -222,8 +222,72 @@ one — an exclusion hides the cases, a floor keeps counting them. See
 including what the first run found and why this suite belongs in this repository
 rather than only in the HTTP/2 sibling.
 
+## The peers (A7)
+
+`tests/interop.sh` drives two directions that curl cannot cover on its own.
+
+**Foreign clients against our server.** `tests/peers/client.go`, `Client.java`,
+`client.mjs` and `client.py` each run the *same* ten checks — baseline, chunked
+body, trailers, gzip round-trip, HEAD-matches-GET, `Range` → 206,
+`Accept-Ranges`, 404, redirect, reuse — so the matrix is comparable across four
+independent HTTP stacks. `wget` adds three more. Each program prints
+`PASS`/`FAIL`/`SKIP` lines and the driver counts them; a peer that cannot make
+a check says SKIP with the reason, because a silent pass and a silent skip look
+the same in a log a week later.
+
+Three of those skips are real and worth knowing: `java.net.http` and Python's
+`http.client` do not expose the trailer section at all, and `node:http` follows
+no redirects.
+
+**Our client against foreign servers.** `tests/peers/server.go` and
+`server.mjs` serve the same five routes framed by Go's and Node's stacks;
+`tests/h1peer` is our `HTTPClient` reading them. This is the direction that had
+no witness before — the server had been judged by curl, by Autobahn and now by
+five clients, while the client had only ever talked to a server from the same
+source tree.
+
+The peers are stdlib-only on purpose: `go run`, `java Client.java`, `node`,
+`python3`. Nothing is fetched and nothing is installed, so a clean checkout
+needs the runtimes and nothing else.
+
+On Linux everything runs natively. On Windows the toolchains live in the Debian
+WSL distribution — the same one the second curl comes from — so the demo must
+be bound to `0.0.0.0`, which is what `--wsl` does. The second direction is
+loopback *inside* the peer environment and crosses no VM boundary, which is
+also why it needs no special handling in CI.
+
+```bash
+tests/interop.sh --base http://127.0.0.1:8080     # both directions
+tests/interop.sh --only go                        # one peer
+tests/run-tests.sh --wsl --filter peers           # with the demo lifecycle
+```
+
+CI runs it nightly on `ubuntu-latest`, which ships all five runtimes. It is
+deliberately not a push gate: the Debian container ships none of them, and a
+gate whose check count moves with the runner image is worse than no gate.
+
+## The benchmark (A9)
+
+`tests/h1bench` is not a gate and is not in CI. It is the baseline an
+optimisation has to beat, and the thing to re-run before believing one worked.
+
+```bash
+dotnet run -c Release --project tests/h1bench             # everything
+dotnet run -c Release --project tests/h1bench -- connect  # one scenario
+dotnet run -c Release --project tests/h1bench -- --mib 256
+```
+
+Client and server share one process over loopback, so every figure covers both
+roles. The one comparison worth quoting is the control: .NET's `HttpClient`
+against our server and against Kestrel, same loopback, same process, one after
+the other — **0.240 ms** p50 against **0.252 ms**. An absolute number with
+nothing beside it is how "slower than I expected" becomes "slow".
+
+See A9 in [`PLAN.md`](../PLAN.md) for the full table and the three things the
+numbers said that the code did not — one of which became finding **H-27**.
+
 ## Not here yet
 
 `PLAN.md` tracks the rest: reverse proxies (A5), http-garden and the smuggling
-scanners (A6), non-.NET reference peers (A7), browsers (A8), benchmarks (A9),
-parser fuzzing (A10). CI (A11) landed on 2026-09-22.
+scanners (A6), browsers (A8), parser fuzzing (A10). CI (A11) landed on
+2026-09-22, the reference peers (A7) and the benchmark (A9) on 2026-09-26.

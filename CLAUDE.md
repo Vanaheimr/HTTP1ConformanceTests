@@ -168,7 +168,9 @@ pointed at a foreign suite. See
 |---|---|
 | Hermod's own NUnit suites | 737 `Tests.HTTP.` / 372 regression selection / 87 WebSockets, all run counts — 738 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
 | this repo's gate | **279/279**, cleartext and TLS (201 raw-wire + 78 curl) |
-| with `--wsl` (second curl build) | **357/357** |
+| with `--wsl` (second curl build + foreign peers) | **415/415** |
+| reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
+| benchmarks (A9) | `tests/h1bench`, not a gate — 0.240 ms p50 against Kestrel's 0.252 ms on the same loopback |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 

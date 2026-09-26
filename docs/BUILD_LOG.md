@@ -1721,15 +1721,129 @@ and 7/7 — rather than inferred from three green runs of three different trees.
 
 Track B: **26 findings, 11 fixed upstream** — and all eleven whole.
 
- . ## Next
+## 2026-09-26 — A7 and A9: five foreign stacks, and a control
 
-**A5–A8, the remaining third-party suites** — intermediary interop, request
-smuggling / differential fuzzing, non-.NET reference peers, browsers. Each brings
-its own nightly job; the workflow has room for them and the demo already binds
-`0.0.0.0` on demand, which is what A5 and A6 were waiting for. Then A9
-(benchmarks) and A10 (parser fuzzing).
+### A7 — the direction that had no witness
 
-**Track B: 26 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
+Every interop check in this repository before today was .NET against .NET, or
+curl. curl is a good witness and it is one witness, which leaves the question
+of whether the server matches HTTP/1.1 or matches curl. And the *client* had
+nothing at all: it had only ever talked to a server from the same source tree,
+so every wire-visible assumption the two share was invisible to both.
+
+`tests/interop.sh` closes both halves. **58/58 checks, 3 skips.**
+
+Five clients — Go `net/http`, Java `java.net.http`, Node `node:http`, Python
+`http.client`, and wget — each running the *same* ten checks against the demo
+host, so the matrix is comparable rather than a pile of anecdotes: baseline,
+chunked body, trailers, gzip round-trip, HEAD-matches-GET, `Range` → 206,
+`Accept-Ranges`, 404, redirect, reuse. Go passed all ten on the first run,
+which is the answer one hopes for and not the interesting part; the interesting
+part is that the checks can fail, which was measured rather than assumed.
+
+Two peers earned a skip apiece and one earned two, and the skips are the honest
+half of the table. `java.net.http` and `http.client` discard the trailer
+section without exposing it; `node:http` follows no redirects. Those say SKIP
+with the reason on the line, because a check quietly measuring something else
+is worse than a check that is not there.
+
+The gzip check decodes by hand in every language. Letting the transport do it
+would have measured four different things: Go switches off its transparent
+decompression precisely when the header is set by hand, so the four peers would
+have disagreed about what was even being tested.
+
+The second direction is `tests/h1peer` — our `HTTPClient` against
+`tests/peers/server.go` and `server.mjs`. Their Content-Length framing, their
+chunked framing, their trailer section collected by us, their gzip undone by
+ours. 7/7 against each. Two foreign servers rather than three: Python's stdlib
+cannot frame chunked itself, so a Python server would have been testing our
+framing wearing a Python hat.
+
+Everything is stdlib-only, deliberately. `go run`, `java Client.java`, `node`,
+`python3` — no package fetch, no lockfile, no build step, so a clean checkout
+needs the runtimes and nothing else. Rust's `hyper` is the one peer left out
+for exactly this reason: it would need crates.io.
+
+**Falsified.** Breaking the Go client's expected chunked body fails
+`go/chunked` and takes the driver to 16/17 with exit 1; breaking the Go
+server's trailer value fails `h1peer/go` at 6/7. Both were needed: the first
+attempt at this changed nothing, because the `perl -pi` that was supposed to
+break the expectation matched zero times and said nothing about it. An edit
+that did not apply looks exactly like a change that had no effect — the third
+time today that pattern cost a measurement.
+
+### A9 — numbers, and something to compare them to
+
+`tests/h1bench`, modelled on the HTTP/2 sibling's `h2bench`. Not a gate, not in
+CI: the baseline an optimisation has to beat.
+
+| | |
+|---|---|
+| request header parsing | 48,795 parses/s, **18,696 bytes allocated** per parse of a 376-byte header |
+| chunked coding | 2,225 MiB/s encode, 1,921 MiB/s decode |
+| small GET, one client | ~5,000 req/s at 1, 8 and 64 concurrent |
+| small GET, a client each | 21,657 req/s at 8, 20,245 at 64 |
+| 64 MiB download / upload | 987 / 958 MiB/s, 3.00× the payload allocated |
+| kept-open connection | p50 0.197 ms |
+| control: `HttpClient` → Hermod | p50 **0.240 ms** |
+| control: `HttpClient` → Kestrel | p50 **0.252 ms** |
+
+**The control is the point.** Our server is the marginally faster of the two on
+the same loopback, in the same process, driven by the same client. Without that
+column, 0.24 ms is a number with no scale, and this is the second Vanaheimr
+stack where the honest reading turned out to be "latency is fine" while a
+throughput shape looked alarming.
+
+**A fresh client costs 39 ms and none of it is the connection.** This is the
+finding A9 existed to produce. The first measurement said "fresh connection:
+39.4 ms p50 against 0.20 ms kept open", which is a suspicious number on
+loopback, where a TCP handshake is microseconds. Splitting it gave 38.3 ms in
+the `HTTPClient` *constructor* and 1.06 ms in its first request — so it is not
+the connection at all.
+
+Naming the cause took one more measurement rather than a guess: the same loop
+with a single shared `DNSClient` runs at **0.449 ms**, 86× faster. The line is
+`ATCPClient.cs:319`, `DNSClient ?? new DNSClient(...)`, and that default
+searches the machine's network configuration for resolvers — once per client,
+including when the URL is a literal IP address that will never be resolved.
+Filed as **H-27**, with `tests/h1bench -- connect` as its regression test.
+
+**Flat throughput on one client is the protocol.** 64 callers on one connection
+queue, because HTTP/1.1 has no multiplexing: req/s stays flat and latency rises
+linearly. Give each caller its own client and the server does four times the
+work. This is written down because the HTTP/2 sibling has a curve of the same
+shape that *is* a defect, and the two must not be read as one finding.
+
+18.7 KB allocated to parse a 376-byte header, and ~63 KB per small request, are
+both high — the HTTP/2 sibling allocates 9.3–9.9 KiB per trivial request. Not
+chased today; recorded so that the next person to look has a starting point
+rather than an impression.
+
+### Numbers
+
+This repository's gate is unchanged at **279/279**, 7/7 harnesses — A7 is
+nightly and A9 is not a gate at all. With `--wsl` the local run is now
+**415/415** across **9/9** harnesses: 279, plus the Debian curl's 78, plus the
+peers' 58.
+
+Two repo-side follow-ups from yesterday's pin landed with this: the demo's
+three `SetHeaderField("Accept-Ranges", …)` calls became the typed property that
+H-21 added, and the comment saying the field "is only modeled as a *request*
+field in Hermod" went with them.
+
+## Next
+
+**A5, A6 and A8, the remaining third-party suites** — intermediary interop,
+request smuggling / differential fuzzing, browsers. Each brings its own nightly
+job; the workflow has room for them and the demo already binds `0.0.0.0` on
+demand, which is what A5 and A6 were waiting for. Then A10 (parser fuzzing).
+
+**A7 and A9 landed on 2026-09-26.** A7 is five foreign clients and two foreign
+servers, 58/58, nightly on `ubuntu-latest`. A9 is `tests/h1bench`, not a gate,
+whose control column says our per-request latency beats Kestrel's on the same
+loopback and whose `connect` scenario produced finding **H-27**.
+
+**Track B: 27 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
 2026-09-24, which took four fixes against an estimate of one; H-3, which moved the
 RFC 9110 §11 framework into the shared library on the way; H-16, which had been
 fixed upstream for a week before anybody re-read the row; H-25, the Warden killing

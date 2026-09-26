@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests</RootNamespace>
+    <AssemblyName>h1bench</AssemblyName>
+
+    <!-- A benchmark built in Debug measures the debugger, not the stack.
+         Release is the default here so "dotnet run" reports something real;
+         the harness still says so at startup if it finds itself in Debug. -->
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\Hermod\Hermod\Hermod.csproj" />
+    <ProjectReference Include="..\..\libs\Styx\Styx\Styx.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Kestrel, purely as a control. Without knowing what a loopback HTTP/1.1
+         round trip costs on the machine doing the measuring, "our server takes
+         0.2 ms" is a number without a scale. Test-only, like the other
+         reference peers (HttpClient, curl, Go, Node) - it does not count
+         against the BCL-only rule for the stack itself. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

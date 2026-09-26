@@ -202,6 +202,32 @@ run_harness h1attack
 # establishes something about an implementation written here; this establishes
 # that an independent one agrees.
 # ---------------------------------------------------------------------------
+run_interop() {
+    local label="$1"; shift
+
+    if [ -n "$FILTER" ] && [[ "interop" != *"$FILTER"* ]] && [[ "$label" != *"$FILTER"* ]]; then
+        return
+    fi
+
+    TOTAL=$((TOTAL + 1))
+
+    local output
+    output="$("$ROOT/tests/interop.sh" "$@" 2>&1)"
+    local status=$?
+
+    local verdict
+    verdict="$(printf '%s\n' "$output" | grep -E 'checks passed' | tail -1 | sed 's/^ *//')"
+
+    if [ $status -eq 0 ]; then
+        PASSED=$((PASSED + 1))
+        printf '  %sPASS%s  %-14s %s%s%s\n' "$GREEN" "$OFF" "$label" "$DIM" "$verdict" "$OFF"
+    else
+        FAILURES+=("$label")
+        printf '  %sFAIL%s  %-14s %s\n' "$RED" "$OFF" "$label" "$verdict"
+        printf '%s\n' "$output" | grep -E '✗' | sed 's/^/      /'
+    fi
+}
+
 run_curl_matrix() {
     local label="$1"; shift
 
@@ -254,6 +280,34 @@ if [ "$USE_WSL" -eq 1 ] && command -v wsl > /dev/null 2>&1 && [ "$USE_TLS" -eq 0
     fi
 elif [ "$USE_TLS" -eq 0 ]; then
     echo "  SKIP  debian curl — pass --wsl to bind 0.0.0.0 and include it"
+fi
+
+# ---------------------------------------------------------------------------
+# Third-party: reference peers that are not .NET (A7)
+#
+# Five foreign clients against our server, and - the half that had no witness
+# at all before - our client against two foreign servers. The toolchains live
+# in the Debian WSL distribution on Windows, which is the same reason the
+# second curl build needs --wsl: the demo has to be bound to 0.0.0.0 for the
+# WSL VM to have a route to it.
+#
+# On Linux there is no VM and no flag; the peers and the demo are on the same
+# host, so this runs unconditionally.
+# ---------------------------------------------------------------------------
+
+section "Third-party (reference peers)"
+
+if [ "$USE_TLS" -eq 1 ]; then
+    echo "  SKIP  interop — the peers drive the cleartext listener"
+
+elif [ "$(uname -s)" = "Linux" ]; then
+    run_interop "peers" --base "http://127.0.0.1:$HTTP_PORT"
+
+elif [ "$USE_WSL" -eq 1 ] && command -v wsl > /dev/null 2>&1; then
+    run_interop "peers" --base "http://127.0.0.1:$HTTP_PORT"
+
+else
+    echo "  SKIP  interop — pass --wsl to bind 0.0.0.0 and reach the peers in WSL"
 fi
 
 # ---------------------------------------------------------------------------

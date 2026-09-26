@@ -6,6 +6,8 @@
     <Project Path="libs/Styx/StyxTests/StyxTests.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/h1bench/h1bench.csproj" />
+    <Project Path="tests/h1peer/h1peer.csproj" />
     <Project Path="tests/H1Core/H1Core.csproj" />
     <Project Path="tests/autobahn-client/autobahn-client.csproj" />
     <Project Path="tests/h1attack/h1attack.csproj" />
