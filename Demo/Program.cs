@@ -473,10 +473,12 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                         HTTPStatusCode     = HTTPStatusCode.OK,
                         ContentType        = HTTPContentType.Text.PLAIN,
                         TransferEncoding   = "chunked",
-                        // The server dispatches the worker on the *stream type*,
-                        // not on the Transfer-Encoding field — setting only the
-                        // latter yields correct headers and an empty body.
-                        ContentStream      = new ChunkedTransferEncodingStream(request.NetworkStream!, true),
+                        // Announcing the coding and supplying a worker is the
+                        // whole of it: the server builds the chunked stream over
+                        // the connection, so a handler needs to know nothing
+                        // about request.NetworkStream. Until Hermod#43 it did,
+                        // and forgetting it produced correct headers, no body
+                        // and no terminating chunk.
                         ChunkWorker        = async (response, stream) => {
 
                             // Three chunks, the middle one carrying both a token
@@ -510,7 +512,6 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                         ContentType       = HTTPContentType.Text.PLAIN,
                         TransferEncoding  = "chunked",
                         Trailer           = "X-Demo-Checksum, X-Demo-Duration",
-                        ContentStream     = new ChunkedTransferEncodingStream(request.NetworkStream!, true),
                         ChunkWorker       = async (response, stream) => {
 
                             await stream.WriteAsync("body with trailers\n".ToUTF8Bytes(), null);

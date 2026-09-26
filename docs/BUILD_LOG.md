@@ -1560,7 +1560,168 @@ that was about something else.
 
 Track B: **26 findings, 6 fixed upstream** — and all six whole.
 
-## Next
+## 2026-09-26 — Five findings at once, and two tests that could not fail
+
+H-21, H-22, H-4, H-6 and H-8, one commit each on one branch
+([Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43)), in that order for a
+reason: H-8 is a sweep over stale RFC citations, and doing it first would have
+left it stale again by the time the other four landed.
+
+**H-21 — `Accept-Ranges` on the wrong side of the request/response split.** The
+finding was found while building A1, when the demo had to fall back to
+`SetHeaderField("Accept-Ranges", …)`. The field was defined as a *request*
+header field, and the summary on that very definition began "The Accept-Ranges
+**response**-header field": the code had been documenting the mistake while
+making it. The response side has it now; the three request-side members are
+`[Obsolete]` rather than removed, because deleting them breaks every downstream
+Vanaheimr project and a warning says the same thing without doing that. C#
+suppresses obsolete warnings inside obsolete members, so Hermod's own build
+gained none — measured, not assumed.
+
+Reading the field next door turned up a second one. The builder's `AcceptPatch`
+setter wrote `Allow`:
+
+    set { SetHeaderField(HTTPResponseHeaderField.Allow, value); }
+
+A handler advertising patch formats therefore replaced the set of methods it
+claims to support, with media types. `SetHeaderField` takes an `Object`, so the
+mismatch between `IEnumerable<HTTPContentType>` and `IEnumerable<HTTPMethod>`
+never reaches the compiler, and `Allow: application/json` is something the wire
+is perfectly happy to carry.
+
+**H-22 — the chunked response that ended nowhere.** Announcing the coding took
+two steps that look independent: `Transfer-Encoding` on the builder, and a
+`ChunkedTransferEncodingStream` as the body. The dispatch keyed on the second.
+A handler that wrote the first plus a `ChunkWorker` — which is what the API
+reads as though it wants — got correct headers, no body, no terminating chunk
+and no error, which a recipient can only diagnose as a timeout. The demo's
+`/chunked` route carried a comment saying exactly this, and a line constructing
+the stream from `request.NetworkStream` to work around it. Both are gone now.
+
+The fix is that the layer which knows about the connection is the layer that can
+supply the framing: the server builds the stream, and writes the terminal chunk
+whether or not the worker did. The client had the mirror image in its request
+path, found while fixing the response one.
+
+What it deliberately does *not* do is frame everything that says "chunked". That
+was the first attempt, and it failed 6 tests in the wider suite — correctly. A
+byte array or plain stream on a chunked response is taken to be **framed
+already**; `AutomaticallyChunkContent` is how a handler says otherwise, and
+`Chunked_Response_Content_And_Stream_Must_Be_Sent` had been pinning that
+contract since long before. Nineteen unit tests would not have found it; the
+675-test selection did, on the first run. Same shape as the compression filter
+two days earlier, and the fixture's summary now records the constraint so the
+next reader does not repeat the attempt.
+
+**H-4 — `Forwarded`, and the address `X-Forwarded-For` was throwing away.**
+RFC 7239 is what the `X-Forwarded-For` family became when it was standardised,
+and its advantage is not politeness: one element holds all four facts about one
+hop, instead of four independent lists that can differ in length and then have
+to be lined up by guesswork. `ForwardedElement` and `ForwardedNode` parse it,
+serialize it, and keep `unknown` and obfuscated identifiers opaque rather than
+inventing an address for a node that declined to give one.
+
+Then the part that was already there. The server built its `HTTPSource` as
+
+    new HTTPSource(HTTPRequest.RemoteSocket, httpSources.Skip(1))
+
+which for `client, proxy1, proxy2` records the proxies and discards the client —
+the one address the field exists to carry — with the socket it keeps being the
+*immediate* peer rather than a stand-in for it. It reads like the leftover of a
+different intent, in which the first entry was going to become the socket. That
+intent would have been worse: `X-Forwarded-For` is client-controllable, so the
+socket stays the socket and the header goes beside it.
+
+**H-6 — Structured Fields, strictly.** RFC 9651 is the grammar most HTTP fields
+defined since 2021 are written in, so the alternative to implementing it once is
+hand-rolling `split(',')` per field, forever. Three top-level types over eight
+bare types, Section 4.2 parsing one method per algorithm and in the
+specification's order, Section 4.1 serialization, byte-for-byte round trips.
+
+Being liberal is the temptation and the wrong one: two implementations that each
+repair a different malformed field are two implementations that disagree about
+what the field said. So a trailing comma fails, a sixteenth digit fails rather
+than saturating, an upper-case key is a syntax error rather than something to
+fold, `@1659578233.0` is not a date, and a display string that is not valid
+UTF-8 fails rather than handing the caller U+FFFD where the sender wrote a byte.
+
+**H-8 — 69 citations, 62 of them rewritten.** Mostly one line copied down a
+file, `<seealso cref="http://tools.ietf.org/html/rfc2616"/>`, which names a
+document that has not existed for eleven years and no section at all. Each is
+now the field's own defining document and section, read off the IANA HTTP Field
+Name registry rather than recalled: 45 lookups, where being confident about 44
+is not the same as being right about all 45.
+
+Seven are left on purpose. Six are RFC 4918 quoting RFC 2616 inside text this
+codebase quotes in turn — rewriting those would misquote RFC 4918, which does
+say `[RFC2616]` and cannot be made to say otherwise, so each of the three blocks
+now carries a remark naming the current reference. The seventh is inside
+commented-out code under `HTTP1/Server/URLMapping_old/`, where tidying a
+citation would be tidying around the thing that actually needs deciding, which
+is H-18.
+
+### Two tests that could not fail
+
+The falsification pass is the part of this worth keeping, because twice it said
+"no test failed" and twice that was the interesting answer rather than a
+formality.
+
+*One rule, two guards.* The first version of H-22 had both a `Finished` property
+on the chunked stream and an idempotence guard inside `Finish`. Reverting the
+guard changed no test — the property was covering for it. Two mechanisms that
+each make the other unobservable are two mechanisms neither of which is tested,
+so the property went and the call sites now simply finish. The reversal then
+failed three tests, as it should.
+
+The same shape appeared in H-6, where relaxing `IsLowerHexDigit` to accept
+upper-case percent escapes changed nothing: `HexValue` still computed nonsense
+for `'C'`, and the strict UTF-8 decoder refused the result. One rule, two
+guards again — and there the honest answer was to say so and relax both, rather
+than to pretend a one-line reversal had demonstrated anything.
+
+*And a measurement that was not a measurement.* Two early falsification runs
+reported zero failures because the reversal did not compile — a name collision
+between the `IPAddress` property and the `IPAddress` type — so `dotnet test`
+failed the build and ran nothing, while a grep for failing test names found
+none. A green number from a run that never happened is exactly the thing this
+repository keeps paying for. The loop counts build errors now.
+
+The claim that quote-aware parsing matters "because an IPv6 node is written
+`for="[2001:db8:cafe::17]:4711"`" went the same way: reverting the
+quote-awareness broke nothing, because an address contains neither a comma nor
+a semicolon. The rule is real — a *quoted value* may contain both separators —
+but the reason written in the comment was wrong, and only measuring it said so.
+
+### Numbers
+
+Gate filter 657 → **738**; `Tests.HTTP.` 656 → **737**; WebSockets 65 → **87**.
+Of the 81 added, 59 are these five findings and 22 are Hermod master's own
+WebSocket work, which arrived in [#44](https://github.com/Vanaheimr/Hermod/pull/44)
+and [#45](https://github.com/Vanaheimr/Hermod/pull/45) plus the two commits the
+previous pin was already behind. Nothing is unaccounted for this time — which is
+worth saying, since the last two bumps each had a remainder that took an hour to
+explain.
+
+This repo's own gate is unchanged at **279/279**, 7/7 harnesses — including
+after the demo's H-22 workaround was removed, which is the end-to-end proof that
+the fix replaces it rather than merely coexisting with it.
+
+The protocol regression selection stays at **372**: the four new fixtures are
+not in its eleven-file filter. Adding them makes it **431**, measured. Whether
+they belong there is a one-line change upstream and has not been made — noted
+rather than done, because widening a documented filter silently is how a
+published number stops meaning what its name says.
+
+Three PRs were merged in one sitting, and none of their CI runs had seen the
+others: #44 and #45 were both computed against a master without #43, and #45
+did not know about #44, though the two touch the same six WebSocket files.
+After the second merge GitHub put #45 back to `UNKNOWN` until it had recomputed.
+The combination was therefore re-run locally before anything was pinned — 738
+and 7/7 — rather than inferred from three green runs of three different trees.
+
+Track B: **26 findings, 11 fixed upstream** — and all eleven whole.
+
+ . ## Next
 
 **A5–A8, the remaining third-party suites** — intermediary interop, request
 smuggling / differential fuzzing, non-.NET reference peers, browsers. Each brings
@@ -1568,17 +1729,27 @@ its own nightly job; the workflow has room for them and the demo already binds
 `0.0.0.0` on demand, which is what A5 and A6 were waiting for. Then A9
 (benchmarks) and A10 (parser fuzzing).
 
-**Track B: 26 findings, 6 fixed upstream, all of them whole.** H-1; H-2 as of
+**Track B: 26 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
 2026-09-24, which took four fixes against an estimate of one; H-3, which moved the
 RFC 9110 §11 framework into the shared library on the way; H-16, which had been
 fixed upstream for a week before anybody re-read the row; H-25, the Warden killing
-live connections; and H-26, its scheduling, which was three defects against an
-estimate of two.
+live connections; H-26, its scheduling, which was three defects against an
+estimate of two; and on 2026-09-26 the five of [#43](https://github.com/Vanaheimr/Hermod/pull/43)
+— H-21, H-22, H-4, H-6 and H-8 — of which three turned up a second defect
+sitting next to the one they were about.
 
-What that leaves, roughly by value: **H-24** (six reason phrases that predate
-RFC 9110 — a decision rather than a fix), **H-23** (`HEAD` not derived from `GET`),
-**H-22** (a chunked response that silently produces an empty body), and seventeen
-more Track B findings. Then A5–A10.
+What that leaves, roughly by value: **H-23** (`HEAD` not derived from `GET`),
+**H-24** (six reason phrases that predate RFC 9110 — a decision rather than a
+fix), **H-5** (the RFC 9111 cache, the one genuinely large item), **H-7**
+(`Alt-Svc`, the bridge to the h2/h3 stacks), **H-10** (CORS preflight, which A8
+would see) and nine more. **H-13** is newly unblocked: the structured-fields
+parser a `Content-Digest` needs now exists. Then A5–A10.
+
+One decision is still open and is not a finding: the CI gate here selects
+`Tests.HTTP.` and `Tests.HTTPS.`, and reaches neither `Tests.TCP` nor
+`Tests.Warden` — the layer `AHTTPServer` is built on, and the layer H-25 and
+H-26 were about. Widening the filter changes what CI means, so it belongs in a
+decision rather than in a commit that was about something else.
 
 **Three lessons from these two weeks are worth keeping in view. All three cost
 real time and all three are cheap to avoid.**

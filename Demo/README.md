@@ -76,10 +76,18 @@ TLS :8443  → 200
 WebSocket  → 101, correct Sec-WebSocket-Accept, subprotocol "echo", echo back
 ```
 
-## One API sharp edge worth knowing
+## An API sharp edge that used to be here
 
-A chunked response needs **both** `TransferEncoding = "chunked"` *and*
-`ContentStream = new ChunkedTransferEncodingStream(request.NetworkStream!, true)`.
-The server dispatches the worker on the *stream type*, not on the header field —
-so setting only the header yields correct headers and a silently empty body, no
-error anywhere. That cost a debugging round here and is filed as **H-22**.
+A chunked response needed **both** `TransferEncoding = "chunked"` *and*
+`ContentStream = new ChunkedTransferEncodingStream(request.NetworkStream!, true)`,
+because the server dispatched the worker on the *stream type* rather than on the
+header field — so setting only the header produced correct headers and a
+silently empty body, with no error anywhere. That cost a debugging round here
+and became **H-22**.
+
+Fixed upstream on 2026-09-26 ([Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43)):
+announcing the coding and supplying a `ChunkWorker` is now the whole of it, the
+server builds the stream over the connection, and the terminating chunk is
+written whether or not the worker wrote it. `/chunked` and `/trailers` here no
+longer mention `request.NetworkStream`, which is the end-to-end evidence that
+the fix replaces the workaround rather than sitting beside it.
