@@ -77,6 +77,25 @@ var probes = ProbeCatalogue.All(host).
                  Where(probe => only is null || probe.Id == only).
                  ToList();
 
+// Checks.Summary() prints "0/0 checks passed" and exits 0, so a harness that
+// ran nothing is indistinguishable from one that passed everything. Most of
+// the harnesses here have their checks written out by hand and cannot reach
+// that state; this one builds them from a generated catalogue and takes
+// --only, so it can, and says so instead.
+if (probes.Count == 0)
+{
+    Console.Error.WriteLine(only is null
+                                ? "  h1desync: the probe catalogue came back empty"
+                                : $"  h1desync: no probe is named '{only}'");
+    return 2;
+}
+
+if (only is null && !probes.Any(probe => probe.IsNormative))
+{
+    Console.Error.WriteLine("  h1desync: the catalogue has no probe left to assert on");
+    return 2;
+}
+
 String? ValueOf(String Name)
 {
     var index = Array.IndexOf(args, Name);
