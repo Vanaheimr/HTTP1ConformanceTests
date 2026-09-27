@@ -387,6 +387,39 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
+            #region GET|POST /cors  — the one route a browser judges differently
+
+            // A8's reason to exist. Every other consumer in this repository
+            // would send the cross-origin request and be answered; only a
+            // browser refuses to hand the response to the page unless the
+            // server said it may.
+            //
+            // GET is the simple case and works: Hermod can set
+            // Access-Control-Allow-Origin, so the browser reads the body.
+            //
+            // POST with a custom request header is NOT simple, and the browser
+            // sends an OPTIONS preflight first. Nothing answers it, so the
+            // request never leaves the browser. OPTIONS is deliberately NOT
+            // registered here: Hermod has no automatic preflight (H-10), and a
+            // hand-written OPTIONS handler on this route would hide the very
+            // gap the route exists to show — the same reasoning as the HEAD
+            // registrations above, which H-23 is about.
+            foreach (var method in new[] { HTTPMethod.GET, HTTPMethod.POST })
+                API.AddHandler(
+                    method,
+                    HTTPPath.Root + "cors",
+                    HTTPDelegate: request => Task.FromResult(
+                        new HTTPResponse.Builder(request) {
+                            HTTPStatusCode            = HTTPStatusCode.OK,
+                            ContentType               = HTTPContentType.Text.PLAIN,
+                            AccessControlAllowOrigin  = "*",
+                            Content                   = $"cors {request.HTTPMethod}\n".ToUTF8Bytes()
+                        }.AsImmutable
+                    )
+                );
+
+            #endregion
+
             #region GET /prose  — compressible, and big enough to be worth it
 
             // /large is deliberately application/octet-stream and stays identity

@@ -414,8 +414,35 @@ five proxies discard an upstream connection carrying an unexpected extra
 response, so the detector has never been seen to fire through any of them.
 "Clean" therefore says more about the proxies than about the origin.
 
+## The browsers (A8)
+
+Three engines — Chromium, Firefox and WebKit — through Playwright, because a
+browser is the one consumer in this repository that was not written to be a
+test.
+
+```bash
+tests/browser.sh                  # starts its own demo, all three
+tests/browser.sh --browser webkit
+tests/browser.sh --headed         # watch it
+tests/browser.sh --no-install     # skip rather than fetch half a gigabyte
+```
+
+The battery runs inside the demo's own `/` document rather than a page served
+for the occasion, so every fetch, `EventSource` and `WebSocket` is same-origin
+from a real page. **24 of 27 pass.**
+
+Four checks are things nothing else here can establish: `nextHopProtocol` is
+the browser's own verdict that it spoke HTTP/1.1; `EventSource` is the client
+half of SSE rather than a read of the body; `connectStart === connectEnd` is
+the browser's account of keep-alive; and CORS cannot be tested with curl at
+all, because curl sends the request and is answered.
+
+The three failures are one finding — **H-10**, no automatic CORS preflight —
+recorded in `browser-known.txt` with its number. A failure not in that file
+fails the run.
+
 ## Not here yet
 
-`PLAN.md` tracks the rest: browsers (A8). CI (A11)
+`PLAN.md` has no third-party suite left open. CI (A11)
 landed on 2026-09-22; the reference peers (A7), the benchmark (A9) and the
 fuzzer (A10) on 2026-09-26; the smuggling differential (A6) on 2026-09-27.

@@ -2354,16 +2354,122 @@ trailer section, which is allowed).
 
 Track A is **done but for A8**. Track B: 30 findings, 13 fixed.
 
+## 2026-09-27 — A8: the one consumer that was not written to be a test
+
+Everything else in this repository judges the demo with code somebody chose to
+point at it: our harnesses, curl, five foreign stdlib clients, five reverse
+proxies. A browser is not that, and it is the least forgiving HTTP/1.1
+consumer in daily use.
+
+Three engines through Playwright — Chromium, Firefox and WebKit. WebKit is the
+reason for the dependency: the only way to reach Safari's engine from a
+script, and the engine nobody tests. **27 checks, 24 pass, all three engines
+agreeing on every one.** Write-up:
+[`TestingAgainst_Browsers.md`](TestingAgainst_Browsers.md).
+
+### The battery runs in the page
+
+The driver navigates to the demo's own `/` document and evaluates the battery
+inside it, so every `fetch`, `EventSource` and `WebSocket` is a same-origin
+request from a real page — the only arrangement in which CORS, connection
+reuse and Resource Timing mean anything. No page is served for the occasion.
+A `/browser` route would have made this convenient and would have measured
+that route.
+
+Four of the nine checks are things nothing else here can establish:
+
+| | |
+|---|---|
+| `performance.nextHopProtocol` | the browser saying it spoke `http/1.1`. Everything else is us asserting the protocol we believe we used |
+| `EventSource` | curl can read an SSE body; only a browser has the client half — event-type dispatch, `id`, `retry` |
+| `connectStart === connectEnd` | the browser's own account of keep-alive |
+| CORS | curl cannot test it at all. It sends the request and is answered |
+
+### The three failures are one finding
+
+H-10, and it has sat in the table since A0 marked it "Browser-visible (A8)".
+
+The demo grew a `/cors` route that sets `Access-Control-Allow-Origin`, so the
+simple cross-origin GET works — Hermod can set the field. A POST carrying a
+custom request header is not simple, so the browser sends a preflight:
+
+```
+> OPTIONS /cors          (the browser)      < 405 Method Not Allowed
+                                            < Allow: GET, POST
+> POST /cors             (the same, curl)   < 200 OK
+```
+
+Chromium says `Failed to fetch`, Firefox `NetworkError when attempting to
+fetch resource.`, WebKit `Load failed`, and all three mean the preflight.
+
+`OPTIONS` is deliberately not registered on that route. A handler there would
+answer the preflight and hide the gap the route exists to show — the same
+reasoning as the demo's hand-written `HEAD` registrations, which H-23 is
+about.
+
+### Three checks that were wrong before they were right
+
+Each looked like a server defect for a few minutes, and each was mine:
+
+- **The chunked body ends with a newline** — 33 octets, measured.
+  `tests/interop.sh` compares through a `$(...)`, which strips trailing
+  newlines on both sides and so never had to know. A string comparison in
+  JavaScript does.
+- **`/large` does not serve ranges.** It is deliberately a plain
+  octet-stream, so a Range check pointed at it measured that choice.
+  `/files/resource.txt` is the route that answers 206.
+- **The demo's events are named.** It sends `event: tick`, and `onmessage`
+  fires only for unnamed events — so the first version waited twenty seconds
+  for a message type the server never sends.
+
+Three for three: every failure in the first run was the harness, not the
+server. That is the usual ratio for a new instrument and the reason none of
+them was recorded before being chased.
+
+### And one in the driver
+
+`grep -E '^DIFF\t'` does not match a tab. GNU grep leaves `\t` undefined in
+ERE and treats it as a literal `t`, so the join lines the runner emits for
+`tests/browser-known.txt` would have passed straight through into the report.
+Caught by testing the pattern rather than the script; `$(printf '\t')` now.
+
+### A deviation from the plan, stated
+
+The plan asked for `tools/browser-interop.ps1` on the HTTP/3 model. This is
+bash plus a Node module, because this repository removed its PowerShell
+runners on purpose: two implementations of one runner produce two numbers that
+look like agreement, and the siblings paid for that twice — once with an
+`$Args` parameter that silently never bound. What was taken from the HTTP/2
+script is its good idea: the page runs the battery and reports a verdict,
+rather than the driver scraping a DOM and guessing when the run finished.
+
+### Numbers
+
+`tests/browser.sh`: **24/27**, nightly on `ubuntu-latest`, no Docker and no
+WSL. The demo stays on loopback — the cross-origin twin is `http://localhost`,
+which reaches a loopback listener perfectly well, and a test run has no
+business widening a listener it did not have to.
+
+**Track A is complete.** Track B: 30 findings, 13 fixed.
+
 ## Next
 
-**A8, the last third-party suite** — browsers. It brings its own nightly job
-and the workflow has room for it.
+**Track A is complete.** A8 landed on 2026-09-27, and with it every
+third-party suite the plan asked for: curl, Autobahn both directions, five
+foreign stdlib peers, five reverse proxies, two smuggling scanners, the HTTP
+Garden, a parser fuzzer and three browser engines.
 
-A5 landed on 2026-09-27 and took A6's disagreements into a chain, which is the
-only shape in which they are attacks. None of them is, through these five
-proxies — with the caveat that the detector for the final step has never been
-seen to fire, because all five absorb a poisoned upstream connection whatever
-the origin does.
+A5 and A6 landed the same day and are worth reading together: A6 found seven
+probes on which Hermod, Go and Node place the end of a message differently,
+and A5 took them into a chain, which is the only shape in which they are
+attacks. None of them is, through those five proxies — with the caveat that
+the detector for the final step has never been seen to fire, because all five
+absorb a poisoned upstream connection whatever the origin does.
+
+**What is left is Track B**: 17 open findings. The two with the widest reach
+are H-27 (every `HTTPClient` builds its own `DNSClient` — 38 ms per
+construction, measured) and H-23 (`HEAD` is not derived from `GET`). H-10 now
+has a browser demonstrating it rather than a sentence describing it.
 
 **A7, A9 and A10 landed on 2026-09-26, A6 on 2026-09-27.** A7 is five
 foreign clients and two foreign servers, 58/58, nightly on `ubuntu-latest`. A9

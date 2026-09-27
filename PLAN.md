@@ -13,7 +13,7 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-09-27):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-18 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **303/303 checks green
+19 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **303/303 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
 foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
@@ -23,7 +23,7 @@ differential: `tests/h1desync` in the gate, three implementations compared
 nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
 found **H-29** and **H-30**, and a MUST violation in Go's `net/http` that is
 not ours to fix. **A11 ✅** — CI per push
-on two legs, nightly for both Autobahn directions. Track B: **30 findings, 13 fixed upstream**
+on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, 24/27, the three failures being H-10 shown from the only vantage point that can see it. Track B: **30 findings, 13 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -46,7 +46,7 @@ citation sweep last so that it covered what the other four added.
 | smuggling: third-party | ✅ `tests/smuggler.sh` — smuggler 134/134 mutations, nothing found; h2csmuggler finds no h2c surface, pinned as a regression |
 | smuggling: http-garden | ✅ target built and contract-verified; the full 45-server differential is compiler-hours, run by hand — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
 | third-party: proxies (A5) | ✅ five reverse proxies, 63 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
-| third-party: browsers | ⬜ A8 |
+| third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — 24/27, the three failures being H-10 on each engine |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
@@ -390,14 +390,44 @@ environment, crosses no VM boundary, and therefore works unchanged in CI.
 push gate — the Debian container ships none of them, and a gate whose check
 count moves with the runner image is worse than no gate.
 
-## ⬜ A8 · Browser interop · P2 · ~1–2 d
+## ✅ A8 · Browser interop · P2 · done 2026-09-27
 
-- `tools/browser-interop.ps1` (model: the HTTP/3 repo's script) driving
-  Playwright over Chromium, Firefox and WebKit
-- `EventSource` against `/events`, `WebSocket` against `/ws`, CORS preflight,
-  chunked rendering, connection reuse, `fetch()` with ranges
-- the practical acceptance test — a browser is the least forgiving consumer of
-  SSE and WebSocket in daily use
+Every other consumer here was written to be a test. A browser was not, and it
+is the least forgiving HTTP/1.1 consumer in daily use.
+
+`tools/browser/interop.mjs` drives **Chromium, Firefox and WebKit** through
+Playwright; `tests/browser.sh` is the driver. The battery runs *in the demo's
+own `/` document*, so every fetch, `EventSource` and `WebSocket` is a
+same-origin request from a real page — the only arrangement in which CORS,
+connection reuse and Resource Timing mean anything. Write-up:
+[`docs/TestingAgainst_Browsers.md`](docs/TestingAgainst_Browsers.md).
+
+**27 checks, 24 pass**, all three engines agreeing on every one.
+
+Four of the nine are things no other driver here can establish: the browser
+naming the protocol itself (`performance.nextHopProtocol` = `http/1.1`, its
+verdict rather than ours), a real `EventSource` rather than a read of the SSE
+body, `connectStart === connectEnd` as the browser's own account of keep-alive,
+and CORS — which curl cannot test at all, because curl simply sends the
+request and is answered.
+
+**The three failures are one finding, and it is H-10.** The demo's `/cors`
+route sets `Access-Control-Allow-Origin`, so the simple cross-origin GET
+works. A POST with a custom header is not simple: the browser sends an
+`OPTIONS` preflight, and nothing answers it — `405 Method Not Allowed`,
+`Allow: GET, POST`. The identical POST from curl is answered 200. `OPTIONS` is
+deliberately not registered on that route, for the same reason the demo's
+`HEAD` handlers are written out by hand: a handler there would hide the gap
+the route exists to show. Recorded in `tests/browser-known.txt` with its
+number, and a failure not in that file fails the run.
+
+**Deviation from the sketch above, stated rather than quiet:** bash plus a
+Node module, not `tools/browser-interop.ps1`. This repository removed its
+PowerShell runners on purpose — two implementations of one runner produce two
+numbers that look like agreement, and the sibling projects paid for that
+twice. What was taken from the HTTP/2 script is its good idea: the page runs
+the battery and reports a verdict, rather than the driver scraping a DOM and
+guessing when the run finished.
 
 ## ✅ A9 · Benchmarks · P3 · done 2026-09-26
 
@@ -542,7 +572,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ⬜ | **H-7** | No `Alt-Svc` | RFC 7838 | P2 | S | The natural bridge from this stack to the h2/h3 stacks — and directly testable with curl's `--alt-svc` |
 | ✅ | **H-8** | ~70 source comments still cite RFC 2616 / RFC 7230-series | — | P2 | S | Mechanical; the HTTP1 README already flags it. **Fixed 2026-09-26, merged and pinned, [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43).** 62 of 69 rewritten to each field's current defining document *and section*, taken from the IANA HTTP Field Name registry rather than from memory — 45 lookups, where being confident about 44 is not the same as being right about all of them. Seven remain deliberately: six are RFC 4918 quoting RFC 2616 in text this codebase quotes in turn, where rewriting them would misquote RFC 4918, so each of the three blocks now carries a remark naming the current reference; the seventh is inside commented-out code under `URLMapping_old/`, which is H-18's question and not this one's |
 | ⬜ | **H-9** | No server-side `TRACE` | RFC 9110 §9.3.8 | P3 | XS | Token + client exist; the server never handles it. Note the XST security history — "deliberately not implemented" is a valid answer, but then document it |
-| ⬜ | **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` are settable, but `OPTIONS` preflight is not answered automatically. Browser-visible (**A8**) |
+| ⬜ | **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` are settable, but `OPTIONS` preflight is not answered automatically. **Demonstrated by A8 on 2026-09-27**, on Chromium, Firefox and WebKit alike: the demo's `/cors` route sets `Access-Control-Allow-Origin`, so a simple cross-origin GET works, and a POST with a custom header does not — the browser sends `OPTIONS` first and is answered `405 Method Not Allowed, Allow: GET, POST`. The identical POST from curl is answered 200, which is why no other driver in this repository could reach it. Recorded in `tests/browser-known.txt`; deleting a line there is how a fix gets verified |
 | ⬜ | **H-11** | Obsolete HTTP-date formats (RFC 850, asctime) not parsed | RFC 9110 §5.6.7 | P3 | XS | Recipients **MUST** accept all three |
 | ⬜ | **H-12** | No HSTS (`Strict-Transport-Security`) | RFC 6797 | P3 | XS | Header emission only; policy is the application's |
 | ⬜ | **H-13** | `Content-MD5` typed (obsolete), RFC 9530 digest fields missing | RFC 9530 | P3 | S | Depended on **H-6**, which landed 2026-09-26 — the structured-fields parser a `Content-Digest` dictionary needs is there now, so this is unblocked |

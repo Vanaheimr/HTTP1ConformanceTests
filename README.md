@@ -33,7 +33,7 @@ tests/run-tests.sh        # 303/303 checks, ~135 s
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
 | `tests/curl-matrix.sh` | **78/78** (79 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
 | both, over cleartext *and* TLS | **303/303** — and **477/477** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
-| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 18 routes |
+| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 19 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
 | `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
@@ -43,7 +43,7 @@ tests/run-tests.sh        # 303/303 checks, ~135 s
 | `tests/smuggler.sh` | **134/134** Transfer-Encoding obfuscations from [smuggler](https://github.com/defparam/smuggler), nothing found; [h2csmuggler](https://github.com/BishopFox/h2csmuggler) finds no h2c surface, which is now a pinned regression |
 | `tests/http-garden/` | Hermod as a target in [the HTTP Garden](https://github.com/narfindustries/http-garden), which compares parse trees across 45 implementations. Contract-verified on every run; the full sweep is compiler-hours and is run by hand |
 | `tests/proxy.sh` | **32/32** — the demo behind nginx, HAProxy, Caddy, Apache and Envoy. 63 differences from the direct run, each recorded by name; no chain poisons a connection, though [the detector is calibrated-unfired](docs/TestingAgainst_Proxies.md) |
-| remaining third-party suites | not yet — browsers (A8) |
+| `tests/browser.sh` | **24/27** — Chromium, Firefox and WebKit through Playwright. The three failures are one finding, [H-10](docs/TestingAgainst_Browsers.md), on each engine |
 
 On top of that, the coverage inside Hermod itself:
 

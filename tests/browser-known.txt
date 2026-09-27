@@ -1,0 +1,12 @@
+# A8 — browser-visible gaps that are already filed.
+#
+# <engine> TAB <check> TAB <why>
+#
+# A failure not listed here fails the run. A listed one that has
+# stopped failing is reported so the line can be deleted.
+#
+# Written by tests/browser.sh --update on 2026-09-27.
+
+chromium	a preflighted cross-origin POST succeeds	H-10: no automatic CORS preflight; the demo answers OPTIONS 405
+firefox	a preflighted cross-origin POST succeeds	H-10: no automatic CORS preflight; the demo answers OPTIONS 405
+webkit	a preflighted cross-origin POST succeeds	H-10: no automatic CORS preflight; the demo answers OPTIONS 405
