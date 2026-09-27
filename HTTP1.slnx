@@ -13,6 +13,7 @@
     <Project Path="tests/autobahn-client/autobahn-client.csproj" />
     <Project Path="tests/h1attack/h1attack.csproj" />
     <Project Path="tests/h1conn/h1conn.csproj" />
+    <Project Path="tests/h1desync/h1desync.csproj" />
     <Project Path="tests/h1framing/h1framing.csproj" />
     <Project Path="tests/h1raw/h1raw.csproj" />
     <Project Path="tests/h1semantics/h1semantics.csproj" />

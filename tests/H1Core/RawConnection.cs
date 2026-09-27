@@ -163,6 +163,19 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
         /// </summary>
         public Boolean WriteWasRefused { get; private set; }
 
+        /// <summary>
+        /// Whether the peer ended the connection during the last read, as
+        /// opposed to the read window simply expiring.
+        ///
+        /// The two are different answers. RFC 9112 Section 6.1 lets a server
+        /// choose whether to reject a request carrying both Content-Length
+        /// and Transfer-Encoding, but requires it to close the connection
+        /// afterwards either way — so "refused and hung up" is compliant
+        /// and "refused and kept the connection open" is not. A harness that
+        /// cannot tell the two apart can only report the weaker claim.
+        /// </summary>
+        public Boolean PeerClosed { get; private set; }
+
         #endregion
 
         #region SendSegmentedAsync (Text, ChunkSize, Delay)
@@ -248,7 +261,10 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
                     var read = await stream.ReadAsync(buffer, cts.Token);
 
                     if (read == 0)      // peer closed
+                    {
+                        PeerClosed = true;
                         break;
+                    }
 
                     received.Write(buffer, 0, read);
 
@@ -259,7 +275,8 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
                 }
                 catch (IOException)
                 {
-                    break;              // connection reset — likewise
+                    PeerClosed = true;  // reset — the peer ended it as well
+                    break;
                 }
 
             }

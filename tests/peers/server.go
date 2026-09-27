@@ -17,6 +17,7 @@ package main
 import (
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -80,6 +81,22 @@ func main() {
 		writer := gzip.NewWriter(w)
 		fmt.Fprint(writer, strings.Repeat("compressible line\n", 64))
 		writer.Close()
+	})
+
+	// A6: the differential needs one route that every implementation has,
+	// that reads the whole body and answers 200 whatever the body was. The
+	// probe payloads are framed in ways ServeMux would otherwise answer 404
+	// to, and a 404 from an unknown path is indistinguishable, from outside,
+	// from a 4xx refusing the framing - which is precisely the distinction
+	// the differential turns on.
+	mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(body)
 	})
 
 	mux.HandleFunc("/status/404", func(w http.ResponseWriter, r *http.Request) {

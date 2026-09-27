@@ -57,6 +57,22 @@ const server = http.createServer((req, res) => {
             break;
         }
 
+        // A6: the one route every implementation in the differential has.
+        // It reads the whole body and answers 200 whatever the body was,
+        // so that a 4xx in the transcript always means the framing was
+        // refused and never that the path was unknown.
+        case '/echo': {
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                const body = Buffer.concat(chunks);
+                res.writeHead(200, { 'Content-Type': 'application/octet-stream',
+                                     'Content-Length': body.length });
+                res.end(body);
+            });
+            break;
+        }
+
         case '/status/404':
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('not here\n');

@@ -197,6 +197,15 @@ run_harness h1sse
 section "Hardening"
 run_harness h1attack
 
+# A6. h1attack asks whether our server can be desynchronised; h1desync asks
+# the narrower question the RFC actually answers - given an ambiguously framed
+# message, does the server do what RFC 9112 requires, where it requires
+# anything at all. The probes it cannot assert on (Section 6.1 permits either
+# answer for Content-Length plus Transfer-Encoding) are printed rather than
+# graded, and tests/smuggle.sh is where they get compared against other
+# implementations.
+run_harness h1desync
+
 # ---------------------------------------------------------------------------
 # Third-party: curl
 #
@@ -266,6 +275,46 @@ run_interop() {
             printf '      %s(exit %d)%s\n' "$DIM" "$status" "$OFF"
         fi
     fi
+}
+
+run_smuggle() {
+    local label="$1"; shift
+
+    if [ -n "$FILTER" ] && [[ "smuggle" != *"$FILTER"* ]] && [[ "$label" != *"$FILTER"* ]]; then
+        return
+    fi
+
+    TOTAL=$((TOTAL + 1))
+
+    local output
+    output="$("$ROOT/tests/smuggle.sh" "$@" 2>&1)"
+    local status=$?
+
+    local verdict
+    verdict="$(printf '%s
+' "$output" | grep -E 'checks passed' | tail -1 | sed 's/^ *//')"
+
+    if [ $status -eq 0 ]; then
+        PASSED=$((PASSED + 1))
+        printf '  %sPASS%s  %-14s %s%s%s
+' "$GREEN" "$OFF" "$label" "$DIM" "$verdict" "$OFF"
+        printf '%s
+' "$output" | grep -E 'probes across' | sed 's/^ */      /'
+    else
+        FAILURES+=("$label")
+        printf '  %sFAIL%s  %-14s %s
+' "$RED" "$OFF" "$label" "${verdict:-no verdict line — the driver did not get that far}"
+        if [ -n "$verdict" ]; then
+            printf '%s
+' "$output" | grep -E '<- NEW' | sed 's/^/      /'
+        else
+            printf '%s
+' "$output" | tail -5 | sed 's/^/      /'
+            printf '      %s(exit %d)%s
+' "$DIM" "$status" "$OFF"
+        fi
+    fi
+
 }
 
 run_curl_matrix() {
@@ -356,6 +405,33 @@ elif command -v wsl > /dev/null 2>&1; then
 
 else
     echo "  SKIP  interop — no WSL, and the foreign toolchains live there"
+fi
+
+# ---------------------------------------------------------------------------
+# Third-party: the smuggling differential (A6)
+#
+# The same peers, asked a different question. interop.sh checks that they can
+# talk to us; smuggle.sh checks whether they and we place the end of a message
+# in the same place, which is the only way a desync gadget is visible at all -
+# one implementation cannot disagree with itself.
+#
+# Same opt-in, and for the same reason: the foreign runtimes are not in the
+# push gate's container.
+# ---------------------------------------------------------------------------
+
+section "Third-party (smuggling differential)"
+
+if [ "$USE_TLS" -eq 1 ]; then
+    echo "  SKIP  smuggle — the peers drive the cleartext listener"
+
+elif [ "$USE_PEERS" -eq 0 ]; then
+    echo "  SKIP  smuggle — pass --peers (or --wsl) to run it"
+
+elif [ "$(uname -s)" = "Linux" ] || command -v wsl > /dev/null 2>&1; then
+    run_smuggle "smuggle" --base "http://127.0.0.1:$HTTP_PORT"
+
+else
+    echo "  SKIP  smuggle — no WSL, and the foreign runtimes live there"
 fi
 
 # ---------------------------------------------------------------------------

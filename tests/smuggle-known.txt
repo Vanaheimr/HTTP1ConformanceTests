@@ -1,0 +1,20 @@
+# A6 — the disagreements this differential has already seen and filed.
+#
+# One line per probe on which the implementations do not agree, as
+# <probe-id> TAB <class per column, in the order the table prints them>.
+# A row not listed here fails the run; a row listed here that has
+# stopped disagreeing is reported so the line can be deleted.
+#
+# Columns: hermod go node
+# Written by tests/smuggle.sh --update on 2026-09-27.
+
+cl-te	REJECT,TWO,REJECT
+te-cl	REJECT,TWO,REJECT
+te-dup	TWO,REJECT,REJECT
+te-obf-sp	TWO,REJECT,REJECT
+te-chunked-chunked	TWO,REJECT,REJECT
+cl-dup-same	REJECT,TWO,REJECT
+http10-te	REJECT,ONE,REJECT
+chunk-bws	REJECT,TWO,REJECT
+chunk-trailer-cl	REJECT,TWO,REJECT
+lf-only-headers	REJECT,TWO,REJECT

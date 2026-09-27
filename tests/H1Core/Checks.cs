@@ -133,21 +133,262 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
         #region (static) StatusOf / FirstLine / ResponseCount
 
         /// <summary>
+        /// Walk the buffer as a sequence of HTTP/1.x responses, yielding each
+        /// one's offset and status code.
+        ///
+        /// This is a real walk rather than a substring count, and it got there
+        /// the hard way. Counting occurrences of "HTTP/1." over-counts: the
+        /// demo's error responses carry <c>Server: Hermod HTTP/1.1 Demo</c>, so
+        /// one 400 read as two responses. Anchoring the match to the start of a
+        /// line fixes that and under-counts instead: a pipelined response whose
+        /// predecessor's body does not end in CRLF — <c>helloHTTP/1.1 404</c>
+        /// straight off a foreign peer's wire — is then invisible.
+        ///
+        /// Both failures are silent, and the number they get wrong is the only
+        /// observable the A6 differential has. So the framing is parsed: status
+        /// line, header section, then the body the framing announces, and on to
+        /// the next. Anything that does not parse ends the walk, because a
+        /// harness must never invent a response it cannot account for.
+        ///
+        /// Limitation, stated rather than discovered later: a reply to HEAD
+        /// carries a Content-Length describing content it does not send, and
+        /// nothing in the response itself says so. 1xx, 204 and 304 are handled
+        /// — they are bodyless by rule — but a HEAD reply would send the walk
+        /// looking for a body that is not there. No caller counts HEAD replies;
+        /// use RoundTripAsync(Bodyless: true) for those.
+        /// </summary>
+        private static IEnumerable<(Int32 Offset, UInt16 Code)> Responses(String Response)
+        {
+
+            var position = 0;
+
+            while (position < Response.Length)
+            {
+
+                #region The status line
+
+                var statusEnd = EndOfLine(Response, position);
+
+                if (statusEnd < 0 || !TryStatusCode(Response, position, statusEnd, out var code))
+                    yield break;
+
+                yield return (position, code);
+
+                #endregion
+
+                #region The header section — only the two fields that frame a body
+
+                var cursor   = StartOfNextLine(Response, statusEnd);
+                var chunked  = false;
+                Int64? declaredLength = null;
+
+                while (true)
+                {
+
+                    var lineEnd = EndOfLine(Response, cursor);
+
+                    if (lineEnd < 0)
+                        yield break;                      // truncated mid-header
+
+                    if (lineEnd == cursor)                // the blank line
+                    {
+                        cursor = StartOfNextLine(Response, lineEnd);
+                        break;
+                    }
+
+                    var line  = Response[cursor..lineEnd];
+                    var colon = line.IndexOf(':');
+
+                    if (colon > 0)
+                    {
+
+                        var name  = line[..colon].Trim();
+                        var value = line[(colon + 1)..].Trim();
+
+                        if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) &&
+                            Int64.TryParse(value, out var parsed))
+                            declaredLength = parsed;
+
+                        else if (name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) &&
+                                 value.Contains("chunked", StringComparison.OrdinalIgnoreCase))
+                            chunked = true;
+
+                    }
+
+                    cursor = StartOfNextLine(Response, lineEnd);
+
+                }
+
+                #endregion
+
+                #region The body
+
+                // RFC 9110 Section 6.4.1: these three never carry content,
+                // whatever their fields claim.
+                if (code is (>= 100 and < 200) or 204 or 304)
+                    position = cursor;
+
+                else if (chunked)
+                {
+
+                    var afterChunks = EndOfChunkedBody(Response, cursor);
+
+                    if (afterChunks < 0)
+                        yield break;
+
+                    position = afterChunks;
+
+                }
+
+                else if (declaredLength is Int64 length)
+                {
+
+                    if (length < 0 || cursor + length > Response.Length)
+                        yield break;
+
+                    position = cursor + (Int32) length;
+
+                }
+
+                // No Content-Length and no chunked coding: the body runs to
+                // the end of the connection, so nothing can follow it.
+                else
+                    yield break;
+
+                #endregion
+
+            }
+
+        }
+
+        #region (static) EndOfLine / StartOfNextLine / TryStatusCode / EndOfChunkedBody
+
+        /// <summary>
+        /// The index of the line terminator at or after From, accepting a bare
+        /// LF as well as CRLF — some of the peers this walks answer with one.
+        /// </summary>
+        private static Int32 EndOfLine(String Text, Int32 From)
+        {
+
+            var index = Text.IndexOf('\n', From);
+
+            if (index < 0)
+                return -1;
+
+            return index > From && Text[index - 1] == '\r'
+                       ? index - 1
+                       : index;
+
+        }
+
+        private static Int32 StartOfNextLine(String Text, Int32 EndOfLine)
+            => EndOfLine < Text.Length && Text[EndOfLine] == '\r'
+                   ? EndOfLine + 2
+                   : EndOfLine + 1;
+
+        private static Boolean TryStatusCode(String   Text,
+                                             Int32    Start,
+                                             Int32    End,
+                                             out UInt16  Code)
+        {
+
+            Code = 0;
+
+            if (End - Start < 12 ||
+                !Text.AsSpan(Start).StartsWith("HTTP/1.", StringComparison.Ordinal) ||
+                Text[Start + 7] is not ('0' or '1') ||
+                Text[Start + 8] != ' ')
+                return false;
+
+            return UInt16.TryParse(Text.AsSpan(Start + 9, 3), out Code);
+
+        }
+
+        /// <summary>
+        /// Where a chunked body ends, trailer section included, or -1 if the
+        /// buffer runs out first.
+        /// </summary>
+        private static Int32 EndOfChunkedBody(String Text, Int32 From)
+        {
+
+            var cursor = From;
+
+            while (true)
+            {
+
+                var lineEnd = EndOfLine(Text, cursor);
+
+                if (lineEnd < 0)
+                    return -1;
+
+                var sizeText  = Text[cursor..lineEnd];
+                var semicolon = sizeText.IndexOf(';');
+
+                if (semicolon >= 0)
+                    sizeText = sizeText[..semicolon];
+
+                if (!Int32.TryParse(sizeText.Trim(),
+                                    System.Globalization.NumberStyles.HexNumber,
+                                    null,
+                                    out var size) || size < 0)
+                    return -1;
+
+                cursor = StartOfNextLine(Text, lineEnd);
+
+                if (size == 0)
+                {
+
+                    // The trailer section, then the blank line that ends it.
+                    while (true)
+                    {
+
+                        var trailerEnd = EndOfLine(Text, cursor);
+
+                        if (trailerEnd < 0)
+                            return -1;
+
+                        var wasBlank = trailerEnd == cursor;
+                        cursor = StartOfNextLine(Text, trailerEnd);
+
+                        if (wasBlank)
+                            return cursor;
+
+                    }
+
+                }
+
+                if (cursor + size > Text.Length)
+                    return -1;
+
+                cursor = StartOfNextLine(Text, EndOfLine(Text, cursor + size) is var e && e < 0 ? cursor + size : e);
+
+            }
+
+        }
+
+        #endregion
+
+        /// <summary>
         /// The status code of the first response in the buffer, if any.
         /// </summary>
         public static UInt16? StatusOf(String Response)
         {
 
-            var index = Response.IndexOf("HTTP/1.", StringComparison.Ordinal);
+            foreach (var (_, code) in Responses(Response))
+                return code;
 
-            if (index < 0 || Response.Length < index + 13)
-                return null;
-
-            return UInt16.TryParse(Response.Substring(index + 9, 3), out var code)
-                       ? code
-                       : null;
+            return null;
 
         }
+
+        /// <summary>
+        /// Every status code in the buffer, in order. One response carrying a
+        /// 400 and two responses carrying a 200 and a 418 are two different
+        /// readings of the same bytes, and which one an implementation
+        /// produced is what a differential probe compares.
+        /// </summary>
+        public static UInt16[] StatusCodes(String Response)
+            => [.. Responses(Response).Select(r => r.Code)];
 
         public static String FirstLine(String Response)
         {
@@ -165,20 +406,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
         /// refused to hand over.
         /// </summary>
         public static Int32 ResponseCount(String Response)
-        {
-
-            var count = 0;
-            var index = 0;
-
-            while ((index = Response.IndexOf("HTTP/1.", index, StringComparison.Ordinal)) >= 0)
-            {
-                count++;
-                index += 7;
-            }
-
-            return count;
-
-        }
+            => Responses(Response).Count();
 
         #endregion
 
