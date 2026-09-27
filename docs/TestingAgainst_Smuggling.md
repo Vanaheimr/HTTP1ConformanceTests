@@ -79,21 +79,27 @@ report a difference on every probe and mean nothing:
 
 A trailing `!` means the peer closed the connection.
 
-**28 of 38 rows agree. The other ten, as measured on 2026-09-27** against
-go1.24.4 and Node's `node:http`:
+**31 of 38 rows agree. The other seven, as measured on 2026-09-27** against
+go1.24.4 and Node's `node:http`, and every one of them is Go's:
 
 | Probe | hermod | go | node | |
 |---|---|---|---|---|
 | `cl-te` | `REJECT[400]!` | `TWO[200,404]` | `REJECT[400]!` | Go serves the hidden request |
 | `te-cl` | `REJECT[400]!` | `TWO[200,404]` | `REJECT[400]!` | " |
-| `te-dup` | `TWO[200,418]` | `REJECT[501]!` | `REJECT[400]!` | **H-29** |
-| `te-obf-sp` | `TWO[200,418]` | `REJECT[501]!` | `REJECT[400]!` | **H-29** |
-| `te-chunked-chunked` | `TWO[200,418]` | `REJECT[501]!` | `REJECT[400]!` | **H-29** |
 | `cl-dup-same` | `REJECT[400]!` | `TWO[200,404]` | `REJECT[400]!` | we are stricter than required |
 | `http10-te` | `REJECT[400]!` | `ONE[200]!` | `REJECT[400]!` | |
 | `chunk-bws` | `REJECT[400]!` | `TWO[200,404]` | `REJECT[400]!` | Go accepts `5 ` as a chunk-size |
 | `chunk-trailer-cl` | `REJECT[400]!` | `TWO[200,404]` | `REJECT[400]!` | |
 | `lf-only-headers` | `REJECT[400]!` | `TWO[200,404]` | `REJECT[400]!` | permitted by §2.2 |
+
+Three rows left this table on the day it was made. `te-dup`, `te-obf-sp` and
+`te-chunked-chunked` read `TWO[200,418]` against `REJECT` from both peers;
+that was **H-29**, it is fixed and pinned
+([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54)), and all three now
+say `REJECT[400]!` like everyone else. The differential reported their
+departure itself — "no longer disagreeing — delete these lines" — which is the
+half of the known-file mechanism that is easy to leave out and the only half
+that keeps the list from growing forever.
 
 These are recorded in [`tests/smuggle-known.txt`](../tests/smuggle-known.txt).
 A row that is not in that file fails the run — including a row whose
@@ -158,7 +164,7 @@ violating anything. What it is doing is accepting a framing that no conforming
 client may send, on the one field request smuggling is made of, while its two
 peers refuse it (Go: 501, Node: 400).
 
-The line is [`AHTTPPDU.cs:422`](../libs/Hermod/Hermod/HTTP1/AHTTPPDU.cs):
+The line was [`AHTTPPDU.cs:422`](../libs/Hermod/Hermod/HTTP1/AHTTPPDU.cs):
 
 ```csharp
 public Boolean IsChunkedTransferEncoding
@@ -168,10 +174,43 @@ public Boolean IsChunkedTransferEncoding
                        ?.Equals("chunked", StringComparison.OrdinalIgnoreCase) == true;
 ```
 
-Only the **last** coding is looked at. That is right for `chunked, gzip` —
-which is why `te-chunked-gzip` correctly gets its 400 — and it silently drops
+Only the **last** coding was looked at. That is right for `chunked, gzip` —
+which is why `te-chunked-gzip` correctly gets its 400 — and it silently dropped
 the duplicate for `chunked, chunked`. Filed as **H-29**, P3: strictness is
 free here, and there is no legitimate client to break.
+
+**Fixed and pinned on 2026-09-27**
+([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54)). The predicate now
+requires chunked to be final *and* to appear exactly once, and the server
+answers 400 — as a check of its own with its own message, because being
+stricter than the RFC is a choice and lumping it in with the MUST above it
+would have hidden that.
+
+### And what the fix turned up — H-30
+
+Getting the two-line spellings to reach that predicate at all meant finding
+where repeated field lines are combined, and the answer was: in one place out
+of three.
+
+Only `HTTPRequest.TryParse`'s server overload knew to join them. The public
+`TryParse(text, out request)` convenience overload and **every HTTP response**
+went through the `AHTTPPDU` constructor, which kept repeated lines as a
+`String[]` — and `GetHeaderField<String>` cannot cast a `String[]` to a
+`String`, so it returned null. A message carrying `Transfer-Encoding: chunked`
+twice was read as declaring **no transfer coding whatsoever**. Three parse
+paths, three answers to the same octets, inside one library.
+
+The client half is a second defect in the same area, and it needed measuring
+rather than reading: `TryValidateResponseFraming` has always refused a
+response whose transfer coding it cannot frame — so the mis-framing this was
+expected to cause does not happen — but the refusal kept the connection. Since
+the reason for refusing is that the body's end is unknown, the body was never
+consumed, and a second request on that connection came back as "Invalid HTTP
+response status line" having read `5\r\nhello`.
+
+That one only appears when the body arrives in a **later TCP segment** than
+the head; written the obvious way, its test was green before the fix. Both are
+**H-30**, fixed in the same PR.
 
 ---
 

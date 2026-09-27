@@ -2089,6 +2089,131 @@ surface, now a pinned regression.
 Track A: **A5 and A8 remain**. Track B: **29 findings, 11 fixed** — H-29 is
 this entry's, and the Go one is not ours to fix.
 
+## 2026-09-27 — H-29 fixed, and the two defects underneath it
+
+A6 found it in the morning; it is pinned by the afternoon
+([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54), two commits). The
+short version is one predicate. The longer version is why fixing one predicate
+took three files.
+
+### The predicate
+
+`IsChunkedTransferEncoding` asked whether the **last** transfer coding is
+chunked. Right question for `chunked, gzip`, where RFC 9112 §6.3 item 4 then
+requires the 400 we already gave it. Wrong question for `chunked, chunked`,
+which it accepted and de-chunked once.
+
+§6.1 forbids a *sender* to apply chunked more than once and states no
+recipient rule, so accepting it violated nothing — which is exactly the
+argument for refusing. No conforming client can produce the message; a
+recipient that accepts it disagrees about where the body ends with every
+recipient that does not; and that disagreement is the whole of what request
+smuggling is. Go says 501, Node says 400.
+
+The server's 400 is a check of its own, with its own message, because being
+stricter than the RFC is a **choice** and putting it in the same clause as the
+MUST above it would have hidden that. Same discipline as `h1desync`'s split
+between the 24 probes that carry a rule and the 14 that do not.
+
+### Three parse paths, three answers — H-30
+
+Getting the two-line spellings (`Transfer-Encoding: chunked` twice, which RFC
+9110 §5.3 makes identical to `chunked, chunked`) to reach that predicate meant
+finding where repeated field lines are combined. The answer was: in one place
+out of three.
+
+Only `HTTPRequest.TryParse`'s server overload joined them. The public
+`TryParse(text, out request)` and **every HTTP response** went through the
+`AHTTPPDU` constructor, which kept them as a `String[]` — and
+`GetHeaderField<String>` cannot cast a `String[]` to a `String`, so it
+returned null:
+
+> a message carrying `Transfer-Encoding: chunked` twice was read as declaring
+> **no transfer coding whatsoever**.
+
+Not an odd one. None. Measured across all three paths before and after, in a
+throwaway program that printed the same eight inputs three times; that table
+is the reason this was found at all, rather than the predicate being fixed on
+its own and the two-line case quietly continuing to do something else.
+
+### The client half: wrong, then right
+
+The prediction was that the client would mis-frame such a response. It does
+not: `TryValidateResponseFraming` reads the raw header lines and has always
+refused a transfer coding it cannot frame. Measured on unmodified master, and
+the prediction had been flagged as unverified precisely because it came from
+reading code rather than running it.
+
+What the measurement *did* show is a real defect one step further on: the
+refusal **kept the connection**. The reason for refusing is that the body's
+end is unknown, so the body was never consumed, and the next response read on
+that connection begins inside it —
+
+    response 1      : 0 - ClientError          (correctly refused)
+    IsHTTPConnected : True                     (and kept)
+    response 2      : 0 - ClientError - "Invalid HTTP response status line"
+
+— because what it read was `5\r\nhello`. One line to fix.
+
+It only happens when the body arrives in a **later TCP segment** than the
+head. Written the obvious way, with the response in one write, the leftovers
+land in the client's own buffer and are dropped with it: the first version of
+the test was green before the fix. It flushes head and body separately now,
+and that arrangement is most of what the test is.
+
+### Verification, and one trap in it
+
+17 tests, walking all three parse paths, with five legal single-chunked
+spellings alongside — a rule that rejects too much is not an improvement on
+one that accepts too much. Each change reverted on its own: the server check
+costs 4 tests, the exactly-once rule 2, the line combining 2, the client line
+1. 832/832 in `Tests.HTTP.` + `Tests.HTTPS.`
+
+The trap was in the falsification harness rather than the code.
+`shutil.copy2` preserves mtime, and MSBuild decides what to recompile from
+mtime, so a restored file **older** than the assembly built from the reverted
+one was silently not rebuilt — each case could have been measuring the one
+before it. Re-run with an explicit `os.utime`; the figures above are from the
+clean pass. Nothing about the earlier numbers changed, which is luck rather
+than vindication.
+
+### The outside witness
+
+The differential that found this reported the fix without being asked:
+
+```
+no longer disagreeing — delete these lines from tests/smuggle-known.txt:
+  te-dup              (was TWO,REJECT,REJECT, now all agree on REJECT)
+  te-obf-sp           (was TWO,REJECT,REJECT, now all agree on REJECT)
+  te-chunked-chunked  (was TWO,REJECT,REJECT, now all agree on REJECT)
+```
+
+**10 disagreements down to 7**, and the remaining seven are all Go's. That
+second half of the known-file bargain — reporting a row that *stopped*
+disagreeing — is the easy one to leave out, and it is the only thing that
+keeps such a list from growing forever.
+
+### And one more empty result that looked like a result
+
+Re-running the differential against the patched build with the demo host down
+produced a full table: every row disagreeing, ten NEW findings, "0 agree, 38
+disagree". `h1desync` prints `OBS…ERROR` per probe when it cannot connect, so
+the file is not empty — and "not empty" was the whole of the check. It counts
+non-ERROR rows now and refuses outright.
+
+That is the third time in two days: the empty `FAIL` line from
+`tests/interop.sh`, `smuggler.sh` reporting no findings for a scan that never
+ran, and this. The pattern is always the same — an instrument that cannot
+reach its subject produces output shaped exactly like a measurement.
+
+### Numbers
+
+Pin: `c85de5a2` → `531c0ed5`. Hermod's gate filter **832** (was 738; 17 are
+this fixture, the other 77 came with master). This repo: **303/303 over 9/9**,
+and **477/477 over 12/12** with `--wsl`.
+
+Track A: A5 and A8 remain. Track B: **30 findings, 13 fixed**.
+
 ## Next
 
 **A5 and A8, the last two third-party suites** — intermediary interop and
@@ -2108,7 +2233,7 @@ implementations compared nightly, two third-party suites, and Hermod added to
 the HTTP Garden — which produced **H-29** and a MUST violation in Go's
 `net/http`.
 
-**Track B: 29 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
+**Track B: 30 findings, 13 fixed upstream, all of them whole.** H-1; H-2 as of
 2026-09-24, which took four fixes against an estimate of one; H-3, which moved the
 RFC 9110 §11 framework into the shared library on the way; H-16, which had been
 fixed upstream for a week before anybody re-read the row; H-25, the Warden killing
