@@ -381,8 +381,41 @@ nor a nightly: the Garden builds every target from source with clang and
 ASan, which is compiler-hours. `--contract` checks that our target still
 answers the Garden's format without needing a single peer.
 
+## The proxies (A5)
+
+Five reverse proxies in front of the demo host — nginx, HAProxy, Caddy, Apache
+httpd, Envoy — because they are the strictest HTTP/1.1 consumers there are,
+and because a smuggling gadget is only real in a chain.
+
+```bash
+tests/proxy.sh                     # brings them up, runs, tears them down
+tests/proxy.sh --keep --only nginx
+tests/proxy.sh --filter framing    # curl | framing | poison | via
+tests/proxy.sh --update            # rewrite tests/proxy-known.txt
+```
+
+Every image is pulled rather than built, so this costs a minute of docker pull
+rather than the compiler-hours the HTTP Garden does. It still takes about ten
+minutes to run, which is why it is a nightly.
+
+Four measurements. **curl** runs the whole 78-check matrix through each chain
+against 78/78 direct; **framing** runs `h1desync --observe` through each chain
+against the same run made directly; **poison** sends an ambiguous message and
+then asks innocent questions on fresh connections; **via** checks the
+intermediary-facing things visible from outside — a chunked body arriving
+intact, a trailer surviving a re-framing hop, `Connection: close` honoured.
+
+63 differences are recorded by name in `proxy-known.txt` and a new one fails
+the run; a row that stops differing is reported so the line can be deleted.
+
+The poison column needs reading with its calibration, which is in
+[`../docs/TestingAgainst_Proxies.md`](../docs/TestingAgainst_Proxies.md): all
+five proxies discard an upstream connection carrying an unexpected extra
+response, so the detector has never been seen to fire through any of them.
+"Clean" therefore says more about the proxies than about the origin.
+
 ## Not here yet
 
-`PLAN.md` tracks the rest: reverse proxies (A5) and browsers (A8). CI (A11)
+`PLAN.md` tracks the rest: browsers (A8). CI (A11)
 landed on 2026-09-22; the reference peers (A7), the benchmark (A9) and the
 fuzzer (A10) on 2026-09-26; the smuggling differential (A6) on 2026-09-27.

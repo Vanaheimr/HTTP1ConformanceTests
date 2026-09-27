@@ -2214,13 +2214,156 @@ and **477/477 over 12/12** with `--wsl`.
 
 Track A: A5 and A8 remain. Track B: **30 findings, 13 fixed**.
 
+## 2026-09-27 — A5: the chain, and a detector that has never fired
+
+A6 ended with seven probes on which Hermod, Go and Node place the end of a
+message differently, and with the observation that a disagreement is only an
+attack when two implementations are chained. A5 builds the chain: nginx 1.27,
+HAProxy 3.0, Caddy 2, Apache httpd 2.4 and Envoy 1.31, each reverse-proxying
+the demo host. All pulled, none built — the deliberate opposite of the HTTP
+Garden, which compiles every target from source with clang and ASan.
+
+`tests/proxy.sh` measures four things and they are not equally strong. The
+write-up is [`TestingAgainst_Proxies.md`](TestingAgainst_Proxies.md).
+
+### The easy half: the demo still works behind all five
+
+The whole 78-check curl matrix through each chain, against 78/78 direct —
+which is what makes the column readable, since a difference is then the
+proxy's doing and not a pre-existing failure. nginx 72, HAProxy 77, Caddy 75,
+Apache 73, Envoy 71.
+
+The 26 differences cluster into four recognisable behaviours: answering an
+HTTP/1.0 request as 1.1, refusing or rewriting `OPTIONS *`, declining to
+forward an `Upgrade` nobody configured them for, and — Envoy alone — refusing
+an unregistered method, which takes out `QUERY`. None is a Hermod defect, and
+each is recorded by name so that a *new* one fails.
+
+### The informative half: what a proxy does with an ambiguous message
+
+`h1desync --observe` through each chain against the same run made directly,
+in A6's vocabulary. 40 rows differ across the five, and three are worth
+keeping:
+
+**`chunk-bws` goes through all five.** A chunk-size followed by a bare space —
+`5 \r\n`, where the grammar is `1*HEXDIG` and an extension has to begin with
+`;`. Hermod alone answers 400; every one of the five forwards it in a shape
+that gets the hidden request executed. A6 had found Go accepting it and filed
+it as Go's; it turns out to be near-universal.
+
+**Caddy splits `cl-te` and `te-cl` into two requests.** Caddy is Go's
+`net/http` underneath, and this is exactly the behaviour A6 measured in Go
+directly — the same finding arriving through a different door, which is the
+sort of corroboration a differential is for.
+
+**Apache answers 500 where Hermod answers 400.** For the three chunked-twice
+spellings Hermod refuses with 400 and closes, and Apache turns that upstream
+close into a `500 Internal Server Error` of its own. Apache's translation, not
+ours — and visible only *because* H-29 landed that morning: before it, Hermod
+would have answered 200 and then served the hidden request.
+
+### The part that matters: a detector with no evidence behind it
+
+The response count on the attacking connection answers the wrong question
+through a proxy. Two responses mean the *front end* saw two requests and
+forwarded both — that is pipelining, and its policy engine saw both. The
+attack is the front end seeing one where the back end sees two, and on the
+attacking connection that is invisible.
+
+Where it shows is the next connection: the extra response sits in the proxy's
+pooled upstream connection and goes to whoever asks next. So
+`tests/proxy-poison.py` sends the payload, then asks innocent questions on
+fresh connections.
+
+No chain poisons. That would have been a comfortable place to stop.
+
+**Calibration.** A back end was built that answers one request with two
+responses — verified on the wire, one request in and `200 OK` plus `418 I'm a
+teapot` out, which is exactly the state a successful desync leaves behind —
+and put behind each of the five proxies in turn.
+
+    haproxy   clean - the proxy absorbed it
+    nginx     clean - the proxy absorbed it
+    caddy     clean - the proxy absorbed it
+    httpd     clean - the proxy absorbed it
+    envoy     clean - the proxy absorbed it
+
+All five discard the upstream connection rather than pass the extra response
+on. **The detector has never been seen to fire through any of them.** So
+"clean" means "no chain here produced an attack, and these five would have
+absorbed one in any case" — a real statement about the chain and a weak one
+about the origin.
+
+It stays in the suite. It is the right instrument, it costs seconds, and the
+day a sixth proxy is added that does not absorb, it starts meaning something.
+What changed is that the write-up says this rather than quoting 32/32 and
+moving on.
+
+The honest summary of A5 is that the chain is safe for two independent reasons
+and neither was arranged: Hermod refuses the ambiguous framings and hangs up,
+and the proxies would have absorbed the consequences if it had not.
+
+### Two traps
+
+**`MSYS_NO_PATHCONV=1` must not be exported.** It is needed so Git Bash does
+not rewrite `/mnt/d/...` before `wsl.exe` sees it — the path arrived as
+`C:/Program Files/Git/mnt/d/...`. Exported, it also stops `/dev/null` being
+translated for native Windows binaries, so every `curl -s -o /dev/null` in the
+driver began to fail. The first of those is the check for the demo host, which
+duly reported the demo down while it was answering 200 in the next shell
+along. Per-command now, the way `autobahn.sh` has always done it.
+
+**And one I walked straight into.** The first `proxy-poison.py` reported the
+status codes on the attacking connection by anchoring `HTTP/1.` to the start
+of a line — the exact under-counting mistake diagnosed and rejected in
+`Checks.ResponseCount` the same morning, where the other cheap trick,
+counting substrings, over-counts instead. Doing it right means walking the
+framing. The verdict needs only the first status of a single-response
+follow-up, so the wrong thing was removed rather than the walker duplicated.
+
+### What is not done, deliberately
+
+The reverse direction from the original sketch — Hermod's `HTTPClient`
+through a proxy to a foreign origin. `tests/interop.sh` already points that
+client at Go's and Node's servers directly; putting a proxy in between
+measures the proxy. Left out on purpose rather than forgotten.
+
+### One run in five that nobody can explain
+
+Four runs of 32/32 and one of 14/32 — everything from `poison/haproxy`
+onwards. Not reproduced, and three explanations tested and discarded: not
+Hermod under proxy load (the same workload passes repeatedly against the same
+binary, and the demo was answering afterwards), not a stale upstream pool
+(kill the demo all five are pooled against, start another, and all five
+answer 200 at once), not the driver owning the demo's lifetime (re-run
+exactly, 32/32). The failing run was the one whose predecessor had been killed
+mid-flight, which is the likeliest story and is not evidence.
+
+It is written down rather than rounded off. What was done about it is not a
+fix: the eighteen crosses said nothing about their common cause, so the driver
+now checks between sections that the demo still answers and stops with
+"the demo host stopped answering on :8080 after the framing section",
+keeping its log. The next occurrence names itself; the suite is no more
+correct and a good deal easier to believe.
+
+### Numbers
+
+`tests/proxy.sh`: **32/32**, about ten minutes, nightly on `ubuntu-latest`.
+63 recorded differences — 22 curl, 40 framing, 1 via (Apache drops the
+trailer section, which is allowed).
+
+Track A is **done but for A8**. Track B: 30 findings, 13 fixed.
+
 ## Next
 
-**A5 and A8, the last two third-party suites** — intermediary interop and
-browsers. Each brings its own nightly job; the workflow has room for them and
-the demo already binds `0.0.0.0` on demand, which is what A5 was waiting for.
-A5 is also where A6's ten disagreements get their sharpest form: each one is a
-gadget *in a chain*, and an intermediary is what makes a chain.
+**A8, the last third-party suite** — browsers. It brings its own nightly job
+and the workflow has room for it.
+
+A5 landed on 2026-09-27 and took A6's disagreements into a chain, which is the
+only shape in which they are attacks. None of them is, through these five
+proxies — with the caveat that the detector for the final step has never been
+seen to fire, because all five absorb a poisoned upstream connection whatever
+the origin does.
 
 **A7, A9 and A10 landed on 2026-09-26, A6 on 2026-09-27.** A7 is five
 foreign clients and two foreign servers, 58/58, nightly on `ubuntu-latest`. A9

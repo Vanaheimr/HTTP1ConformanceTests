@@ -1,0 +1,18 @@
+# A5 — Caddy as a reverse proxy in front of the demo host.
+
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	log {
+		output discard
+	}
+
+	reverse_proxy {env.DEMO_HOST}:8080 {
+		# Caddy rewrites Host to the upstream by default; keep the client's,
+		# so that a check looking at Host measures the demo and not Caddy.
+		header_up Host {http.request.host}
+	}
+}

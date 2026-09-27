@@ -1,0 +1,73 @@
+# A5 — what these five proxies do differently, and that is recorded rather than demanded.
+#
+# <kind> TAB <proxy> TAB <detail> TAB <note>
+#
+#   curl     a check from tests/curl-matrix.sh that passes directly and not through this proxy
+#   framing  a tests/h1desync probe this chain reads differently from the demo alone
+#   via      an intermediary behaviour that is allowed but worth knowing
+#
+# A row not listed here fails the run. Written by tests/proxy.sh --update on 2026-09-27.
+
+curl	caddy	HTTP/1.0 response closes	
+curl	caddy	server-wide OPTIONS *	
+curl	caddy	the identity one keeps the plain ETag	
+curl	envoy	--http1.0 downgrades the exchange	
+curl	envoy	HTTP/1.0 status line echoes the version	
+curl	envoy	QUERY (RFC 10008)	
+curl	envoy	QUERY filters	
+curl	envoy	Upgrade on the HTTP port → 101	
+curl	envoy	server-wide OPTIONS *	
+curl	envoy	the accept value is RFC 6455's	
+curl	haproxy	HTTP/1.0 response closes	
+curl	httpd	--http1.0 downgrades the exchange	
+curl	httpd	HTTP/1.0 status line echoes the version	
+curl	httpd	Upgrade on the HTTP port → 101	
+curl	httpd	server-wide OPTIONS *	
+curl	httpd	the accept value is RFC 6455's	
+curl	nginx	--http1.0 downgrades the exchange	
+curl	nginx	HTTP/1.0 status line echoes the version	
+curl	nginx	Upgrade on the HTTP port → 101	
+curl	nginx	server-wide OPTIONS *	
+curl	nginx	the accept value is RFC 6455's	
+curl	nginx	unsupported expectation → 417	
+framing	caddy	chunk-bws	direct=REJECT chain=TWO
+framing	caddy	chunk-ext-quoted-crlf	direct=REJECT chain=ONE
+framing	caddy	chunk-hex-0x	direct=REJECT chain=ONE
+framing	caddy	chunk-lf-only	direct=REJECT chain=ONE
+framing	caddy	chunk-overflow	direct=REJECT chain=ONE
+framing	caddy	chunk-plus	direct=REJECT chain=ONE
+framing	caddy	chunk-trailer-cl	direct=REJECT chain=TWO
+framing	caddy	cl-dup-same	direct=REJECT chain=TWO
+framing	caddy	cl-te	direct=REJECT chain=TWO
+framing	caddy	http10-te	direct=REJECT chain=ONE
+framing	caddy	lf-only-headers	direct=REJECT chain=TWO
+framing	caddy	te-cl	direct=REJECT chain=TWO
+framing	envoy	chunk-bws	direct=REJECT chain=TWO
+framing	envoy	chunk-ext-quoted-crlf	direct=REJECT chain=TWO
+framing	envoy	chunk-lf-only	direct=REJECT chain=TWO
+framing	envoy	chunk-trailer-cl	direct=REJECT chain=TWO
+framing	envoy	http10-te	direct=REJECT chain=ONE
+framing	envoy	lf-only-headers	direct=REJECT chain=TWO
+framing	haproxy	chunk-bws	direct=REJECT chain=TWO
+framing	haproxy	chunk-trailer-cl	direct=REJECT chain=TWO
+framing	haproxy	cl-dup-diff	direct=REJECT chain=NONE
+framing	haproxy	cl-dup-same	direct=REJECT chain=TWO
+framing	haproxy	cl-list-diff	direct=REJECT chain=NONE
+framing	haproxy	cl-list-same	direct=REJECT chain=TWO
+framing	haproxy	cl-te	direct=REJECT chain=ONE
+framing	haproxy	lf-only-headers	direct=REJECT chain=TWO
+framing	haproxy	te-cl	direct=REJECT chain=ONE
+framing	httpd	chunk-bws	direct=REJECT chain=TWO
+framing	httpd	chunk-trailer-cl	direct=REJECT chain=TWO
+framing	httpd	cl-te	direct=REJECT chain=ONE
+framing	httpd	http10-te	direct=REJECT chain=ONE
+framing	httpd	te-chunked-chunked	direct=REJECT chain=ONE
+framing	httpd	te-cl	direct=REJECT chain=ONE
+framing	httpd	te-dup	direct=REJECT chain=ONE
+framing	httpd	te-obf-sp	direct=REJECT chain=ONE
+framing	nginx	chunk-bws	direct=REJECT chain=TWO
+framing	nginx	chunk-lf-only	direct=REJECT chain=TWO
+framing	nginx	chunk-trailer-cl	direct=REJECT chain=TWO
+framing	nginx	lf-only-headers	direct=REJECT chain=TWO
+framing	nginx	te-ows-htab	direct=ONE chain=REJECT
+via	httpd	trailer dropped	the proxy did not forward the trailer section

@@ -45,7 +45,8 @@ citation sweep last so that it covered what the other four added.
 | smuggling: our differential | ✅ `tests/h1desync` 24/24 in the gate; `tests/smuggle.sh` 38/38 over 3 implementations, 10 known disagreements, nightly |
 | smuggling: third-party | ✅ `tests/smuggler.sh` — smuggler 134/134 mutations, nothing found; h2csmuggler finds no h2c surface, pinned as a regression |
 | smuggling: http-garden | ✅ target built and contract-verified; the full 45-server differential is compiler-hours, run by hand — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
-| third-party: proxies, browsers | ⬜ A5, A8 |
+| third-party: proxies (A5) | ✅ five reverse proxies, 63 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
+| third-party: browsers | ⬜ A8 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
@@ -242,20 +243,49 @@ Runs the official `crossbario/autobahn-testsuite` image under WSL/Debian's
 Docker. The scripts must start the daemon themselves (`service docker start`) —
 WSL has no systemd, so it is not running after a reboot.
 
-## ⬜ A5 · Intermediary interop · P2 · ~2–3 d
+## ✅ A5 · Intermediary interop · P2 · done 2026-09-27
 
-Reverse proxies are the strictest HTTP/1.1 consumers in existence; framing bugs
-surface against nginx long before they surface against a browser.
+Reverse proxies are the strictest HTTP/1.1 consumers in existence, and they
+are the only shape in which A6's findings are real: that work found seven
+probes on which Hermod, Go and Node place the end of a message differently,
+and a disagreement is only an attack when two of them are chained.
 
-- `tests/proxies/docker-compose.yml` — nginx, HAProxy, Envoy, Apache httpd,
-  Caddy, each reverse-proxying the demo host (WSL/Debian Docker; the demo host
-  runs on Windows and is reachable from WSL via the host IP, **not**
-  `localhost` — pin that in the compose file)
-- run the `h1semantics` + curl matrices *through* each proxy and diff against direct
-- reverse direction: Hermod's `HTTPClient` → proxy → a known-good origin
-- explicitly check the intermediary-facing rules: hop-by-hop field stripping,
-  `Via`, trailer forwarding, chunked re-framing, `Connection` token handling
-- `docs/TestingAgainst_Proxies.md`
+`tests/proxies/docker-compose.yml` brings up five — nginx 1.27, HAProxy 3.0,
+Caddy 2, Apache httpd 2.4, Envoy 1.31 — each reverse-proxying the demo host.
+All pulled, none built, which is the deliberate contrast with the HTTP Garden.
+`tests/proxy.sh` drives them; the write-up is
+[`docs/TestingAgainst_Proxies.md`](docs/TestingAgainst_Proxies.md).
+
+Four measurements, and they are not equally strong:
+
+| | what | |
+|---|---|---|
+| `curl` | all 78 curl checks through each chain, against 78/78 direct | every difference recorded by name, a new one fails |
+| `framing` | `h1desync --observe` through each chain, against direct | says what each proxy does with an ambiguous message |
+| `poison` | the attack: send it, then ask innocent questions on fresh connections | **see the calibration below** |
+| `via` | chunked bodies intact, trailers through a re-framing hop, `Connection: close` | |
+
+**What it found.** No chain poisons a connection. Three readings are worth
+keeping: `chunk-bws` — a chunk-size followed by a bare space — is forwarded by
+**all five** in a shape that gets the hidden request executed, where Hermod
+alone answers 400; Caddy splits `cl-te` and `te-cl` into two requests, which
+is Go's `net/http` underneath it and the same behaviour A6 measured directly;
+and Apache turns Hermod's 400-and-close for the chunked-twice spellings into a
+500 of its own, which is only visible because **H-29** was fixed that morning.
+
+**The calibration, which matters more than the result.** A back end was built
+that answers one request with two responses — the state a successful desync
+leaves behind, verified on the wire — and put behind each proxy in turn. All
+five discarded the upstream connection rather than pass the extra response on.
+So the poison detector has never been seen to fire through any of them, and
+"clean" means *"no chain here produced an attack, and these five would have
+absorbed one anyway"*. A real statement about the chain, a weak one about the
+origin, and it is written down as such rather than quoted as a pass.
+
+What is **not** done from the original sketch: the reverse direction, Hermod's
+`HTTPClient` through a proxy to a foreign origin. `tests/interop.sh` already
+points that client at Go and Node directly, and putting a proxy between them
+measures the proxy. Left out deliberately rather than forgotten.
 
 ## ✅ A6 · Request smuggling / differential fuzzing · P2 · done 2026-09-27
 

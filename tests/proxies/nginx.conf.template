@@ -1,0 +1,37 @@
+# A5 — nginx as a reverse proxy in front of the demo host.
+#
+# Configured to forward rather than to improve. proxy_buffering off and
+# proxy_request_buffering off keep nginx from collecting a body and re-framing
+# it, which is the difference between measuring what nginx does to a message
+# and measuring what nginx does to a message it has decided to rewrite.
+
+server {
+    listen      80;
+    server_name _;
+
+    # Do not let a slow probe look like a proxy defect.
+    proxy_connect_timeout  5s;
+    proxy_send_timeout     30s;
+    proxy_read_timeout     30s;
+
+    location / {
+
+        proxy_pass         http://${DEMO_HOST}:8080;
+        proxy_http_version 1.1;
+
+        # Pass the client's Host through. The default is $proxy_host, which
+        # would make every check that looks at Host measure nginx instead.
+        proxy_set_header   Host $http_host;
+
+        # An empty Connection means "do not send one", which lets nginx keep
+        # the upstream connection alive rather than closing it per request.
+        proxy_set_header   Connection "";
+
+        proxy_buffering         off;
+        proxy_request_buffering off;
+
+        # The upstream decides the response framing, not nginx's guess at it.
+        chunked_transfer_encoding on;
+
+    }
+}

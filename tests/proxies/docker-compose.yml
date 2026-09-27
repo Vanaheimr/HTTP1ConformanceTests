@@ -1,0 +1,83 @@
+# A5 — five reverse proxies in front of the demo host.
+#
+# Reverse proxies are the strictest HTTP/1.1 consumers there are. They also
+# make the only shape in which a smuggling gadget is real: A6 found seven
+# probes on which Hermod, Go and Node disagree, and a disagreement is only an
+# attack when two of them are chained. Here they are chained.
+#
+# WHERE THE DEMO IS
+#
+# Not in this file's network. DEMO_HOST is supplied by tests/proxy.sh and
+# differs by platform, which is the one thing about this setup that cannot be
+# hidden:
+#
+#   Linux      the demo runs on the host, reached through host.docker.internal
+#              and the host-gateway alias below.
+#   Windows    the demo runs on WINDOWS and Docker runs inside the WSL VM, so
+#              host.docker.internal would resolve to the VM - the wrong
+#              machine. DEMO_HOST is then the VM's default route, which is the
+#              Windows host, and the demo has to be started with --bind-any or
+#              nothing outside loopback can reach it.
+#
+# Every image here is pulled, not built. That is deliberate after the HTTP
+# Garden, which compiles every target from source with clang and ASan and is
+# measured in compiler-hours: this has to be cheap enough to run per nightly.
+
+services:
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["18101:80"]
+    environment:
+      DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    ports: ["18102:80"]
+    environment:
+      DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    # The image's own user cannot bind 80.
+    user: root
+
+  caddy:
+    image: caddy:2-alpine
+    ports: ["18103:80"]
+    environment:
+      DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  httpd:
+    image: httpd:2.4-alpine
+    ports: ["18104:80"]
+    environment:
+      DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
+    volumes:
+      - ./httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    ports: ["18105:80"]
+    environment:
+      DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
+    volumes:
+      - ./envoy.yaml.template:/etc/envoy/envoy.yaml.template:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    # Envoy has no environment substitution in its bootstrap, so the address
+    # is put in before it starts. sed rather than envsubst because the image
+    # has no gettext.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        sed "s/DEMO_HOST_PLACEHOLDER/$${DEMO_HOST}/g"
+        /etc/envoy/envoy.yaml.template > /tmp/envoy.yaml
+        && exec /usr/local/bin/envoy -c /tmp/envoy.yaml --log-level warn
