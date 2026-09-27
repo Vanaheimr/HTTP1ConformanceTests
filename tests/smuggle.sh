@@ -133,17 +133,31 @@ if [ ! -f "$DESYNC_DLL" ]; then
     exit 1
 fi
 
+
+# A column of nothing but ERROR is not a result, and it looked exactly like
+# one: every row "disagrees", the table fills in, and the run reports 38
+# findings. That is what an unreachable demo host produced. h1desync prints
+# OBS...ERROR per probe when it cannot connect, so the file is non-empty and
+# the -s test above is satisfied - the count of usable rows is what has to be
+# checked.
+usable_rows() {
+    awk -F"	" '$1=="OBS" && $3!="ERROR" { n++ } END { print n+0 }' "$1"
+}
 COLUMNS_PRESENT=()
 
 # --- hermod: run on this side, against the demo -----------------------------
 
 if wants hermod; then
-    if dotnet "$DESYNC_DLL" --observe --base "$BASE" > "$WORK/hermod.obs" 2>"$WORK/hermod.err" \
-       && [ -s "$WORK/hermod.obs" ]; then
+
+    dotnet "$DESYNC_DLL" --observe --base "$BASE" > "$WORK/hermod.obs" 2>"$WORK/hermod.err"
+
+    if [ "$(usable_rows "$WORK/hermod.obs")" -gt 0 ]; then
         COLUMNS_PRESENT+=(hermod)
-        note "hermod:     $BASE  ($(wc -l < "$WORK/hermod.obs" | tr -d ' ') probes)"
+        note "hermod:     $BASE  ($(usable_rows "$WORK/hermod.obs") probes)"
     else
-        echo "  ${RED}hermod leg produced nothing — is the demo up at $BASE?${OFF}" >&2
+        echo
+        echo "  ${RED}the hermod leg reached no probe at $BASE${OFF}" >&2
+        echo "  is the demo host up? tests/run-tests.sh --keep-demo leaves one running." >&2
         head -3 "$WORK/hermod.err" >&2
         exit 1
     fi
