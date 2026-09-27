@@ -14,6 +14,10 @@
     <Project Path="tests/h1attack/h1attack.csproj" />
     <Project Path="tests/h1conn/h1conn.csproj" />
     <Project Path="tests/h1desync/h1desync.csproj" />
+    <!-- Built here as well as inside the http-garden image, so that a Hermod
+         change that breaks the Garden target breaks the ordinary build too,
+         rather than an hour into a docker build nobody runs per push. -->
+    <Project Path="tests/http-garden/app/HermodGarden.csproj" />
     <Project Path="tests/h1framing/h1framing.csproj" />
     <Project Path="tests/h1raw/h1raw.csproj" />
     <Project Path="tests/h1semantics/h1semantics.csproj" />

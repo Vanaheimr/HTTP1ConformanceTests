@@ -25,20 +25,24 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 279/279 checks, ~103 s
+tests/run-tests.sh        # 303/303 checks, ~135 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **201/201** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
 | `tests/curl-matrix.sh` | **78/78** (79 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **279/279** — and **415/415** with `--wsl`, which adds a second curl build and the foreign peers |
+| both, over cleartext *and* TLS | **303/303** — and **477/477** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 18 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
 | `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
 | `tests/h1fuzz` | ~1–2 M mutated inputs per target per minute against three parsers. Fixed seed in the gate, exploring nightly. 1 known finding (**H-28**), which it produced on its first run |
-| remaining third-party suites | not yet — proxies (A5), http-garden (A6), browsers (A8) |
+| `tests/h1desync` | **24/24** — 38 ambiguously framed messages; the 24 RFC 9112 states a rule for are asserted, the 14 it leaves open are observed |
+| `tests/smuggle.sh` | **38/38** over Hermod, Go `net/http` and Node `node:http`. 28 rows agree; the 10 that do not are [written up](docs/TestingAgainst_Smuggling.md) and pinned in `tests/smuggle-known.txt` |
+| `tests/smuggler.sh` | **134/134** Transfer-Encoding obfuscations from [smuggler](https://github.com/defparam/smuggler), nothing found; [h2csmuggler](https://github.com/BishopFox/h2csmuggler) finds no h2c surface, which is now a pinned regression |
+| `tests/http-garden/` | Hermod as a target in [the HTTP Garden](https://github.com/narfindustries/http-garden), which compares parse trees across 45 implementations. Contract-verified on every run; the full sweep is compiler-hours and is run by hand |
+| remaining third-party suites | not yet — proxies (A5), browsers (A8) |
 
 On top of that, the coverage inside Hermod itself:
 
@@ -199,7 +203,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | RFC 9112 §6 | Message body length, the 7-step algorithm | ✅ incl. duplicate/conflicting `Content-Length`, `CL`+`TE` conflict, overflow/sign/non-decimal |
 | RFC 9112 §7 | Transfer codings | ✅ `chunked` (both directions, both roles), chunk extensions, trailers, forbidden-trailer list. `gzip`/`deflate`/`compress` **transfer** codings ❌ |
 | RFC 9112 §9 | Persistence, pipelining, `Connection` | ✅ persistent by default, pipelining in wire order, chunked request delimited before the next, invalid leading request closes the connection |
-| RFC 9112 §11.2 | Message smuggling / response splitting | ✅ strict rejection of ambiguous framing — but not yet verified against an external differential fuzzer → **plan item** |
+| RFC 9112 §11.2 | Message smuggling / response splitting | ✅ strict rejection of ambiguous framing, and verified differentially since 2026-09-27: `tests/h1desync` 24/24 against the requirements RFC 9112 states, three implementations compared in `tests/smuggle.sh`, two third-party probe suites, and Hermod added to the HTTP Garden. One finding, **H-29** — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
 | RFC 9110 §7.6.1 | Connection-specific (hop-by-hop) fields | 🟡 `Connection`, `Trailer`, `Upgrade`, `Via` typed |
 | [RFC 7239](https://www.rfc-editor.org/rfc/rfc7239) | `Forwarded` HTTP extension | ❌ — only `X-Forwarded-For` is typed. Marked `//ToDo` in `HTTPRequest.cs:1125` |
 | [RFC 9440](https://www.rfc-editor.org/rfc/rfc9440) | `Client-Cert` / `Client-Cert-Chain` | ❌ (mTLS itself is supported at the TLS layer) |
@@ -356,9 +360,9 @@ assembled from several independent third-party tools — which is arguably
 |---|---|---|---|
 | [**curl**](https://curl.se/) | client | the reference HTTP client: `--http1.0`/`--http1.1`, chunked, `Expect: 100-continue`, keep-alive, ranges, cookies, Basic/Digest auth, `HEAD`, `--raw`, `-v` wire traces | ✅ **two** builds, deliberately: Windows 8.21 **without** HTTP/2 (cannot accidentally upgrade) and Debian 8.14 **with** nghttp2/nghttp3 (proves `--http1.1` and ALPN are honoured) |
 | [**Autobahn TestSuite**](https://github.com/crossbario/autobahn-testsuite) | WebSocket | the canonical RFC 6455 + RFC 7692 suite, **both** `fuzzingclient` (tests our server) and `fuzzingserver` (tests our client) | ✅ via WSL/Debian Docker |
-| [**http-garden**](https://github.com/narf-industries/http-garden) | differential fuzzer | request smuggling / parser differentials against ~20 real servers and proxies — the state of the art for RFC 9112 §11.2 | ✅ via WSL/Debian Docker |
-| [**smuggler.py**](https://github.com/defparam/smuggler) | scanner | CL.TE / TE.CL / TE.TE desync probes | ✅ Python 3 on both sides |
-| [**h2csmuggler**](https://github.com/BishopFox/h2csmuggler) | scanner | `Upgrade: h2c` smuggling — must find nothing, since h2c upgrade is absent | ✅ |
+| [**http-garden**](https://github.com/narfindustries/http-garden) | differential fuzzer | request smuggling / parser differentials against 45 real servers and proxies — the state of the art for RFC 9112 §11.2 | ✅ Hermod added as a target, `tests/http-garden.sh` |
+| [**smuggler.py**](https://github.com/defparam/smuggler) | scanner | CL.TE / TE.CL / TE.TE desync probes | ✅ `tests/smuggler.sh`, nightly — 134/134, nothing found |
+| [**h2csmuggler**](https://github.com/BishopFox/h2csmuggler) | scanner | `Upgrade: h2c` smuggling — must find nothing, since h2c upgrade is absent | ✅ `tests/smuggler.sh`, and the negative is pinned |
 | **nginx / HAProxy / Envoy / Apache httpd / Caddy / Traefik** | intermediaries | reverse-proxying Hermod. Proxies are the strictest HTTP/1.1 consumers in existence — framing bugs surface here first. Also as *upstreams* for Hermod's client | ✅ via WSL/Debian Docker |
 | **Go `net/http`**, **Python `httpx`/`aiohttp`**, **Java `HttpClient`/OkHttp**, **Rust `hyper`** | reference peers | independent, strict, *non*-.NET implementations on both sides of the wire | 🟡 per-runtime setup, in WSL |
 | **.NET `HttpClient` / Kestrel / Minimal API** | reference peer | already used inside `HermodTests/HTTP/dotNET/` | ✅ |

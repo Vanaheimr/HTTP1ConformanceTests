@@ -25,10 +25,11 @@ scrapes output for a marker character.
 
 ## Status
 
-**279/279 checks pass, over both transports** — 201 raw-wire + 78 curl —
-across 8/8 harnesses, the eighth being the fuzzer's fixed-seed pass. With
-`--wsl`, a second curl build and the foreign peers join in: **415/415** over
-10/10.
+**303/303 checks pass, over both transports** — 201 raw-wire + 78 curl + 24
+desync — across 9/9 harnesses, two of which need no demo response at all: the
+fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
+curl build, the foreign peers and the smuggling differential join in:
+**477/477** over 12/12.
 
 The curl figure is 78 **here** and 79 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional, and a
@@ -325,8 +326,63 @@ It is deliberately not SharpFuzz driven by AFL++, which is what `PLAN.md`
 originally asked for; A10 there says why, and what would have to be installed
 to get the stronger instrument.
 
+## The smuggling differential (A6)
+
+A single origin server cannot smuggle a request past itself: the attack is a
+*disagreement* between two parsers, so no instrument pointed at one
+implementation can see it. A6 is four instruments, written up in full in
+[`../docs/TestingAgainst_Smuggling.md`](../docs/TestingAgainst_Smuggling.md).
+
+```bash
+tests/run-tests.sh --filter desync             # the 24 assertions, gate
+dotnet run --project tests/h1desync -- --list  # the catalogue, with citations
+dotnet run --project tests/h1desync -- --only cl-te
+tests/smuggle.sh                               # hermod vs go vs node
+tests/smuggle.sh --update                      # rewrite the known file
+tests/smuggler.sh                              # smuggler + h2csmuggler
+tests/http-garden.sh --contract                # is our Garden target still valid?
+```
+
+**`tests/h1desync`** sends 38 ambiguously framed messages and splits them in
+two, which is the design rather than a detail of presentation. 24 carry a
+normative sentence from RFC 9112 — quoted in `ProbeCatalogue.cs` next to the
+payload it governs — and those are asserted. The other 14 do not: §6.1 says a
+server **MAY** reject a request carrying both Content-Length and
+Transfer-Encoding "or process such a request in accordance with the
+Transfer-Encoding alone", and an assertion there would be this repository's
+taste dressed as conformance. Those are observed, and they are exactly the
+probes a smuggling chain is built from, so they go to the differential.
+
+Three of the assertions run the other way — `te-ows-spaces`, `te-ows-htab`,
+`te-mixed-case` are well-formed chunked requests in unusual but legal
+clothing and **must** be decoded. A harness that only ever demands rejection
+gives its best score to a server that rejects everything.
+
+**`tests/smuggle.sh`** runs `h1desync --observe` against Hermod, Go's
+`net/http` and Node's `node:http` and joins the answers on the probe id. The
+vocabulary is deliberately coarse — `REJECT`, `ONE`, `TWO`, `NONE`, plus `!`
+for a closed connection — because two servers never produce identical bytes
+and a richer comparison would report a difference on every row and mean
+nothing. 28 rows agree; the 10 that do not are recorded in
+`smuggle-known.txt`, and a row that is not in that file, or whose
+disagreement changed shape, fails the run.
+
+**`tests/smuggler.sh`** brings payload sets nobody here designed:
+[smuggler](https://github.com/defparam/smuggler) sweeps 134 obfuscations of
+the Transfer-Encoding line as CL.TE and TE.CL, detecting by timing;
+[h2csmuggler](https://github.com/BishopFox/h2csmuggler) must keep finding no
+h2c upgrade to tunnel through. Both are cloned on demand into
+`thirdparty/` and pinned.
+
+**`tests/http-garden/`** is Hermod as a target in
+[the HTTP Garden](https://github.com/narfindustries/http-garden), which
+compares parse trees field by field across 45 implementations. Neither a gate
+nor a nightly: the Garden builds every target from source with clang and
+ASan, which is compiler-hours. `--contract` checks that our target still
+answers the Garden's format without needing a single peer.
+
 ## Not here yet
 
-`PLAN.md` tracks the rest: reverse proxies (A5), http-garden and the smuggling
-scanners (A6) and browsers (A8). CI (A11) landed on 2026-09-22; the
-reference peers (A7), the benchmark (A9) and the fuzzer (A10) on 2026-09-26.
+`PLAN.md` tracks the rest: reverse proxies (A5) and browsers (A8). CI (A11)
+landed on 2026-09-22; the reference peers (A7), the benchmark (A9) and the
+fuzzer (A10) on 2026-09-26; the smuggling differential (A6) on 2026-09-27.

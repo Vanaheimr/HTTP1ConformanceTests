@@ -1918,22 +1918,197 @@ fuzzer's fixed-seed pass, at roughly 120 s. With `--wsl` it is 415/415 over
 Track A: A5, A6 and A8 remain. Track B: **28 findings, 11 fixed** — H-28 is
 this entry's.
 
+## 2026-09-27 — A6: a gadget needs two parsers, so measure two
+
+`h1attack` has asked since A0 whether our server can be desynchronised, and
+the answer has always been no. Today that turned out to be a smaller claim
+than it reads as.
+
+A single origin server cannot smuggle a request past itself. The attack *is* a
+disagreement — one parser reads one message where the next reads two, and
+nobody authorised the second one — so an instrument pointed at one
+implementation can, in principle, never see one. RFC 9112 §11.2 says as much
+in its first sentence, and it took building the thing to notice that the
+section's own wording had been sitting in `h1attack`'s comments for weeks:
+*"The real TE.TE differential needs two implementations disagreeing — that is
+http-garden, PLAN.md A6."*
+
+Four instruments, and the whole write-up is
+[`TestingAgainst_Smuggling.md`](TestingAgainst_Smuggling.md).
+
+### The line between asserting and observing
+
+`tests/h1desync` sends 38 ambiguously framed messages. What makes it worth
+having is not the count but the split.
+
+**24 carry a normative sentence**, quoted in the source next to the payload it
+governs. §6.3 item 4 gives a Transfer-Encoding whose final coding is not
+chunked a MUST *and* a status code. §6.3 item 5 does the same for an invalid
+Content-Length, §5.1 for whitespace before a colon, §7.1 for a chunk-size that
+is not `1*HEXDIG`. Hermod: 24/24.
+
+**14 do not**, and there the harness says nothing. §6.1:
+
+> A server MAY reject a request that contains both Content-Length and
+> Transfer-Encoding or process such a request in accordance with the
+> Transfer-Encoding alone. Regardless, the server MUST close the connection
+> after responding to such a request to avoid the potential attacks.
+
+Asserting a preference on the first half would be this repository's taste
+wearing conformance's clothes. What *is* asserted is the second half, the
+close — and that is a requirement nothing here had been checking.
+
+Three of the 24 run the other way on purpose. `te-ows-spaces`, `te-ows-htab`
+and `te-mixed-case` are well-formed chunked requests in unusual but legal
+clothing, and they **must** be decoded. A harness that only ever demands
+rejection gives its best score to a server that rejects everything, which is
+not conformance either.
+
+### Ten disagreements
+
+`tests/smuggle.sh` runs the same probes against Hermod, Go's `net/http` and
+Node's `node:http` and joins on the probe id. 28 rows agree. The vocabulary is
+deliberately coarse — how many responses, which codes, did it hang up —
+because two servers never produce identical bytes and anything richer would
+report a difference on every row.
+
+**Six of the ten are Go's**, and two are a MUST violation rather than a
+divergence. `net/http` answers the CL.TE and TE.CL shapes with 200, then
+serves the hidden request, and **leaves the connection open**. Verified by
+hand outside the harness against go1.24.4, because a claim about somebody
+else's widely used code deserves more than a table cell:
+
+```
+HTTP/1.1 200 OK … Content-Length: 0
+HTTP/1.1 404 Not Found … 404 page not found        ← the hidden request
+(connection still open)
+```
+
+`chunk-bws` is the same door from another angle: Go accepts `5 ` as a
+chunk-size where the grammar is `1*HEXDIG` and an extension must begin with
+`;`. `lf-only-headers` is not a defect at all — §2.2 permits a bare LF — and
+is exactly as useful for building a chain.
+
+**Three are ours, and they are one finding.** `te-dup`, `te-obf-sp` and
+`te-chunked-chunked` all reduce, via RFC 9110 §5.3's rule that repeated field
+lines combine, to `Transfer-Encoding: chunked, chunked`, which §6.1 forbids a
+sender to produce. `AHTTPPDU.cs:422` asks only whether the **last** coding is
+chunked — right for `chunked, gzip`, where §6.3 item 4 then requires the 400
+we give it, and silently dropping the duplicate here. Not a violation: §6.1
+binds senders and item 4 does not fire. But it is accepting a framing no
+conforming client may send, on the one field smuggling is made of, while both
+peers refuse it. Filed as **H-29**.
+
+### Two defects in our own instrument
+
+A6 is the first thing here that needs the response count to be exactly right
+rather than roughly right, and it found that it was neither.
+
+`Checks.ResponseCount` counted occurrences of `"HTTP/1."`. The demo's error
+responses carry `Server: Hermod HTTP/1.1 Demo`, so a single 400 counted as two
+responses — and only on the code paths that set that field, which is why
+nothing had noticed. Anchoring the match to the start of a line fixed that and
+broke pipelining instead: a response whose predecessor's body does not end in
+CRLF — `helloHTTP/1.1 404`, straight off Go's wire — became invisible, and
+**six rows of the first differential table were wrong because of it**. It
+parses the framing now: status line, header section, the body the framing
+announces, on to the next, and it stops rather than guess. Falsified both
+ways, which is the only reason to believe the third version: the substring
+count fails 4 `h1desync` checks, the line-anchored count fails 2 `h1conn`
+ones.
+
+`RawConnection` could not tell "the peer hung up" from "the read window
+expired" — which is the entire content of §6.1's close requirement.
+`PeerClosed` says which.
+
+### The Garden
+
+`tests/http-garden/` is Hermod as a target in
+[the HTTP Garden](https://github.com/narfindustries/http-garden): 45 HTTP
+implementations in Docker, each answering with a JSON description of the
+request **as it parsed it**, so a disagreement is visible field by field
+rather than inferred from a response count. A Dockerfile on the Garden's own
+pattern, and `HermodGarden`, which runs Hermod on `0.0.0.0:80` and answers in
+that format.
+
+It runs. Against `tornado`, the `chunked, chunked` payload produces two
+clusters, and the parse tree shows the mechanism instead of implying it:
+
+```
+hermod: [ HTTPRequest(method=b'POST', uri=b'/echo', version=b'1.1',
+                      headers=[(b'host', b'a'),
+                               (b'transfer-encoding', b'chunked, chunked')],
+                      body=b'') ]
+tornado: [ HTTPResponse(version=b'1.1', method=b'400', reason=b'Bad Request') ]
+    0. hermod
+    1. tornado
+```
+
+That is H-29 from a third implementation, corroborating `smuggle.sh` from an
+instrument that shares no code with it.
+
+What is *not* automated is the other forty-four targets. The Garden builds
+every one from source with clang and ASan; that is compiler-hours and
+gigabytes, so `--build --with <target>` takes them one at a time and the thing
+is run by hand. Three limitations of our target are written down rather than
+left to be discovered later: Hermod's parsed headers are a case-insensitive
+dictionary, so field order and duplicate field lines are not reportable; an
+exotic method is answered 405 rather than described; and there is no ASan for
+managed code.
+
+### Three traps, since they each cost real time
+
+**The URL in `PLAN.md` was wrong.** `narf-industries/http-garden` does not
+exist; the organisation is `narfindustries`, no hyphen. GitHub answers 404 for
+a missing repository the same way it answers for a private one, so `git clone`
+sat waiting for credentials instead of failing — twenty minutes spent
+diagnosing WSL networking for a typo.
+
+**The checkout directory name is load-bearing.** `tools/targets.py` hardcodes
+`_NETWORK_NAME = "http-garden_default"` and Compose derives the network from
+the directory, so a checkout in `/tmp/hg` gives `hg_default`, the repl finds
+no containers, prints one warning naming all fifty services, and then answers
+every payload with nothing. An empty result that looks like a result.
+`tests/http-garden.sh` refuses a directory that is not named `http-garden`.
+
+**A tool that did not run reports no findings.** The first `tests/smuggler.sh`
+printed a green "no CL.TE or TE.CL issue reported" for a run that had died on
+its first line with `Cannot find config file` — `-c` takes a bare name,
+because smuggler tests `configfile[1] == '/'` to decide whether a path is
+absolute, which `D:/…` fails. The no-findings check is now gated on coverage,
+and coverage is counted from the config file rather than assumed: 134/134 for
+the default set, 966/966 for `--config doubles`. Pointed at a dead port it now
+says "not established" twice in red.
+
+### Numbers
+
+The gate is **303/303 over 9/9 harnesses**, ~135 s. With `--wsl`, **477/477
+over 12/12**. smuggler: 134/134 mutations, nothing found. h2csmuggler: no h2c
+surface, now a pinned regression.
+
+Track A: **A5 and A8 remain**. Track B: **29 findings, 11 fixed** — H-29 is
+this entry's, and the Go one is not ours to fix.
+
 ## Next
 
-**A5, A6 and A8, the remaining third-party suites** — intermediary interop,
-request smuggling / differential fuzzing, browsers. Each brings its own nightly
-job; the workflow has room for them and the demo already binds `0.0.0.0` on
-demand, which is what A5 and A6 were waiting for. That is the whole of Track A
-that is left.
+**A5 and A8, the last two third-party suites** — intermediary interop and
+browsers. Each brings its own nightly job; the workflow has room for them and
+the demo already binds `0.0.0.0` on demand, which is what A5 was waiting for.
+A5 is also where A6's ten disagreements get their sharpest form: each one is a
+gadget *in a chain*, and an intermediary is what makes a chain.
 
-**A7, A9 and A10 landed on 2026-09-26.** A7 is five foreign clients and two
-foreign servers, 58/58, nightly on `ubuntu-latest`. A9 is `tests/h1bench`, not
-a gate, whose control column says our per-request latency beats Kestrel's on
-the same loopback and whose `connect` scenario produced finding **H-27**. A10
-is `tests/h1fuzz`, deterministic in the gate and exploring nightly, which
-produced **H-28** thirty seconds into its first run.
+**A7, A9 and A10 landed on 2026-09-26, A6 on 2026-09-27.** A7 is five
+foreign clients and two foreign servers, 58/58, nightly on `ubuntu-latest`. A9
+is `tests/h1bench`, not a gate, whose control column says our per-request
+latency beats Kestrel's on the same loopback and whose `connect` scenario
+produced finding **H-27**. A10 is `tests/h1fuzz`, deterministic in the gate
+and exploring nightly, which produced **H-28** thirty seconds into its first
+run. A6 is the smuggling differential — 24 assertions in the gate, three
+implementations compared nightly, two third-party suites, and Hermod added to
+the HTTP Garden — which produced **H-29** and a MUST violation in Go's
+`net/http`.
 
-**Track B: 28 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
+**Track B: 29 findings, 11 fixed upstream, all of them whole.** H-1; H-2 as of
 2026-09-24, which took four fixes against an estimate of one; H-3, which moved the
 RFC 9110 §11 framework into the shared library on the way; H-16, which had been
 fixed upstream for a week before anybody re-read the row; H-25, the Warden killing

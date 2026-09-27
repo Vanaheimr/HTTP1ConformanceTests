@@ -12,14 +12,17 @@ tracks:
 **Status legend:** ✅ done · 🔶 partial · ⬜ open · ❌ broken — markers are kept
 current as work proceeds.
 
-**Current state (2026-09-26):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-18 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **279/279 checks green
+**Current state (2026-09-27):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
+18 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **303/303 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
 foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
 control. **A10 ✅** — `tests/h1fuzz`, deterministic in the gate and exploring
-nightly; it found **H-28** on its first run. **A11 ✅** — CI per push on two legs,
-nightly for both Autobahn directions. Track B: **28 findings, 11 fixed upstream**
+nightly; it found **H-28** on its first run. **A6 ✅** — the smuggling
+differential: `tests/h1desync` in the gate, three implementations compared
+nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
+found **H-29** and a MUST violation in Go's `net/http`. **A11 ✅** — CI per push
+on two legs, nightly for both Autobahn directions. Track B: **29 findings, 11 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -27,21 +30,24 @@ citation sweep last so that it covered what the other four added.
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 279/279 + the fuzzer's fixed-seed pass, 8/8 harnesses, ~120 s |
-| `tests/run-tests.sh --tls` | ✅ 279/279, ~270 s |
+| `tests/run-tests.sh` | ✅ 303/303 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
+| `tests/run-tests.sh --tls` | ✅ 279/279, ~270 s — `h1desync` drives the cleartext listener only |
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 738, both legs — 537 before H-1, 562 before H-2's second half, 657 at the previous pin. Of the 81 added since, 59 are this repo's five findings and 22 are Hermod master's own WebSocket work; nothing is unaccounted for. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so the ten tests H-26 added run in Hermod's CI and not in ours — worth knowing, given that `AHTTPServer` derives from `ATCPServer` |
 | ↳ `Tests.HTTP.` alone | ✅ 737 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 415/415 over 10/10 harnesses — adds the Debian curl, the foreign peers (A7) and the fuzzer (A10) |
+| `tests/run-tests.sh --wsl` | ✅ 477/477 over 12/12 harnesses — adds the Debian curl, the foreign peers (A7), the smuggling differential (A6) and the fuzzer (A10) |
 | third-party: curl | ✅ 78/78 per build, two builds, both transports — 79 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 58/58 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
 | benchmarks | ✅ `tests/h1bench`, not a gate — see A9 for the figures and the three findings |
 | parser fuzzing | ✅ `tests/h1fuzz` — fixed seed in the gate, ten minutes per target nightly; 1 known finding (**H-28**) |
-| third-party: proxies, http-garden, browsers | ⬜ A5, A6, A8 |
-| CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 7 harnesses |
+| smuggling: our differential | ✅ `tests/h1desync` 24/24 in the gate; `tests/smuggle.sh` 38/38 over 3 implementations, 10 known disagreements, nightly |
+| smuggling: third-party | ✅ `tests/smuggler.sh` — smuggler 134/134 mutations, nothing found; h2csmuggler finds no h2c surface, pinned as a regression |
+| smuggling: http-garden | ✅ target built and contract-verified; the full 45-server differential is compiler-hours, run by hand — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
+| third-party: proxies, browsers | ⬜ A5, A8 |
+| CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
-| demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocks A5 and A6 |
+| demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
 
 ## Upstream workflow (Track B)
 
@@ -250,19 +256,59 @@ surface against nginx long before they surface against a browser.
   `Via`, trailer forwarding, chunked re-framing, `Connection` token handling
 - `docs/TestingAgainst_Proxies.md`
 
-## ⬜ A6 · Request smuggling / differential fuzzing · P2 · ~2 d
+## ✅ A6 · Request smuggling / differential fuzzing · P2 · done 2026-09-27
 
-RFC 9112 §11.2 is the section where HTTP/1.1 implementations actually fail.
-Hermod's strict framing rejection is well tested internally, but never against
-an adversarial external tool.
+RFC 9112 §11.2 is the section where HTTP/1.1 implementations actually fail, and
+it is also the one a single-server harness cannot test. Smuggling *is* a
+disagreement — one parser reads one message where the next reads two — so
+`h1attack` answering "our server cannot be desynchronised" was always a smaller
+claim than it looked.
 
-- [`http-garden`](https://github.com/narf-industries/http-garden) — add Hermod
-  as a target and run the differential fuzzer against the ~20 servers/proxies it
-  already knows
-- [`smuggler.py`](https://github.com/defparam/smuggler) — CL.TE / TE.CL / TE.TE probes
-- [`h2csmuggler`](https://github.com/BishopFox/h2csmuggler) — must find nothing
-  (h2c upgrade is absent); pin that as a regression
-- `docs/TestingAgainst_Smuggling.md`
+Four instruments, written up in
+[`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md):
+
+| | | |
+|---|---|---|
+| `tests/h1desync` | 38 ambiguously framed messages; asserts the 24 that RFC 9112 states a rule for, observes the 14 it leaves open | push gate, **24/24** |
+| `tests/smuggle.sh` | the same probes against Hermod, Go `net/http` and Node `node:http`, joined on the probe id | nightly, **38/38**, 10 known disagreements |
+| `tests/smuggler.sh` | [smuggler](https://github.com/defparam/smuggler) (134 Transfer-Encoding obfuscations, CL.TE and TE.CL each) and [h2csmuggler](https://github.com/BishopFox/h2csmuggler) (must find nothing) | nightly, **3/3** |
+| `tests/http-garden/` | Hermod as a target in [the HTTP Garden](https://github.com/narfindustries/http-garden), which compares parse trees field by field across 45 implementations | by hand — see below |
+
+The split between asserting and observing is the design. §6.3 item 4 states a
+MUST *and* a status code for a Transfer-Encoding whose final coding is not
+chunked; §6.1 says a server **MAY** reject a request carrying both
+Content-Length and Transfer-Encoding "or process such a request in accordance
+with the Transfer-Encoding alone" and only requires the close. Asserting a
+preference on the second kind would be taste dressed as conformance, so those
+probes are observed and go to the differential — which is where they belong,
+because they are what a chain is built from.
+
+**What it found.** Ten of 38 rows disagree. Three are ours and are one finding:
+Hermod accepts `Transfer-Encoding: chunked, chunked`, which §6.1 forbids a
+sender to produce, because `AHTTPPDU.cs:422` decides "is this chunked" from the
+last coding alone — filed as **H-29**. Six are Go's, and two of those are a
+MUST violation rather than a divergence: `net/http` answers the CL.TE and TE.CL
+shapes with two responses and **does not close the connection**, where §6.1 says
+"Regardless, the server MUST close the connection after responding to such a
+request to avoid the potential attacks." Verified by hand against go1.24.4.
+
+**The Garden is built but not fully run, and that is a cost decision rather
+than an omission.** `tests/http-garden/` holds a Dockerfile on the Garden's own
+pattern and `HermodGarden`, which runs Hermod on 0.0.0.0:443 and answers with
+the JSON parse tree the Garden compares; `tests/http-garden.sh --contract`
+verifies that contract on every run. What is not automated is the other
+forty-four targets: the Garden builds every one from source with clang and
+ASan, which is compiler-hours and gigabytes. `--build --with <target>` takes
+them one at a time. Two limitations of our target are written down in the doc
+rather than left to be discovered — Hermod's parsed headers are a dictionary,
+so field order and duplicate field lines are not reportable, and an exotic
+method is answered 405 rather than described.
+
+The pin in the line above is worth one sentence: the URL this section carried
+until today was `narf-industries/http-garden`, which does not exist. The
+organisation is `narfindustries`, no hyphen, and the wrong URL made `git clone`
+hang on a credential prompt rather than fail — twenty minutes spent on a
+network diagnosis for a typo.
 
 ## ✅ A7 · Non-.NET reference peers · P2 · done 2026-09-26
 
@@ -480,6 +526,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-26** | Warden scheduling does not do what it says: `ATCPServer` registers its connection check as `EveryMinutes(1, …)` and ignores the `WardenCheckEvery` property it documents, and `Warden.EverySeconds(N, …)` tests `timestamp.Minute % N` rather than `Second` | — | P2 | XS | **Fixed 2026-09-25, merged and pinned, [Hermod#42](https://github.com/Vanaheimr/Hermod/pull/42).** Two findings, three defects. *`EverySeconds`*: six of eight overloads measured minutes; the two that did not are what shows it was a slip. *The interval*: the defaults resolved twice, against different numbers — the properties took 30 s while the Warden took the literals 3 min and 1 min from the constructor call — and `EveryMinutes(1, …)` is not "once a minute" but a predicate that is always true plus a one-minute `SleepTime` no constructor argument can reach, which is why reproducing H-25 needed a source edit. *And the one that hid them*: `AllWardenChecks` returned `AllWardenChecks`, so nothing could enumerate the checks to ask when they run — a `StackOverflow` is uncatchable, so reverting it takes the test host down rather than turning a test red. 10 tests, two of them about things that were never broken: `SleepTime` is what turns a sixty-second-wide slot into one run, and the predicate is *sampled*, so a slot narrower than `CheckEvery` can be missed. The reaper now runs every 30 s and first runs after 30 s rather than 3 min |
 | ⬜ | **H-24** | Six status-code reason phrases predate RFC 9110: 413 `Request Entity Too Large`, 414 `Request-URI Too Long`, 416 `Requested Range Not Satisfiable`, 422 `Unprocessable Entity`, plus 306/418 carrying draft names for codes the RFC reserves | RFC 9110 §15 | P3 | XS | Found while doing H-1. Not a defect — §15 says a client SHOULD ignore the reason phrase — but it is what goes out on the wire, since the status line is `{Code} {Name}`. Renaming the fields is breaking for every downstream Vanaheimr project, so it is a decision rather than a fix; `HTTPStatusCodeTests` pins the exact divergence set meanwhile, so it cannot drift further unnoticed |
 | ⬜ | **H-28** | `ChunkedTransferEncodingStream` reports one malformed-framing case out of eleven as a bare `System.Exception`, which a caller cannot filter on | — | P3 | XS | Found by **A10** on its first run, 2026-09-26. Ten of the eleven throw sites use `HTTPInvalidChunkException`, which is a `FormatException` and therefore catchable as "this input was malformed"; `ChunkedTransferEncodingStream.cs:665` throws `new Exception("Expected CRLF")` thirty lines below a sibling that throws `HTTPInvalidChunkException` for the same condition. A caller wanting to distinguish bad input from a bug in the decoder has to catch `Exception`, which swallows both — and H-2's `ContentDecodingStream` exists precisely because the stack decided elsewhere that callers should have one exception type to catch. Listed in `tests/h1fuzz/known-findings.txt`; deleting that line is the regression test |
+| ⬜ | **H-29** | `Transfer-Encoding: chunked, chunked` is accepted and the body decoded once, although RFC 9112 §6.1 forbids a sender to produce it | RFC 9112 §6.1 | P3 | XS | Found by **A6** on 2026-09-27, as three rows of the differential that turn out to be one finding: `te-dup` (the field line twice), `te-obf-sp` (twice, the second with extra OWS) and `te-chunked-chunked` all reduce, via RFC 9110 §5.3's rule that repeated field lines combine, to the same value. `AHTTPPDU.cs:422` asks only whether the **last** coding is chunked — which is right for `chunked, gzip`, where §6.3 item 4 then requires the 400 we give it, and which silently drops the duplicate here. Not a violation: §6.1 binds senders, and §6.3 item 4 does not fire because chunked *is* final. What it is, is accepting a framing no conforming client may send, on the one field smuggling is made of, while both peers refuse it (Go: 501, Node: 400). Strictness is free — there is no legitimate client to break. Pinned meanwhile by `tests/smuggle-known.txt`, so the day Hermod starts rejecting it, the differential says so |
 | ⬜ | **H-27** | Every `HTTPClient` builds its own `DNSClient`, whose default searches the machine's network configuration for resolvers — ~38 ms per construction, even when the URL is a literal IP address that will never be resolved | — | P2 | S | Found by **A9** on 2026-09-26, and measured rather than inferred: a fresh client per request is 39.4 ms p50, of which 38.3 ms is the constructor and 1.06 ms the request, and passing one shared `DNSClient` takes the whole thing to 0.449 ms. The line is `ATCPClient.cs:319` — `DNSClient ?? new DNSClient(...)` — whose default is `SearchForIPv4DNSServers: true` and `SearchForIPv6DNSServers: true`. Harmless for a long-lived client, ruinous for anything building one per request, and avoidable three ways: resolve lazily, share one default instance, or skip the search when the target is already an address. `tests/h1bench -- connect` is the regression test |
 | ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
 
@@ -492,9 +539,9 @@ still builds against the pin, so nothing is verified from a clean checkout.
                 │
                 ├──▶ ✅A4  (Autobahn — both directions, both gated nightly)
                 │
-                └──▶ ⬜A5, ⬜A6, ⬜A7, ⬜A8  (external suites)
+                └──▶ ⬜A5, ✅A6, ✅A7, ⬜A8  (external suites)
 
-Track B in parallel: eleven of twenty-six are in. ✅H-1 and ✅H-2 first
+Track B in parallel: eleven of twenty-nine are in. ✅H-1 and ✅H-2 first
 (small, high leverage), then ✅H-3 and ✅H-16, the two Warden findings
 ✅H-25 and ✅H-26, and ✅H-4 ✅H-6 ✅H-8 ✅H-21 ✅H-22 together on
 2026-09-26. A3 and A4 turned out to need none of them, so nothing was ever
