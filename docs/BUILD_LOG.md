@@ -2452,6 +2452,94 @@ business widening a listener it did not have to.
 
 **Track A is complete.** Track B: 30 findings, 13 fixed.
 
+## 2026-10-01 — Advance the pin, and a bodiless response that now states its length
+
+Hermod `531c0ed5` → `5ab74d7f` (55 commits), Styx `67cc7495` → `ba317094` (5).
+All three repositories in the family now pin the same pair; the HTTP/2 and
+HTTP/3 siblings moved to it earlier the same day.
+
+`against-hermod-master` had been green five nights running and tested exactly
+this pair on `windows-latest`, build + the 877-test filter + the harness suite.
+That covers the gate. What it does not run is the eight nightly-only suites, so
+those were measured here before the push — **all of them**, which makes this the
+best-evidenced bump of the three.
+
+| | |
+|---|---|
+| build | 0 errors |
+| in-process | **877** = 876 `Tests.HTTP.` + 1 `Tests.HTTPS.` (was 832) |
+| ↳ WebSockets | **148** (was 87) |
+| ↳ regression selection | **372**, unchanged |
+| gate harnesses | **9/9** |
+| `--wsl` | **12/12** — Debian curl 78/78, foreign peers 58/58, smuggling differential 38/38 |
+| Autobahn, server | **481/517**, 36 declined, 0 hard failures — floor exactly |
+| Autobahn, client | **445/517**, 72 declined, 0 hard failures — floor exactly |
+| proxies (A5) | **32/32**, every difference already in `proxy-known.txt` |
+| browsers (A8) | **24/27**, unchanged — still H-10 on all three engines |
+| smuggler (A6) | **3/3**, 134/134 mutations, nothing found |
+| fuzz (A10) | no findings, seed 20260926 |
+
+Not one known-findings file changed: `smuggle-known.txt`, `proxy-known.txt` and
+`browser-known.txt` all came back byte-identical, so nothing newly differs and
+nothing stopped differing.
+
+### What was actually in it for HTTP/1
+
+Only six of the 55 commits touch code this repository exercises — the rest is
+HTTP/2, DNS and Modbus. Two groups matter.
+
+**`46d38b38`: a response without a body says that its length is 0.** Before it,
+a bodiless 401, 404 or redirect stated neither `Content-Length` nor
+`Transfer-Encoding`, so by RFC 9112 §6.3 its body ended when the connection
+did — and a client on a kept-alive connection waited for the rest of an empty
+body until the server gave up, thirty seconds a request. The carve-out is the
+part worth reading: 1xx, 204 and 205 as before, plus 304 and the answer to a
+HEAD, whose length would be that of a representation they do not carry, plus
+event streams, plus anything with a `Transfer-Encoding`. That is exactly what
+RFC 9110 §8.6 requires, and it is why this is wire-visible without being a
+conformance change. The framing walk in `tests/H1Core/Checks.cs` and the three
+known-findings files are the things that could have noticed; none did.
+
+**The WebSocket trio** — `ab95dc28`, `4766b74e`, `079a74f5`: a refused upgrade
+is one HTTP message and is closed without a close frame; no close frame on a
+connection that was never upgraded; a handshake is parsed once its header has
+ended rather than from its first read. `AWebSocketServer.cs` gained 250 lines
+and the WebSocket test count went 87 → 148. Both Autobahn directions came back
+at their floors with zero hard failures, which is the witness that matters for
+a change to the server's close behaviour.
+
+### One failure, and it is not this bump
+
+`HTTPServerSocketRegressionTests.Slow_TLS_Handshake_Does_Not_Block_Following_Accepts`
+failed in the full run. Its second assertion gives a loopback accept **500 ms**
+while a half-open TLS handshake is pending, and the fixture was run three times
+at each pin: **1 of 3 failed at `531c0ed5`, 2 of 3 at `5ab74d7f`.** Flaky at
+both. No production code on the TLS/TCP accept path changed in the range, the
+test file is byte-identical across it, and the nightly reported 877/877 for this
+pair on a GitHub `windows-latest` runner the same morning. Alone it passes in a
+second.
+
+The first reading of this was wrong and is worth recording as such: a single
+run at the old pin came back 832/832, which looked like the bump having broken
+something. It was luck. Three runs a side is what turned a suspected regression
+into a measured pre-existing flake — the same lesson as the `h2priority`
+harnesses in the HTTP/2 repository, where an assertion that depended on the
+scheduler being quick was rewritten to depend on an ordering instead. Filed
+upstream; it is `HermodTests` code, not ours.
+
+Worth knowing about the box it was measured on: it was running test suites from
+two unrelated repositories at the same time, under other sessions. A 500 ms
+budget is not a property of the server.
+
+### Two stale claims, neither caused by the pin
+
+`CLAUDE.md` said the differential had **10** pinned rows and 28 of 38 agreeing.
+`smuggle-known.txt` has held **7** since `71b0633` let the differential delete
+its own lines — the file was right, the prose was three commits behind its own
+commit. And the counts appeared in two places, only one of which anyone had been
+updating. Both fixed, and the coverage table in `README.md` now names the
+revision it was measured against rather than a date alone.
+
 ## Next
 
 **Track A is complete.** A8 landed on 2026-09-27, and with it every
@@ -2470,6 +2558,9 @@ absorb a poisoned upstream connection whatever the origin does.
 are H-27 (every `HTTPClient` builds its own `DNSClient` — 38 ms per
 construction, measured) and H-23 (`HEAD` is not derived from `GET`). H-10 now
 has a browser demonstrating it rather than a sentence describing it.
+
+The pin moved to Hermod `5ab74d7f` on 2026-10-01, measured against every suite
+this repository has rather than only the gate's — see the entry above.
 
 **A7, A9 and A10 landed on 2026-09-26, A6 on 2026-09-27.** A7 is five
 foreign clients and two foreign servers, 58/58, nightly on `ubuntu-latest`. A9

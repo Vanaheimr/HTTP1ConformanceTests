@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **831 NUnit tests** in `libs/Hermod/HermodTests/`
+**Tests:** most coverage is the **876 NUnit tests** in `libs/Hermod/HermodTests/`
 under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **372** are the HTTP/1.x
-protocol regression selection and **87** cover RFC 6455/7692 WebSockets. CI gates
-on 831 + the single test in `Tests.HTTPS.` = **832** — a filter that reaches
+protocol regression selection and **148** cover RFC 6455/7692 WebSockets. CI gates
+on 876 + the single test in `Tests.HTTPS.` = **877** — a filter that reaches
 neither `Tests.TCP` nor `Tests.Warden`. The regression selection did not move
 with the five findings of 2026-09-26: their four fixtures are not in its filter,
 and adding them would make it 431. These are run counts, not
@@ -166,7 +166,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 831 `Tests.HTTP.` / 372 regression selection / 87 WebSockets, all run counts — 832 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
+| Hermod's own NUnit suites | 876 `Tests.HTTP.` / 372 regression selection / 148 WebSockets, all run counts — 877 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
 | this repo's gate | **303/303**, cleartext and TLS (201 raw-wire + 78 curl + 24 desync) |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **477/477** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
@@ -174,7 +174,7 @@ pointed at a foreign suite. See
 | parser fuzzing (A10) | `tests/h1fuzz` — request, response and chunked parsers; deterministic in the gate, ten minutes per target nightly. Found **H-28** on its first run |
 | browsers (A8) | `tests/browser.sh` — Chromium, Firefox and WebKit through Playwright, the battery running inside the demo's own document. **24/27**, all three engines agreeing. The three failures are **H-10**: the browser's `OPTIONS` preflight is answered 405 while the identical POST from curl gets 200, which is the finding no other driver here could reach. See [`docs/TestingAgainst_Browsers.md`](docs/TestingAgainst_Browsers.md) |
 | intermediaries (A5) | `tests/proxy.sh` — the demo behind nginx, HAProxy, Caddy, Apache httpd and Envoy, all pulled rather than built. **32/32**: every curl and framing difference from the direct run recorded by name in `tests/proxy-known.txt`, and no chain leaves a response on a pooled connection. The poison detector is *calibrated-unfired* — all five proxies absorb a synthetic poison — which is written down rather than quoted as a pass. See [`docs/TestingAgainst_Proxies.md`](docs/TestingAgainst_Proxies.md) |
-| smuggling (A6) | `tests/h1desync` **24/24** in the gate — the requirements RFC 9112 actually states, quoted next to each probe. `tests/smuggle.sh` compares Hermod, Go and Node: 28 of 38 rows agree, 10 are pinned in `tests/smuggle-known.txt`. `tests/smuggler.sh` adds two third-party suites, and `tests/http-garden/` puts Hermod in the HTTP Garden. Found **H-29** and **H-30**, both fixed and pinned the same day ([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54)), and a MUST violation in Go's `net/http` that is not ours to fix. See [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
+| smuggling (A6) | `tests/h1desync` **24/24** in the gate — the requirements RFC 9112 actually states, quoted next to each probe. `tests/smuggle.sh` compares Hermod, Go and Node: 31 of 38 rows agree, 7 are pinned in `tests/smuggle-known.txt`. `tests/smuggler.sh` adds two third-party suites, and `tests/http-garden/` puts Hermod in the HTTP Garden. Found **H-29** and **H-30**, both fixed and pinned the same day ([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54)), and a MUST violation in Go's `net/http` that is not ours to fix. See [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 
