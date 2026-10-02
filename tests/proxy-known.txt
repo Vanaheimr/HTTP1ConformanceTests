@@ -6,7 +6,20 @@
 #   framing  a tests/h1desync probe this chain reads differently from the demo alone
 #   via      an intermediary behaviour that is allowed but worth knowing
 #
-# A row not listed here fails the run. Written by tests/proxy.sh --update on 2026-09-27.
+# A row not listed here fails the run. Written by tests/proxy.sh --update on 2026-09-27;
+# three framing rows pruned by hand on 2026-10-02 after the image bump below.
+#
+# Measured against these images. They matter: when a row disappears, this file
+# alone cannot say whether we got stricter or the proxy did, and the version is
+# the only thing that distinguishes the two. On 2026-10-02 it was them — nginx
+# 1.27→1.31 and Envoy v1.31→v1.39 both stopped splitting chunk-lf-only into two
+# requests downstream, and HAProxy 3.0→3.4 stopped differing on cl-list-diff,
+# while an unbumped Caddy still splits it. Nothing in this repository changed.
+#   caddy:2-alpine
+#   envoyproxy/envoy:v1.39-latest
+#   haproxy:3.4-alpine
+#   httpd:2.4-alpine
+#   nginx:1.31-alpine
 
 curl	caddy	HTTP/1.0 response closes	
 curl	caddy	server-wide OPTIONS *	

@@ -575,6 +575,13 @@ while IFS= read -r line; do
     # Only for proxies this run actually reached.
     case " $REACHABLE " in *" $who:"*) ;; *) continue ;; esac
 
+    # And only for sections this run actually ran. Without this, --filter
+    # framing reported every curl row as "no longer differing" and invited
+    # you to delete rows it had not measured - the same mistake as the
+    # REACHABLE guard above, one level up. A row is stale when it was looked
+    # for and not found, never when it was never looked for.
+    section "$kind" || continue
+
     # Indexed, not "for row in ${ALL_ROWS[@]}" unquoted: a recorded curl check
     # is a sentence with spaces in it, and word-splitting turned one row into
     # six words that match nothing. Every row would then have looked stale.
@@ -610,6 +617,11 @@ if [ "$UPDATE" -eq 1 ]; then
         echo "#   via      an intermediary behaviour that is allowed but worth knowing"
         echo "#"
         echo "# A row not listed here fails the run. Written by tests/proxy.sh --update on $(date -u +%Y-%m-%d)."
+        echo "#"
+        echo "# Measured against these images. They matter: when a row disappears, this file"
+        echo "# alone cannot say whether we got stricter or the proxy did, and the version is"
+        echo "# the only thing that distinguishes the two."
+        grep -hoE "image: [a-z0-9./-]+:[a-zA-Z0-9.v-]+" "$COMPOSE_DIR/docker-compose.yml"             | sed 's/^image: /#   /' | sort
         echo
         for row in "${ALL_ROWS[@]}"; do printf '%s\n' "$row"; done | sort -u
     } > "$KNOWN"

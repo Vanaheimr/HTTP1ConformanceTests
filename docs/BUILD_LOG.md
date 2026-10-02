@@ -2765,3 +2765,44 @@ raised to `^1.63.0` to match what the lockfile already resolves.
 not a maintenance pass, and this repository has no NuGet dependencies of its own
 to update — every package here lives in a submodule. `Grpc.Net.Client`
 2.83→2.84 and `Microsoft.NET.Test.Sdk` 18.10.0→18.10.1 are likewise upstream.
+
+### The known-file bargain, and a hole in it
+
+A peer session reviewing the above made the sharper point: three rows left
+`tests/proxy-known.txt` for a reason outside this repository, and **the file
+alone cannot tell "we got stricter" from "they got stricter."** It recorded a
+date and not a version, so a reader six months from now sees fewer lines and no
+way to attribute them.
+
+So the file now carries the images it was measured against, `--update` writes
+them from the compose file rather than leaving it to whoever remembers, and this
+particular prune says in the header that it was them: nginx and Envoy stopped
+splitting `chunk-lf-only` downstream while an unbumped Caddy still does.
+
+Chasing that turned up a real bug one level up. Running
+`tests/proxy.sh --only nginx --filter framing` printed:
+
+```
+no longer differing — delete these lines from tests/proxy-known.txt:
+    curl	nginx	--http1.0 downgrades the exchange
+    curl	nginx	HTTP/1.0 status line echoes the version
+    …
+```
+
+Every one of those is a *valid* row. The curl section had not run — it was
+filtered out — so nothing matched it, and the staleness check read "not found"
+as "no longer differs". Following that advice would have deleted six recorded
+differences the run never looked at.
+
+The loop already guarded against one version of this: a proxy that failed to
+come up is skipped, with a comment saying so. The author saw the proxy case and
+not the section case, one level up. Now `section "$kind" || continue` sits
+beside it: **a row is stale when it was looked for and not found, never when it
+was never looked for.** Verified both ways — the filtered run proposes nothing,
+and the full run still reports 32/32 with no stale rows.
+
+Also worth recording, since the peer reported it and it was wrong: `proxy.sh`
+does **not** have six bare `exit 1` paths. Five print a diagnosis first, and the
+sixth is inside `demo_still_up()`, which prints three lines and fifteen of the
+demo's log. The symptom it was reported from — a log containing the demo banner
+and nothing after — remains unexplained, and is not that.
