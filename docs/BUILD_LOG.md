@@ -2845,3 +2845,41 @@ that the host-side readiness check polls the container-facing hostname
 `DEMO_HOST` is only handed to `docker compose` and printed. Right symptom, right
 instinct that the Linux branch was at fault, wrong mechanism. The evidence it
 supplied was what made the real one findable.
+
+### The shape all three had in common
+
+Worth separating from the fixes, because the fixes are small and this is not.
+
+Three defects surfaced in two days, found three different ways, and they are the
+same defect:
+
+| | The signal | Why it could not fail |
+|---|---|---|
+| `tests/proxy-known.txt` | "every difference already recorded" | pruning a row was indistinguishable from never looking for it — the file recorded a date, not a version, so it could not say whether we got stricter or the proxy did |
+| `--filter framing` | "no longer differing — delete these lines" | a section that did not run matched nothing, and *not found* was read as *no longer differs* |
+| the `.exe` preference | a green nightly proxies leg | a Linux build produces no `.exe`, so the faulty line was **unreachable on CI**. The leg was never evidence about that path at all |
+
+Each was green for as long as it existed. None of them was a test that passed
+when it should have failed — they were checks **structurally incapable** of
+failing, read for weeks as passes.
+
+That is a different failure mode from a bug, and it is not caught by running the
+suite more often: running it again reproduces the same vacuum. It is caught by
+asking of a green check *what would have to be true for this to go red*, and
+noticing when the answer is "nothing reachable from here".
+
+The third one is the sharpest, because CI is exactly where this instinct is
+weakest. `ubuntu-latest` was green on the proxies job every night while the line
+that broke a developer's run could not execute there. A passing CI leg is
+evidence about the configuration CI runs, and about no other.
+
+(The first two were found and fixed here, `788554e` and `8c7372d`. A peer
+session reports a fourth of the same shape in a sibling repository — a `$Args`
+parameter that silently never bound — which I have not verified and record as
+theirs rather than as a finding of ours.)
+
+Also checked, so it is not left ambiguous: **neither sibling needs the apphost
+fix.** HTTP2ConformanceTests runs the built `.dll` through `dotnet`
+(platform-neutral IL, no apphost to prefer) and HTTP3ConformanceTests names the
+extensionless apphost and lets each platform resolve it. Zero hits for the
+pattern in either repository's `tests/` or `tools/`.
