@@ -157,7 +157,13 @@ if [ -z "$BASE" ]; then
     else
 
         DEMO_EXE="$ROOT/Demo/bin/Debug/net10.0/HTTP1.Demo"
-        [ -f "$DEMO_EXE.exe" ] && DEMO_EXE="$DEMO_EXE.exe"
+        # The Windows apphost only on Windows - a Windows-built tree carries both,
+        # and the .exe started from inside WSL runs on the other machine. See the
+        # long note in tests/run-tests.sh.
+        case "$(uname -s)" in
+            Linux|Darwin) ;;
+            *) [ -f "$DEMO_EXE.exe" ] && DEMO_EXE="$DEMO_EXE.exe" ;;
+        esac
 
         if [ ! -f "$DEMO_EXE" ]; then
             echo

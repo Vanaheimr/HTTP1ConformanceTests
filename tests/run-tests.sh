@@ -106,7 +106,17 @@ if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$HTTP_PORT/" 2>/dev/null;
 fi
 
 DEMO_EXE="$ROOT/Demo/bin/Debug/net10.0/HTTP1.Demo"
-[ -f "$DEMO_EXE.exe" ] && DEMO_EXE="$DEMO_EXE.exe"
+# Prefer the Windows apphost only ON Windows. A tree built under Windows
+# carries BOTH - HTTP1.Demo is an ELF binary and HTTP1.Demo.exe a PE one -
+# so taking the .exe merely because it exists launches a WINDOWS process
+# from inside WSL through binfmt interop. It binds the Windows host's
+# 0.0.0.0, prints "Ready." into our log, and the readiness poll on this
+# VM's 127.0.0.1 then times out against a demo running on the other
+# machine. CI never saw it: a Linux build produces no .exe to prefer.
+case "$(uname -s)" in
+    Linux|Darwin) ;;
+    *) [ -f "$DEMO_EXE.exe" ] && DEMO_EXE="$DEMO_EXE.exe" ;;
+esac
 
 if [ ! -f "$DEMO_EXE" ]; then
     echo "${RED}  demo host not built: $DEMO_EXE${OFF}" >&2

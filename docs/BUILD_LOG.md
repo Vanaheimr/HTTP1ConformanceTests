@@ -2806,3 +2806,42 @@ does **not** have six bare `exit 1` paths. Five print a diagnosis first, and the
 sixth is inside `demo_still_up()`, which prints three lines and fifteen of the
 demo's log. The symptom it was reported from — a log containing the demo banner
 and nothing after — remains unexplained, and is not that.
+
+### The driver that started the wrong binary
+
+The peer chased its own unexplained `exit 1` to the end and the answer turned
+out to be ours, in four scripts rather than one.
+
+A tree built under Windows carries **both** apphosts side by side:
+`Demo/bin/Debug/net10.0/HTTP1.Demo` is an ELF binary and `HTTP1.Demo.exe` a PE
+one. Every driver selected between them like this:
+
+```bash
+DEMO_EXE="$ROOT/Demo/bin/Debug/net10.0/HTTP1.Demo"
+[ -f "$DEMO_EXE.exe" ] && DEMO_EXE="$DEMO_EXE.exe"
+```
+
+— preferring the `.exe` *because it exists*, with no idea what it is running on.
+Driven from inside WSL, that launches a **Windows** process through binfmt
+interop. It starts perfectly, binds the Windows host's `0.0.0.0`, prints
+`Ready.` into the log, and then the readiness poll on the VM's own `127.0.0.1`
+times out against a demo that is running on a different machine. The log
+therefore contains both a clear diagnostic *and* a healthy-looking startup
+banner, which is how it read as a silent failure to someone looking at the tail.
+
+Now `case "$(uname -s)"` guards it, in `run-tests.sh`, `proxy.sh`, `browser.sh`
+and `smuggler.sh`. Verified on both sides: Git Bash resolves to `HTTP1.Demo.exe`
+and WSL to `HTTP1.Demo`, and the Windows gate is unchanged at 9/9.
+
+**Why CI never caught it:** a Linux build produces no `.exe` for the line to
+prefer, so on `ubuntu-latest` the bug is unreachable. It needs a Windows-built
+tree driven from Linux — which is not a configuration CI has, and is exactly
+the one a developer on this machine reaches for. A green CI leg was never
+evidence about this path.
+
+Worth separating from the peer's hypothesis, which did not hold: it proposed
+that the host-side readiness check polls the container-facing hostname
+(`host.docker.internal`). It does not — the poll is on `127.0.0.1`, and
+`DEMO_HOST` is only handed to `docker compose` and printed. Right symptom, right
+instinct that the Linux branch was at fault, wrong mechanism. The evidence it
+supplied was what made the real one findable.
