@@ -2883,3 +2883,41 @@ fix.** HTTP2ConformanceTests runs the built `.dll` through `dotnet`
 (platform-neutral IL, no apphost to prefer) and HTTP3ConformanceTests names the
 extensionless apphost and lets each platform resolve it. Zero hits for the
 pattern in either repository's `tests/` or `tools/`.
+
+### A fourth of the shape, in our own code, found by applying the rule
+
+The peer opened the `$Args` case from source and it turned out to be a *third*
+disease rather than either of the two above: the harness verdict was live and
+honest about what it ran, but a function-level `[string[]] $Args` collided with
+PowerShell's automatic variable, so the caller's arguments never landed and
+eleven of twelve scenarios never executed. The label was built independently of
+the arguments, so the report named twelve subjects and had run one — a positive
+claim of coverage that was false, where ours were absences of signal.
+
+Its sharper form of the rule: ask not only what would make a green check go red,
+but **whether the thing it names is the thing it ran.**
+
+Applied here, by falsification rather than by reading:
+
+| | |
+|---|---|
+| `--port 18999` (dead) | throws instead of quietly passing against 8080 — the argument binds |
+| `--tls --port 8080` | fails the handshake against the cleartext listener — `--tls` binds |
+| `--tls --port 8443` | 32/32 — and the TLS leg really is TLS |
+| `--base http://127.0.0.1:18999` | **5 of 78 still green** |
+
+Those five are the find. All of them assert an *absence* — four `hasnt()` checks
+and one `size_download == 0` — and against a server that is not running,
+everything is absent. They could not fail for the one reason that should have
+failed them hardest.
+
+Harmless in a full run, since a dead server fails everything else in the same
+breath. Not harmless as evidence: a `hasnt()` line quoted on its own carries
+none. `hasnt()` now refuses to judge an empty exchange, and the HEAD check pairs
+the status with the size, because a dead server also downloads zero bytes.
+Against a dead port the matrix now scores **0/78** where it scored 5/78; against
+the demo it is unchanged at 78/78, gate 9/9.
+
+Four instances now, three distinct mechanisms: unreachable by configuration,
+unreachable by filtering, unreachable by argument loss, and vacuously true
+against nothing at all.

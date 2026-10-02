@@ -145,6 +145,18 @@ hasnt() {
     local label="$1" needle="$2"; shift 2
     local out
     out="$($CURL -s $INSECURE "${TIMEOUTS[@]}" "$@" 2>/dev/null)"
+
+    # An absence is only evidence if something arrived to be absent FROM.
+    # Without this, every hasnt() passes against a server that is not running:
+    # nothing was received, so the needle is certainly not in it. Found by
+    # pointing --base at a dead port, where 5 of 78 checks stayed green - all of
+    # them this helper plus one size_download comparison. Harmless in a full run,
+    # since a dead server fails everything else too, but it means a hasnt() line
+    # quoted on its own carries no evidence at all.
+    if [ -z "$out" ]; then
+        fail "$label" "nothing came back, so the absence of '$needle' proves nothing"
+        return
+    fi
     if printf '%s' "$out" | grep -qi -- "$needle"; then
         fail "$label" "unexpected '$needle' in: $(printf '%s' "$out" | head -c 160 | tr '\n' ' ')"
     else
@@ -201,7 +213,8 @@ fi
 echo "  -- methods --"
 wo    "GET /"                          '%{http_code}' "200"  "$BASE/"
 wo    "HEAD via -I"                    '%{http_code}' "200"  -I "$BASE/"
-wo    "HEAD sends no body"             '%{size_download}' "0" -I "$BASE/"
+# Pair the status with the size: a dead server also downloads zero bytes.
+wo    "HEAD sends no body"             '%{http_code}/%{size_download}' "200/0" -I "$BASE/"
 wo    "POST -d"                        '%{http_code}' "200"  -X POST -d "hello" "$BASE/echo"
 has   "POST body is echoed"            "hello"                -X POST -d "hello" "$BASE/echo"
 wo    "OPTIONS on a resource"          '%{http_code}' "204"  -X OPTIONS "$BASE/files/resource.txt"
