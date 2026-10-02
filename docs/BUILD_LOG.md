@@ -2540,6 +2540,66 @@ commit. And the counts appeared in two places, only one of which anyone had been
 updating. Both fixed, and the coverage table in `README.md` now names the
 revision it was measured against rather than a date alone.
 
+## 2026-10-02 — Advance the pin to bd34db7c: the accept loop moves to the thread pool, and the header timeout covers the whole header
+
+Hermod `5ab74d7f` → `bd34db7c`, the merge of Hermod PR #79. Styx stays at
+`ba317094`. All three repositories in the family pin that pair again: the HTTP/2
+sibling moved to it in `a30a3eb`, the HTTP/3 sibling in `e758979`.
+
+**Two pins, one measurement — and why that is honest here.** The suites were
+started at `65b26095`, the commit both siblings pinned when this bump began.
+While they ran, the HTTP/2 sibling moved on to `bd34db7c`, which settles a
+deadlock in Hermod's HTTP/2 client tests (#69 × #72; see that repository's log).
+Outside `Hermod/HTTP2` and `HermodTests/HTTP2`, `65b26095..bd34db7c` touches
+four test files only — test-CA cleanup in `HermodTests/Helpers`, `Modbus`,
+`PKI` and `TCP`, none in this repository's filters — and no product code. So
+for HTTP/1 the two pins compile the same code, and the split below says which
+pin each figure was measured at rather than pretending all of it ran twice.
+
+| | | at |
+|---|---|---|
+| build | 0 errors | both |
+| in-process, the gate's filter | **896/896** = 895 `Tests.HTTP.` + 1 `Tests.HTTPS.` (was 877) | both, identical |
+| ↳ WebSockets | **149/149** (was 148) | both, identical |
+| ↳ regression selection | **374/374** (was 372) | both, identical |
+| harnesses, `--wsl` | **12/12** — curl 78/78 on both builds, foreign peers 58/58, smuggling differential 38/38, `h1fuzz` deterministic | both, identical |
+| Autobahn, server | **481/517**, 36 declined, 0 hard — floor exactly | `65b26095` |
+| Autobahn, client | **445/517**, 72 declined, 0 hard — floor exactly | `65b26095` |
+| proxies (A5) | **32/32** | `bd34db7c` |
+| smuggler (A6) | **3/3**, 134/134 mutations, nothing found | `bd34db7c` |
+| browsers (A8) | **24/27**, unchanged — still H-10 on all three engines | `65b26095` |
+| fuzz (A10), exploring | **not run**: no commit in the range touches the request, response or chunked parsers | — |
+
+Not one known-findings file changed: `smuggle-known.txt`, `proxy-known.txt` and `browser-known.txt` came back byte-identical, in the Windows checkout and in the WSL clone the container suites ran from (a Linux-side clone, so that a WSL build could not overwrite the `bin/` the Windows runs were using).
+
+**What was in it for HTTP/1.** Unlike the last two sibling bumps, this one is
+not shared code only. Of the commits outside `HTTP2/`, the ones this repository
+exercises:
+
+- `e5a19bc7` — the TCP server builds and starts a new connection on the thread
+  pool, not on the accept loop (`ATCPServer.cs` +481/−). A slow constructor or
+  TLS setup no longer delays the next accept, which is exactly what
+  `HTTPServerSocketRegressionTests.Slow_TLS_Handshake_Does_Not_Block_Following_Accepts`
+  — the test the last entry recorded as flaky at both pins — asserts.
+- `7665292c` — `AHTTPServer`'s `HeaderReadTimeout` bounds a request's header
+  section as a whole, from when the server starts waiting for it, rather than
+  each read. A client trickling one byte per read used to reset the clock on
+  every byte; that is the Slowloris shape, and `h1attack` and `h1conn` came back
+  unchanged.
+- `8d8823b2` — a server with open event streams stops at once (`SSEServerStopTests`, new).
+- `1781a088` — an HTTPS client made from an IP address, a port or a DNS name
+  speaks TLS (`HTTPSClientTLSByDefaultTests`, new).
+- `f3b1e2fe`, `c515e3b0` — the WebSocket and TCP servers report each closed
+  connection once, and say who closed it.
+
+**895 / 374 / 149.** `Tests.HTTP.` went 876 → 895 and the gate's filter
+877 → 896 (`Tests.HTTPS.` is still one test, counted on its own). The
+regression selection went 372 → 374 because `HTTPServerSocketRegressionTests`,
+one of its eleven files, gained the accept-loop and header-timeout cases; its
+filter in `HTTP1/README.md` did not change. WebSockets 148 → 149. The "431"
+the README gave for the selection plus the four 2026-09-26 fixtures was measured
+against `5ab74d7f` and is now labelled as such rather than re-measured.
+
 ## Next
 
 **Track A is complete.** A8 landed on 2026-09-27, and with it every
