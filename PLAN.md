@@ -12,7 +12,7 @@ tracks:
 **Status legend:** ✅ done · 🔶 partial · ⬜ open · ❌ broken — markers are kept
 current as work proceeds.
 
-**Current state (2026-09-27):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
+**Current state (2026-10-02):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
 19 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **303/303 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
@@ -184,13 +184,14 @@ library failure.
 ## ✅ A3 · curl matrix
 
 **78/78 checks pass over both transports**, wired into `tests/run-tests.sh` —
-the gate stands at **279/279** (201 raw-wire + 78 curl). It read 257 when A3
+the gate stood at **279/279** (201 raw-wire + 78 curl) when this track closed,
+and at **303/303** since A6 added `h1desync`. It read 257 when A3
 closed; the twenty-two since are `308` joining `/redirect/{code}` once H-1
 landed, the five Digest checks that H-3 made possible, four on the `/ws`
 upgrade, and nine on content codings once H-2 was whole. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **357/357**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **477/477**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -244,6 +245,22 @@ Docker. The scripts must start the daemon themselves (`service docker start`) �
 WSL has no systemd, so it is not running after a reboot.
 
 ## ✅ A5 · Intermediary interop · P2 · done 2026-09-27
+
+**Image bump 2026-10-02:** nginx 1.27→1.31, HAProxy 3.0→3.4, Envoy v1.31→v1.39
+(Caddy and httpd float on their major tags and were already current). **32/32
+unchanged**, and three recorded differences *disappeared* — the newer proxies
+got stricter and now agree with us:
+
+| | probe | was |
+|---|---|---|
+| nginx | `chunk-lf-only` | `direct=REJECT chain=TWO` — the chain split one ambiguous message into **two requests** |
+| envoy | `chunk-lf-only` | `direct=REJECT chain=TWO`, likewise |
+| haproxy | `cl-list-diff` | `direct=REJECT chain=NONE` |
+
+Both `chain=TWO` rows are request-splitting gadgets that these versions no
+longer produce. The lines are deleted from `tests/proxy-known.txt`, so if a
+future version reintroduces one, the run fails rather than shrugging. Caddy
+still differs on `chunk-lf-only` (`chain=ONE`) — its image was not bumped.
 
 Reverse proxies are the strictest HTTP/1.1 consumers in existence, and they
 are the only shape in which A6's findings are real: that work found seven
@@ -589,7 +606,6 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-26** | Warden scheduling does not do what it says: `ATCPServer` registers its connection check as `EveryMinutes(1, …)` and ignores the `WardenCheckEvery` property it documents, and `Warden.EverySeconds(N, …)` tests `timestamp.Minute % N` rather than `Second` | — | P2 | XS | **Fixed 2026-09-25, merged and pinned, [Hermod#42](https://github.com/Vanaheimr/Hermod/pull/42).** Two findings, three defects. *`EverySeconds`*: six of eight overloads measured minutes; the two that did not are what shows it was a slip. *The interval*: the defaults resolved twice, against different numbers — the properties took 30 s while the Warden took the literals 3 min and 1 min from the constructor call — and `EveryMinutes(1, …)` is not "once a minute" but a predicate that is always true plus a one-minute `SleepTime` no constructor argument can reach, which is why reproducing H-25 needed a source edit. *And the one that hid them*: `AllWardenChecks` returned `AllWardenChecks`, so nothing could enumerate the checks to ask when they run — a `StackOverflow` is uncatchable, so reverting it takes the test host down rather than turning a test red. 10 tests, two of them about things that were never broken: `SleepTime` is what turns a sixty-second-wide slot into one run, and the predicate is *sampled*, so a slot narrower than `CheckEvery` can be missed. The reaper now runs every 30 s and first runs after 30 s rather than 3 min |
 | ⬜ | **H-24** | Six status-code reason phrases predate RFC 9110: 413 `Request Entity Too Large`, 414 `Request-URI Too Long`, 416 `Requested Range Not Satisfiable`, 422 `Unprocessable Entity`, plus 306/418 carrying draft names for codes the RFC reserves | RFC 9110 §15 | P3 | XS | Found while doing H-1. Not a defect — §15 says a client SHOULD ignore the reason phrase — but it is what goes out on the wire, since the status line is `{Code} {Name}`. Renaming the fields is breaking for every downstream Vanaheimr project, so it is a decision rather than a fix; `HTTPStatusCodeTests` pins the exact divergence set meanwhile, so it cannot drift further unnoticed |
 | ⬜ | **H-28** | `ChunkedTransferEncodingStream` reports one malformed-framing case out of eleven as a bare `System.Exception`, which a caller cannot filter on | — | P3 | XS | Found by **A10** on its first run, 2026-09-26. Ten of the eleven throw sites use `HTTPInvalidChunkException`, which is a `FormatException` and therefore catchable as "this input was malformed"; `ChunkedTransferEncodingStream.cs:665` throws `new Exception("Expected CRLF")` thirty lines below a sibling that throws `HTTPInvalidChunkException` for the same condition. A caller wanting to distinguish bad input from a bug in the decoder has to catch `Exception`, which swallows both — and H-2's `ContentDecodingStream` exists precisely because the stack decided elsewhere that callers should have one exception type to catch. Listed in `tests/h1fuzz/known-findings.txt`; deleting that line is the regression test |
-| ⬜ | **H-29** | `Transfer-Encoding: chunked, chunked` is accepted and the body decoded once, although RFC 9112 §6.1 forbids a sender to produce it | RFC 9112 §6.1 | P3 | XS | Found by **A6** on 2026-09-27, as three rows of the differential that turn out to be one finding: `te-dup` (the field line twice), `te-obf-sp` (twice, the second with extra OWS) and `te-chunked-chunked` all reduce, via RFC 9110 §5.3's rule that repeated field lines combine, to the same value. `AHTTPPDU.cs:422` asks only whether the **last** coding is chunked — which is right for `chunked, gzip`, where §6.3 item 4 then requires the 400 we give it, and which silently drops the duplicate here. Not a violation: §6.1 binds senders, and §6.3 item 4 does not fire because chunked *is* final. What it is, is accepting a framing no conforming client may send, on the one field smuggling is made of, while both peers refuse it (Go: 501, Node: 400). Strictness is free — there is no legitimate client to break. Pinned meanwhile by `tests/smuggle-known.txt`, so the day Hermod starts rejecting it, the differential says so |
 | ✅ | **H-29** | `Transfer-Encoding: chunked, chunked` was accepted and the body decoded once, although RFC 9112 §6.1 forbids a sender to produce it | RFC 9112 §6.1 | P3 | XS | Found by **A6** on 2026-09-27, as three rows of the differential that turned out to be one finding: `te-dup`, `te-obf-sp` and `te-chunked-chunked` all reduce, via RFC 9110 §5.3, to the same value. `AHTTPPDU.cs:422` asked only whether the **last** coding is chunked — right for `chunked, gzip`, where §6.3 item 4 then requires the 400 we already gave it, and silently dropping the duplicate here. Not a violation: §6.1 binds senders, and item 4 does not fire because chunked *is* final. It was accepting a framing no conforming client may send, on the one field smuggling is made of, while both peers refused it (Go: 501, Node: 400). **Fixed 2026-09-27, merged and pinned, [Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54).** The predicate requires chunked to be final *and* to appear exactly once; the server answers 400 as a check of its own, because being stricter than the RFC is a choice and lumping it in with the MUST above it would have hidden that. Getting the two-line spellings to reach the predicate turned up **H-30**. 17 tests, and the differential said so itself: the three rows went to `REJECT[400]` and `tests/smuggle.sh` reported them as "no longer disagreeing" |
 | ✅ | **H-30** | Repeated `Transfer-Encoding` field lines made the field **vanish** outside the server's own parse path, and a response refused for a framing reason kept its connection | RFC 9110 §5.3, RFC 9112 §6.3 | P2 | S | Two defects, found while verifying H-29's client half and fixed with it in [Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54). *The field vanishing*: only `HTTPRequest.TryParse`'s server overload combined repeated lines; the public `TryParse(text, out request)` and **every response** kept them as a `String[]`, which `GetHeaderField<String>` cannot cast and so returned null — a message carrying `Transfer-Encoding: chunked` twice was read as declaring no transfer coding at all. Three parse paths, three answers to the same octets, inside one library. *The connection*: `TryValidateResponseFraming` has always refused a response whose coding it cannot frame, but kept the connection — and the refusal's reason is that the body's end is unknown, so it was never consumed. Measured: a second request on that connection came back "Invalid HTTP response status line", having read `5\r\nhello`. It shows only when the body arrives in a later TCP segment than the head, which is why the first version of its test was green before the fix |
 | ⬜ | **H-27** | Every `HTTPClient` builds its own `DNSClient`, whose default searches the machine's network configuration for resolvers — ~38 ms per construction, even when the URL is a literal IP address that will never be resolved | — | P2 | S | Found by **A9** on 2026-09-26, and measured rather than inferred: a fresh client per request is 39.4 ms p50, of which 38.3 ms is the constructor and 1.06 ms the request, and passing one shared `DNSClient` takes the whole thing to 0.449 ms. The line is `ATCPClient.cs:319` — `DNSClient ?? new DNSClient(...)` — whose default is `SearchForIPv4DNSServers: true` and `SearchForIPv6DNSServers: true`. Harmless for a long-lived client, ruinous for anything building one per request, and avoidable three ways: resolve lazily, share one default instance, or skip the search when the target is already an address. `tests/h1bench -- connect` is the regression test |
@@ -604,7 +620,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
                 │
                 ├──▶ ✅A4  (Autobahn — both directions, both gated nightly)
                 │
-                └──▶ ⬜A5, ✅A6, ✅A7, ⬜A8  (external suites)
+                └──▶ ✅A5, ✅A6, ✅A7, ✅A8  (external suites)
 
 Track B in parallel: thirteen of thirty are in. ✅H-1 and ✅H-2 first
 (small, high leverage), then ✅H-3 and ✅H-16, the two Warden findings
@@ -617,12 +633,13 @@ waiting on this track.
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Six of six, finally: H-2 turned out to be
 four fixes rather than one, and the last of them closed on 2026-09-24. The
-number is now **279/279**, and 78 of those come from a client nobody here wrote
+number is now **303/303**, and 78 of those come from a client nobody here wrote
 — the first part of it that is not self-assessment.
 
-**Second milestone:** ✅ A4 + ✅ A11 + ⬜ A5 — Autobahn reproducible from a
-clean checkout in both directions, CI green on two legs, proxy interop. Two of
-three.
+**Second milestone:** ✅ A4 + ✅ A11 + ✅ A5 — Autobahn reproducible from a
+clean checkout in both directions, CI green on two legs, proxy interop. Three of
+three, and with A5 in there is no track left open: **A0–A11 are all done.** What
+remains is Track B and keeping the suites honest as their peers move.
 
 ---
 

@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **561 NUnit tests** live with the stack in Hermod
+suite drivers; the **895 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -64,8 +64,23 @@ never will.
 
 Autobahn, the proxy matrix and http-garden all want Docker. It is installed in
 **WSL/Debian** (26.1.5) — not Docker Desktop. WSL has no systemd, so the daemon
-is not running after a reboot and the runner scripts start it themselves
-(`sudo service docker start`).
+is down after `wsl --shutdown` or a reboot, and **no script starts it** — they
+assume it is up and fail late if it is not. Start it by hand:
+
+```
+wsl -d Debian -u root service docker start
+```
+
+`-u root` rather than `sudo`, which prompts for a password this account does not
+supply non-interactively and then hangs with no tty.
+
+**If containers stop answering from Windows** while they answer inside WSL, the
+WSL2 localhost relay has gone stale — `tests/proxy.sh` probes the published
+ports over `127.0.0.1` from the Windows side, so every proxy reports "never
+answered". `wsl --shutdown`, then start the daemon again as above; that restores
+the forwarding. Seen 2026-10-02, with all five proxies down including the two
+whose image versions had not changed, which is what identified it as the
+environment rather than the bump.
 
 **Reaching the demo from WSL:** start it with `--bind-any` (0.0.0.0 instead of
 loopback) and address it by the **host IP** from `ip route show default`, not
@@ -132,7 +147,7 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
 **A3 done** — the curl matrix (78 checks, 79 where curl has HTTP/2 *and* the
-target is local — see [`tests/README.md`](tests/README.md)). The gate is **279/279 over both
+target is local — see [`tests/README.md`](tests/README.md)). The gate is **303/303 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
@@ -185,7 +200,7 @@ a test written by their author.
 
 ### What the state analysis found
 
-Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-26 in
+Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-30 in
 [`PLAN.md`](PLAN.md). The four that mattered most are the four that are done —
 kept here struck through rather than deleted, because what each one turned out to
 be is more useful than what it was reported as:

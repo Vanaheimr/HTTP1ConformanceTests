@@ -5,6 +5,6 @@
   "description": "A8 - real browsers against the Hermod HTTP/1.1 demo host",
   "type": "module",
   "devDependencies": {
-    "playwright": "^1.49.0"
+    "playwright": "^1.63.0"
   }
 }

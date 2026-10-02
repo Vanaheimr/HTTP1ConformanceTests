@@ -95,7 +95,7 @@ def get(port, path="/plain", window=2.0):
 
 CASES = [
 
-    ("haproxy", 18198, "haproxy:3.0-alpine",
+    ("haproxy", 18198, "haproxy:3.4-alpine",
      "/usr/local/etc/haproxy/haproxy.cfg",
      """global
     log stdout format raw local0 warning
@@ -112,7 +112,7 @@ backend be
     server back 127.0.0.1:%d
 """, None),
 
-    ("nginx", 18197, "nginx:1.27-alpine",
+    ("nginx", 18197, "nginx:1.31-alpine",
      "/etc/nginx/conf.d/default.conf",
      """server {
     listen %d;
@@ -157,7 +157,7 @@ ProxyRequests Off
 ProxyPass / http://127.0.0.1:%d/
 """, None),
 
-    ("envoy", 18194, "envoyproxy/envoy:v1.31-latest",
+    ("envoy", 18194, "envoyproxy/envoy:v1.39-latest",
      "/etc/envoy/envoy.yaml",
      """admin:
   address:

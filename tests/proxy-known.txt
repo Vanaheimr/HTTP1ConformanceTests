@@ -44,7 +44,6 @@ framing	caddy	lf-only-headers	direct=REJECT chain=TWO
 framing	caddy	te-cl	direct=REJECT chain=TWO
 framing	envoy	chunk-bws	direct=REJECT chain=TWO
 framing	envoy	chunk-ext-quoted-crlf	direct=REJECT chain=TWO
-framing	envoy	chunk-lf-only	direct=REJECT chain=TWO
 framing	envoy	chunk-trailer-cl	direct=REJECT chain=TWO
 framing	envoy	http10-te	direct=REJECT chain=ONE
 framing	envoy	lf-only-headers	direct=REJECT chain=TWO
@@ -52,7 +51,6 @@ framing	haproxy	chunk-bws	direct=REJECT chain=TWO
 framing	haproxy	chunk-trailer-cl	direct=REJECT chain=TWO
 framing	haproxy	cl-dup-diff	direct=REJECT chain=NONE
 framing	haproxy	cl-dup-same	direct=REJECT chain=TWO
-framing	haproxy	cl-list-diff	direct=REJECT chain=NONE
 framing	haproxy	cl-list-same	direct=REJECT chain=TWO
 framing	haproxy	cl-te	direct=REJECT chain=ONE
 framing	haproxy	lf-only-headers	direct=REJECT chain=TWO
@@ -66,7 +64,6 @@ framing	httpd	te-cl	direct=REJECT chain=ONE
 framing	httpd	te-dup	direct=REJECT chain=ONE
 framing	httpd	te-obf-sp	direct=REJECT chain=ONE
 framing	nginx	chunk-bws	direct=REJECT chain=TWO
-framing	nginx	chunk-lf-only	direct=REJECT chain=TWO
 framing	nginx	chunk-trailer-cl	direct=REJECT chain=TWO
 framing	nginx	lf-only-headers	direct=REJECT chain=TWO
 framing	nginx	te-ows-htab	direct=ONE chain=REJECT

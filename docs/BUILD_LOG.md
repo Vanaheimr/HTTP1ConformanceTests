@@ -2678,3 +2678,90 @@ the same thing happened with code rather than a count: 28 commits arrived under
 the H-26 branch, one of them a second fix to the very reaper H-26 reschedules. The
 merge was textually clean, which is not the same as correct, so everything was
 re-run against the merged tree — including master's own test for that other fix.
+
+---
+
+## 2026-10-02 — Dependencies, and what the bump found
+
+A maintenance pass, with one result worth more than the housekeeping.
+
+### The pin
+
+Hermod `bd34db7c` → **`0a3f2b8f`**, three commits, all already in master. The one
+that matters here is *"the TLS certificate context is built when the server
+starts, not by its first client"* — it touches `ATCPServer`, which is what both
+our listeners stand on. **895/895** under `Tests.HTTP.` and the gate at
+**303/303**; Styx needed no bump, it was already at master tip.
+
+### The proxies got stricter, and that is the finding
+
+nginx 1.27→1.31, HAProxy 3.0→3.4, Envoy v1.31→v1.39. Caddy and httpd float on
+their major tags and were current already.
+
+A5 still reports **32/32** — but three recorded differences *disappeared*, and
+the script said so itself rather than leaving them to rot:
+
+```
+no longer differing — delete these lines from tests/proxy-known.txt:
+    framing	envoy	chunk-lf-only
+    framing	haproxy	cl-list-diff
+    framing	nginx	chunk-lf-only
+```
+
+Both `chunk-lf-only` rows were `direct=REJECT chain=TWO`: Hermod refused the
+message, and the chain turned it into **two requests**. That is the shape a
+smuggling gadget actually takes, and nginx and Envoy have stopped producing it.
+Caddy still does (`chain=ONE`), on an image that was not bumped — which is the
+control that makes the other three mean something.
+
+The three lines are deleted. A future version that reintroduces one now fails
+the run instead of matching a stale entry.
+
+### Two environment traps, neither of them a conformance result
+
+Both presented as failures and cost time before being understood, which is the
+only reason they are written down.
+
+**All five proxies "never answered".** Including the two whose images had not
+changed — which is what identified it as the environment rather than the bump.
+WSL2's localhost relay had gone stale: containers answered inside WSL and not
+from Windows, and `tests/proxy.sh` probes `127.0.0.1` from the Windows side.
+`wsl --shutdown` fixed it. The daemon then has to be restarted by hand, and
+`sudo service docker start` is the wrong recipe here — it wants a password and
+hangs with no tty. `wsl -d Debian -u root service docker start` needs none.
+CLAUDE.md said the runner scripts start the daemon themselves; **no script
+does**, and that claim is now corrected rather than left to mislead the next
+reader.
+
+**`✗ poison/httpd`, "Python wurde nicht gefunden".** The Windows Store alias
+stub intercepting `python` for exactly one probe while the other four in the
+same run were fine. Clean on re-run. Worth noting only because a red line on the
+*poison* detector is the one result here nobody should wave through.
+
+### Stale numbers, found by reading rather than by failing
+
+Nothing caught these, which is the point of recording them:
+
+- **H-29 appeared twice in the findings table** — once `⬜` as originally
+  reported, once `✅` as fixed. The fix added a row instead of updating one, so
+  the plan claimed an open finding that had been closed five days earlier.
+- `CLAUDE.md` said **561** NUnit tests in its header and **895** thirty lines
+  later; the gate was **279/279** in one place and **303/303** in another; the
+  findings were "tracked as H-1…H-26" when they run to H-30.
+- `PLAN.md`'s sequence diagram still showed `⬜A5` and `⬜A8` after both closed,
+  and its second milestone read "two of three" when it was three.
+
+The headings were kept current and the prose underneath was not. Markers make
+staleness *visible*, not impossible.
+
+### Also current, for the record
+
+`actions/setup-node` v4→v7 (the only Action behind; checkout, setup-dotnet and
+upload-artifact were current), Node 22→24 in the nightly, Playwright's floor
+raised to `^1.63.0` to match what the lockfile already resolves.
+
+**Not done, deliberately:** NUnit **4.6.1 → 5.0.0** in `HermodTests` and
+`StyxTests`. A major version across two foreign repositories and ~1 500 tests is
+not a maintenance pass, and this repository has no NuGet dependencies of its own
+to update — every package here lives in a submodule. `Grpc.Net.Client`
+2.83→2.84 and `Microsoft.NET.Test.Sdk` 18.10.0→18.10.1 are likewise upstream.

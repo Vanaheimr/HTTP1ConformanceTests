@@ -26,7 +26,7 @@
 services:
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.31-alpine
     ports: ["18101:80"]
     environment:
       DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
@@ -35,7 +35,7 @@ services:
     extra_hosts: ["host.docker.internal:host-gateway"]
 
   haproxy:
-    image: haproxy:3.0-alpine
+    image: haproxy:3.4-alpine
     ports: ["18102:80"]
     environment:
       DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
@@ -64,7 +64,7 @@ services:
     extra_hosts: ["host.docker.internal:host-gateway"]
 
   envoy:
-    image: envoyproxy/envoy:v1.31-latest
+    image: envoyproxy/envoy:v1.39-latest
     ports: ["18105:80"]
     environment:
       DEMO_HOST: "${DEMO_HOST:?set by tests/proxy.sh}"
