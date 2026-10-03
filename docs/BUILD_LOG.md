@@ -2921,3 +2921,84 @@ the demo it is unchanged at 78/78, gate 9/9.
 Four instances now, three distinct mechanisms: unreachable by configuration,
 unreachable by filtering, unreachable by argument loss, and vacuously true
 against nothing at all.
+
+---
+
+## 2026-10-03 — H-10 closed: the preflight, and the pin that carries it
+
+The one open finding that was holding a gate red, and the only one no driver
+here but a real browser could reach. Fixed upstream in three commits
+([Hermod#81](https://github.com/Vanaheimr/Hermod/pull/81)), pin advanced,
+**browser 27/27** where it read 24/27 since A8 landed.
+
+### Why it could not be a handler
+
+The objection that shaped the design was the right one: in this stack everything
+is manual — the resource decides what its own semantics mean. So what business
+does a preflight have being automatic?
+
+The answer is that the rule presupposes the request *reaches* the resource, and
+a preflight never does. It is an `OPTIONS` for a method the route has no handler
+for, so routing answers it — `405` — before any handler is consulted. The
+handler is not declining to deal with it; it is never offered the chance.
+
+Which makes the real question not "should Hermod automate this" but **"routing
+already automates a rejection; where does the application get to intervene?"**
+And the seam for that already existed: `AHTTPPipeline` runs before routing and
+short-circuits on a non-null response, which is exactly the shape. So the fix is
+a component the application *installs*, like `HTTPAuthPipeline` — not behaviour
+baked into the server. A server that adds none behaves as before.
+
+### Three commits, and the first one does not fix it
+
+Separating them mattered, because the first is independently correct and the
+temptation is to call it the fix:
+
+1. **Resource-level `OPTIONS`** (RFC 9110 §9.3.7). An unregistered `OPTIONS` was
+   answered `405` *while the rejection carried `Methods.Keys`* — routing
+   refusing a question it had the answer to. **This alone does not fix a
+   preflight**: the browser gets `204` instead of `405` and is refused all the
+   same, for want of `Access-Control-Allow-*`.
+2. **`HTTPCORSPipeline` + `CORSPolicy`**, the policy stated by the application.
+3. **The pipeline asking the router** for the methods the route actually has, so
+   `Access-Control-Allow-Methods` cannot promise what no handler answers.
+
+Commit 1 also produced an inconsistency of my own making, caught before it
+shipped: appending `OPTIONS` to the `204`'s `Allow` alone left one resource
+giving two accounts of itself — `OPTIONS / → 204` beside
+`DELETE / → 405, Allow: GET, HEAD`. The `405`'s `Allow` is the field a client
+consults *because* it was refused, so it is the one that must not lie.
+
+### Two of my own errors, both caught by measuring
+
+**The browser stayed red after commit 2.** curl got a correct preflight answer;
+all three engines still failed. Cause: I had *guessed* the allowed header name
+(`X-Demo`) instead of reading the test, which sends `X-Demo-Preflight`. The
+refusal worked exactly as designed — I had configured the wrong list. The
+lesson is small and keeps recurring: the driver's source is the specification of
+what the driver does, and guessing at it produces a failure that looks like the
+server's.
+
+**The test for commit 3 was falsified rather than trusted.** A test for a
+*narrowing* that passes under both the narrowed and the unnarrowed version
+measures nothing — the exact failure mode this repository hit four times in the
+preceding days. So the intersection was disabled and the test re-run: it goes
+red, because the policy allows `DELETE`, the route does not have it, and only
+the router knows the difference. Then restored.
+
+### The pin carries more than the fix
+
+The bump is to master's tip `285dadd4`, not to my merge `a5737489`, and that is
+worth naming rather than glossing: between this repository's previous pin and
+the new one sit **two SSH commits, one shared-HTTP change by someone else
+(`22768a4a`, which is where the +1 test comes from), and HTTP/2 + HTTP/3
+WebSocket work (#82)** — none of it mine.
+
+What was measured against the new pin is HTTP/1: **907** under `Tests.HTTP.`,
+the gate at 9/9 and 303/303, browser 27/27. #82's HTTP/2 and HTTP/3 code is not
+exercised by this repository at all, which is a true statement and not a claim
+that it is fine.
+
+Measuring against the *merged* pin rather than against the branch is the whole
+point of doing it after the merge: until now everything had been verified
+against code that was not yet what this repository tests.

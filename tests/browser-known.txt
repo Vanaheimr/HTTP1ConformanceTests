@@ -7,6 +7,3 @@
 #
 # Written by tests/browser.sh --update on 2026-09-27.
 
-chromium	a preflighted cross-origin POST succeeds	H-10: no automatic CORS preflight; the demo answers OPTIONS 405
-firefox	a preflighted cross-origin POST succeeds	H-10: no automatic CORS preflight; the demo answers OPTIONS 405
-webkit	a preflighted cross-origin POST succeeds	H-10: no automatic CORS preflight; the demo answers OPTIONS 405

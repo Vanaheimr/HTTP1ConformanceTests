@@ -43,7 +43,7 @@ tests/run-tests.sh        # 303/303 checks, ~135 s
 | `tests/smuggler.sh` | **134/134** Transfer-Encoding obfuscations from [smuggler](https://github.com/defparam/smuggler), nothing found; [h2csmuggler](https://github.com/BishopFox/h2csmuggler) finds no h2c surface, which is now a pinned regression |
 | `tests/http-garden/` | Hermod as a target in [the HTTP Garden](https://github.com/narfindustries/http-garden), which compares parse trees across 45 implementations. Contract-verified on every run; the full sweep is compiler-hours and is run by hand |
 | `tests/proxy.sh` | **32/32** — the demo behind nginx, HAProxy, Caddy, Apache and Envoy. 63 differences from the direct run, each recorded by name; no chain poisons a connection, though [the detector is calibrated-unfired](docs/TestingAgainst_Proxies.md) |
-| `tests/browser.sh` | **24/27** — Chromium, Firefox and WebKit through Playwright. The three failures are one finding, [H-10](docs/TestingAgainst_Browsers.md), on each engine |
+| `tests/browser.sh` | **27/27** — Chromium, Firefox and WebKit through Playwright. The three failures are one finding, [H-10](docs/TestingAgainst_Browsers.md), on each engine |
 
 On top of that, the coverage inside Hermod itself:
 

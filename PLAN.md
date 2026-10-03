@@ -12,7 +12,7 @@ tracks:
 **Status legend:** ✅ done · 🔶 partial · ⬜ open · ❌ broken — markers are kept
 current as work proceeds.
 
-**Current state (2026-10-02):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
+**Current state (2026-10-03):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
 19 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **303/303 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
@@ -23,7 +23,7 @@ differential: `tests/h1desync` in the gate, three implementations compared
 nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
 found **H-29** and **H-30**, and a MUST violation in Go's `net/http` that is
 not ours to fix. **A11 ✅** — CI per push
-on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, 24/27, the three failures being H-10 shown from the only vantage point that can see it. Track B: **30 findings, 13 fixed upstream**
+on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **30 findings, 14 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -46,7 +46,7 @@ citation sweep last so that it covered what the other four added.
 | smuggling: third-party | ✅ `tests/smuggler.sh` — smuggler 134/134 mutations, nothing found; h2csmuggler finds no h2c surface, pinned as a regression |
 | smuggling: http-garden | ✅ target built and contract-verified; the full 45-server differential is compiler-hours, run by hand — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
 | third-party: proxies (A5) | ✅ five reverse proxies, 63 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
-| third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — 24/27, the three failures being H-10 on each engine |
+| third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — **27/27** since H-10 closed on 2026-10-03 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
@@ -428,15 +428,23 @@ body, `connectStart === connectEnd` as the browser's own account of keep-alive,
 and CORS — which curl cannot test at all, because curl simply sends the
 request and is answered.
 
-**The three failures are one finding, and it is H-10.** The demo's `/cors`
-route sets `Access-Control-Allow-Origin`, so the simple cross-origin GET
-works. A POST with a custom header is not simple: the browser sends an
-`OPTIONS` preflight, and nothing answers it — `405 Method Not Allowed`,
-`Allow: GET, POST`. The identical POST from curl is answered 200. `OPTIONS` is
-deliberately not registered on that route, for the same reason the demo's
-`HEAD` handlers are written out by hand: a handler there would hide the gap
-the route exists to show. Recorded in `tests/browser-known.txt` with its
-number, and a failure not in that file fails the run.
+**The three failures were one finding, and it was H-10 — closed 2026-10-03,
+so this now reads 27/27 and `tests/browser-known.txt` is empty.**
+
+What it was: the demo's `/cors` route sets `Access-Control-Allow-Origin`, so the
+simple cross-origin GET worked. A POST with a custom header is not simple — the
+browser sends an `OPTIONS` preflight, and nothing answered it (`405`,
+`Allow: GET, POST`), while the identical POST from curl was answered 200.
+
+`OPTIONS` is *still* deliberately not registered on that route, and that is now
+the point rather than the gap: the preflight is answered by `HTTPCORSPipeline`
+ahead of routing, which is the only place it can be answered. A hand-written
+`OPTIONS` handler there would prove nothing about the mechanism — the same
+reasoning that kept it unregistered while the gap was open.
+
+This is the track's whole justification in one line: three engines agreed on a
+defect that curl, the raw-wire harnesses, the foreign peers and five reverse
+proxies all structurally could not see, because none of them sends a preflight.
 
 **Deviation from the sketch above, stated rather than quiet:** bash plus a
 Node module, not `tools/browser-interop.ps1`. This repository removed its
@@ -589,7 +597,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ⬜ | **H-7** | No `Alt-Svc` | RFC 7838 | P2 | S | The natural bridge from this stack to the h2/h3 stacks — and directly testable with curl's `--alt-svc` |
 | ✅ | **H-8** | ~70 source comments still cite RFC 2616 / RFC 7230-series | — | P2 | S | Mechanical; the HTTP1 README already flags it. **Fixed 2026-09-26, merged and pinned, [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43).** 62 of 69 rewritten to each field's current defining document *and section*, taken from the IANA HTTP Field Name registry rather than from memory — 45 lookups, where being confident about 44 is not the same as being right about all of them. Seven remain deliberately: six are RFC 4918 quoting RFC 2616 in text this codebase quotes in turn, where rewriting them would misquote RFC 4918, so each of the three blocks now carries a remark naming the current reference; the seventh is inside commented-out code under `URLMapping_old/`, which is H-18's question and not this one's |
 | ⬜ | **H-9** | No server-side `TRACE` | RFC 9110 §9.3.8 | P3 | XS | Token + client exist; the server never handles it. Note the XST security history — "deliberately not implemented" is a valid answer, but then document it |
-| ⬜ | **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` are settable, but `OPTIONS` preflight is not answered automatically. **Demonstrated by A8 on 2026-09-27**, on Chromium, Firefox and WebKit alike: the demo's `/cors` route sets `Access-Control-Allow-Origin`, so a simple cross-origin GET works, and a POST with a custom header does not — the browser sends `OPTIONS` first and is answered `405 Method Not Allowed, Allow: GET, POST`. The identical POST from curl is answered 200, which is why no other driver in this repository could reach it. Recorded in `tests/browser-known.txt`; deleting a line there is how a fix gets verified |
+| ✅ | **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` were settable, but the `OPTIONS` preflight was answered `405` — and it is the one request a handler cannot own, because routing refuses it before any handler is consulted. **Fixed 2026-10-03, [Hermod#81](https://github.com/Vanaheimr/Hermod/pull/81), three commits.** First the resource-level `OPTIONS` (RFC 9110 §9.3.7), which routing was refusing while the rejection already carried `Methods.Keys` — that alone does not fix a preflight. Then an opt-in `HTTPCORSPipeline` + `CORSPolicy` installed *ahead of* routing, which is the only place the application can take the decision back. Then the pipeline asking the router for the methods the route actually has, so `Access-Control-Allow-Methods` cannot promise what no handler answers. **Demonstrated closed by A8: 27/27, up from 24/27**, all three engines, and `tests/browser-known.txt` is now empty — deleting a line there is how the fix was verified, not an assertion here |
 | ⬜ | **H-11** | Obsolete HTTP-date formats (RFC 850, asctime) not parsed | RFC 9110 §5.6.7 | P3 | XS | Recipients **MUST** accept all three |
 | ⬜ | **H-12** | No HSTS (`Strict-Transport-Security`) | RFC 6797 | P3 | XS | Header emission only; policy is the application's |
 | ⬜ | **H-13** | `Content-MD5` typed (obsolete), RFC 9530 digest fields missing | RFC 9530 | P3 | S | Depended on **H-6**, which landed 2026-09-26 — the structured-fields parser a `Content-Digest` dictionary needs is there now, so this is unblocked |

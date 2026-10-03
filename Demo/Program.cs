@@ -224,6 +224,24 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // have something to negotiate against.
             httpServer.AutomaticContentCompression = true;
 
+            // The CORS preflight, which routing answers before any handler is
+            // reached — so the application takes that decision back by installing
+            // a component ahead of routing, rather than by registering a handler
+            // that would never be consulted. Opt-in on purpose: a server that
+            // adds none does no CORS at all.
+            //
+            // The policy is this demo's, not a default. "*" with no credentials
+            // is right for a host whose whole job is to be called from anywhere;
+            // it is the wrong answer for almost anything else.
+            var corsPolicy   = new CORSPolicy(
+                                   AllowedOrigins:  [ "*" ],
+                                   AllowedMethods:  [ HTTPMethod.GET, HTTPMethod.POST ],
+                                   AllowedHeaders:  [ "Content-Type", "X-Demo-Preflight" ],
+                                   MaxAge:          TimeSpan.FromMinutes(10)
+                               );
+
+            httpServer.AddPipeline(new HTTPCORSPipeline(httpServer, corsPolicy));
+
             ConfigureAPI(httpServer.AddHTTPAPI());
 
             Console.WriteLine($"  ✓ cleartext listener on :{httpServer.TCPPort}");
@@ -242,6 +260,8 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                      );
 
             httpsServer.AutomaticContentCompression = true;
+
+            httpsServer.AddPipeline(new HTTPCORSPipeline(httpsServer, corsPolicy));
 
             ConfigureAPI(httpsServer.AddHTTPAPI());
 
@@ -398,12 +418,19 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // Access-Control-Allow-Origin, so the browser reads the body.
             //
             // POST with a custom request header is NOT simple, and the browser
-            // sends an OPTIONS preflight first. Nothing answers it, so the
-            // request never leaves the browser. OPTIONS is deliberately NOT
-            // registered here: Hermod has no automatic preflight (H-10), and a
-            // hand-written OPTIONS handler on this route would hide the very
-            // gap the route exists to show — the same reasoning as the HEAD
-            // registrations above, which H-23 is about.
+            // sends an OPTIONS preflight first. That preflight is answered by
+            // HTTPCORSPipeline, installed above — not by a handler here.
+            //
+            // OPTIONS is still deliberately NOT registered on this route, and
+            // that is now the point rather than the gap: it demonstrates that
+            // the preflight is answered ahead of routing, which is the only
+            // place it can be answered, because routing would otherwise refuse
+            // it before any handler was consulted. A hand-written OPTIONS
+            // handler here would prove nothing about the mechanism.
+            //
+            // Until 2026-10-03 nothing answered it at all and all three browser
+            // engines failed here — that was H-10, and this route is what made
+            // it visible when no other consumer in this repository could.
             foreach (var method in new[] { HTTPMethod.GET, HTTPMethod.POST })
                 API.AddHandler(
                     method,
