@@ -3324,3 +3324,142 @@ differential's 38.
 And 1610 passing across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden and DNS
 against the same pin — which is #91's and #92's work, not this repository's, and
 is reported here as "nothing broke" rather than as coverage.
+
+## 2026-10-03 — Three small ones, and two notes that were wrong about themselves
+
+H-28, H-11 and H-24, the XS group, in one branch and three commits
+([Hermod#97](https://github.com/Vanaheimr/Hermod/pull/97)). What they have in
+common is not their size: **two of the three had a note in `PLAN.md` explaining
+why they were not being fixed, and in both cases the note was wrong.** That is
+now the third such correction in two days, after H-23's citation, and it is
+worth naming as a pattern rather than as three accidents.
+
+### H-28 · the finding that verifies itself
+
+Ten of eleven throw sites in `ChunkedTransferEncodingStream` raise
+`HTTPInvalidChunkException`, a `FormatException`, so a caller can catch
+"malformed input" without catching defects as well. `ReadCRLF` raised a bare
+`System.Exception` for the same condition its asynchronous sibling thirty lines
+above handled correctly.
+
+The interesting part is the verification, and the harness had specified it in
+advance. `tests/h1fuzz/known-findings.txt` says in its own header: *"Deleting a
+line is how a fix gets verified: the finding comes back as NEW and the run goes
+red if it was not actually fixed."* So the line came out, and the run that had
+been reporting
+
+```
+chunked   known: Exception: Expected CRLF  (×165,015)
+```
+
+now reports `h1fuzz: no findings`. 165,015 inputs per budget reach that code
+path, so this is a fix that was *measured* rather than inspected — and the file
+is empty again, for the first time since A10 was built.
+
+Its two tests went into `HTTP11AuditRegressionTests`, which the eleven-file
+regression selection does name, so that count moved 377 → 379. H-27's five,
+H-23's six and H-11's fourteen all went into new files and did not. Three times
+in one week the same one-line gap in that filter, still unmade.
+
+### H-11 · the right parser, in the wrong place, again
+
+RFC 9110 §5.6.7 obliges a recipient to accept all three HTTP-date formats. The
+date fields used `DateTimeOffset.TryParse`, which takes neither obsolete one —
+and names no culture either, so what a `Date` field accepted depended on the
+machine.
+
+And a correct three-format parser already existed: in
+`WebSocketClientReconnectPolicy.RetryAfter`, written for §5.6.7, reachable from
+exactly one caller. **That is H-3's shape precisely** — RFC 7616 Digest was
+unreachable for sitting in `HTTP2/` — and the reason `HTTPDate` went into
+`Hermod/HTTP/` rather than `HTTP1/`: HTTP/2 and HTTP/3 carry the same fields
+with the same semantics.
+
+Two things a format string cannot do, and both came out of reading the section
+rather than the code:
+
+**The two-digit year.** §5.6.7: a timestamp "more than 50 years in the future"
+means the most recent past year with the same last two digits — a window that
+moves with the clock. `InvariantCulture`'s `TwoDigitYearMax` is 2049, so "55"
+is 1955 whatever year it is read in; in 2060 that reads a timestamp five years
+past as one a hundred and five years past. The century is chosen in `HTTPDate`
+now, and `Now` is a parameter so the rule can be asserted instead of waited
+for.
+
+**The day name of the RFC 850 format is dropped rather than matched**, and that
+one I found by writing a test that failed. `Saturday, 06-Nov-55` was refused,
+and the reason was not the year logic: .NET validates a `dddd` against the
+date, and the weekday it checks against belongs to whichever century the pivot
+guessed. 6 November 1955 and 6 November 2055 are not the same day of the week,
+so a correct timestamp is refused for the wrong century's calendar. The two
+formats carrying a four-digit year stay strict, where the check means what it
+says. The asymmetry is deliberate and has a test that states it.
+
+A third thing turned up on the way out: `Last-Modified`'s serializer said
+`ToISO8601()`, which is not an HTTP-date at all. Before changing it I measured
+what the demo actually sends — `Last-Modified: Thu, 01 Jan 2026 00:00:00 GMT` —
+and then found why: `AHTTPPDUBuilder.cs:157` serializes *every*
+`DateTimeOffset`-valued header field with the `Date` field's serializer,
+whichever field it is. So the wrong serializer was dead for the socket and
+waiting for the first caller to serialize the field itself. A trap rather than a
+bug, and worth the two minutes it took to tell the difference instead of
+filing it as one.
+
+### H-24 · a field name is not a reason phrase
+
+Six status lines carried phrases predating RFC 9110. The row had been closed as
+*a decision rather than a fix* for this reason:
+
+> Renaming the fields is breaking for every downstream Vanaheimr project
+
+`HTTPStatusCode` keeps the identifier and the phrase in two different places.
+Downstream code compiles against `HTTPStatusCode.RequestEntityTooLarge`; the
+status line carries `Name`, a string nothing links against. Five corrections
+landed without one identifier changing:
+
+| | was | is |
+|---|---|---|
+| 413 | Request Entity Too Large | **Content Too Large** (§15.5.14) |
+| 414 | Request-URI Too Long | **URI Too Long** (§15.5.15) |
+| 416 | Requested Range Not Satisfiable | **Range Not Satisfiable** (§15.5.17) |
+| 422 | Unprocessable Entity | **Unprocessable Content** (§15.5.21) |
+| 306 | Switch Proxy | **(Unused)** (§15.4.7) |
+
+418 keeps `I'm a teapot`. RFC 9110 does not mention 418; the phrase is RFC
+2324's, every stack implementing the code implements that phrase, and the
+registry's `(Unused)` would discard the only thing anybody uses 418 for. The
+line between the two reserved codes is whether the RFC has an opinion: for 306
+§15.4.7 does, and it is followed. `HTTPStatusCodeTests` still pins the exact
+divergence set, now `{418}`.
+
+Before changing a single phrase I grepped the library, its tests, the harnesses
+and the scripts for all six strings. A reason phrase is exactly the kind of
+thing something matches on, and the answer — only the definitions and the test
+that pins them — is what made this a five-minute change rather than a risk.
+
+### Measured against `0044ecf7`
+
+| | |
+|---|---|
+| `Tests.HTTP.` | **937** (918 + sixteen of these three, plus two from #94) |
+| the filter CI gates on | **938** |
+| the protocol regression selection | **379** (377 + H-28's two) |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | **1726** |
+| this repository's gate | 9/9, **311/311**, and `h1fuzz: no findings` |
+| `dotnet build HTTP1.slnx -t:Rebuild` | 0 errors, 286 warnings, none in this repository's own projects, no NUnit analyzer warnings |
+
+The 1726 is the row that had to be run rather than assumed: `HTTPStatusCode` and
+`HTTPDate` are shared with HTTP/2 and HTTP/3, and a reason phrase is a string
+something may well match on.
+
+The pin also carries foreign HTTP/1 work for the first time in a while: **#94**,
+"the upgrade request knows its connection", touched
+`HTTP1/Request/HTTPRequest.cs` and `WebSocket/Server/AWebSocketServer.cs` —
+which is the path the gate's four `/ws` upgrade checks run through, and they are
+green. The rest between the pins is SMTP (#95, #96, #98–#100), which this
+repository does not execute, and saying so is a statement about coverage rather
+than about that code.
+
+Track B is **20 of 31**, and the eleven still open are what is left of the state
+analysis: H-5, H-7, H-9, H-12, H-13, H-14, H-15, H-17, H-18, H-19, H-20. None
+holds a gate red; none is XS any more.

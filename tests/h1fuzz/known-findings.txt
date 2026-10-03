@@ -12,11 +12,5 @@
 # defect is gone. A blind mutator reaching an input is evidence; not reaching
 # it in one budget is not.
 
-# H-28 — ChunkedTransferEncodingStream throws a bare System.Exception for one
-# malformed-framing case out of eleven. The other ten throw
-# HTTPInvalidChunkException (a FormatException), which a caller can filter on;
-# this one can only be caught as Exception, which also swallows real bugs.
-# Found by h1fuzz on 2026-09-26, at ChunkedTransferEncodingStream.cs:665,
-# thirty lines below a sibling that throws HTTPInvalidChunkException for the
-# same condition.
-Exception: Expected CRLF
+# Empty. H-28 was the only entry and was fixed upstream on 2026-10-03, so its
+# line is gone — which is what verifies the fix, per the paragraph above.
