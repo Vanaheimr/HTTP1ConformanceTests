@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **907 NUnit tests** live with the stack in Hermod
+suite drivers; the **912 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,11 +32,13 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **907 NUnit tests** in `libs/Hermod/HermodTests/`
-under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **374** are the HTTP/1.x
+**Tests:** most coverage is the **912 NUnit tests** in `libs/Hermod/HermodTests/`
+under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **377** are the HTTP/1.x
 protocol regression selection and **149** cover RFC 6455/7692 WebSockets. CI gates
-on 895 + the single test in `Tests.HTTPS.` = **896** — a filter that reaches
-neither `Tests.TCP` nor `Tests.Warden`. The regression selection did not move
+on those 912 plus the single test in `Tests.HTTPS.` = **913** — a filter that
+reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
+and why its own regression test was written through `HTTPClient` rather than
+through `ATCPClient`. The regression selection did not move
 with the five findings of 2026-09-26: their four fixtures are not in its filter,
 and adding them made it 431 against `5ab74d7f`. These are run counts, not
 `--list-tests` counts; see the note under the coverage table in
@@ -181,7 +183,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 895 `Tests.HTTP.` / 374 regression selection / 149 WebSockets, all run counts — 896 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter |
+| Hermod's own NUnit suites | 912 `Tests.HTTP.` / 377 regression selection / 149 WebSockets, all run counts — 913 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: 502 `Tests.DNS`, 113 across `Tests.TCP`/`Timers`/`Warden`/`HTTPS`, and 1287 across WebSocket, Modbus, SMTP, Rendezvous, HTTP/2 and HTTP/3 |
 | this repo's gate | **303/303**, cleartext and TLS (201 raw-wire + 78 curl + 24 desync) |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **477/477** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |

@@ -287,7 +287,11 @@ the other — **0.240 ms** p50 against **0.252 ms**. An absolute number with
 nothing beside it is how "slower than I expected" becomes "slow".
 
 See A9 in [`PLAN.md`](../PLAN.md) for the full table and the three things the
-numbers said that the code did not — one of which became finding **H-27**.
+numbers said that the code did not — one of which became finding **H-27**, now
+fixed upstream: the `connect` scenario's third row, a fresh client per request
+with one shared `DNSClient`, used to be 36× faster than the second and is now
+worth nothing at all. That row is there to tell "the connection is expensive"
+from "the constructor is", and it earned its place.
 
 ## The fuzzer (A10)
 

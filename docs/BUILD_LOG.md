@@ -2614,10 +2614,11 @@ attacks. None of them is, through those five proxies — with the caveat that
 the detector for the final step has never been seen to fire, because all five
 absorb a poisoned upstream connection whatever the origin does.
 
-**What is left is Track B**: 17 open findings. The two with the widest reach
-are H-27 (every `HTTPClient` builds its own `DNSClient` — 38 ms per
-construction, measured) and H-23 (`HEAD` is not derived from `GET`). H-10 now
-has a browser demonstrating it rather than a sentence describing it.
+**What is left is Track B**: 15 open findings — this paragraph said 17 and
+named H-27 and H-23 as the two with the widest reach; H-27 closed on
+2026-10-03, and H-10, which this paragraph said a browser now demonstrated
+rather than described, closed the day before. H-23 (`HEAD` is not derived from
+`GET`) is the one of the two still open.
 
 The pin moved to Hermod `5ab74d7f` on 2026-10-01, measured against every suite
 this repository has rather than only the gate's — see the entry above.
@@ -3002,3 +3003,164 @@ that it is fine.
 Measuring against the *merged* pin rather than against the branch is the whole
 point of doing it after the merge: until now everything had been verified
 against code that was not yet what this repository tests.
+
+## 2026-10-03 — H-27 closed: a resolver nobody asked for, and the control that stopped paying
+
+A9 had measured it on 2026-09-26 and the number sat in `PLAN.md` for a week: a
+fresh `HTTPClient` per request cost 39.4 ms p50, of which **38.3 ms was the
+constructor** and 1.06 ms the request it then made. `ATCPClient` built the
+default `DNSClient` there, and that default searches the machine's network
+configuration for resolvers — two sweeps of every network interface,
+`GetIPProperties()` on each.
+
+The work was not merely early. A client dialling a literal IP address resolves
+nothing: `Connect` fills `ResolvedIPAddresses` from `RemoteIPAddress` and never
+reaches the branch that queries, so the resolver just paid for is never touched.
+A long-lived client paid once and nobody noticed; one client per request paid
+every time.
+
+The DNS client is now a `Lazy<IDNSClient>` — one handed in wrapped as a value,
+one of the client's own making built when the property is first read. The detail
+that matters as much as the Lazy is the disposal: `if (ownsDNSClient &&
+DNSClient is not null)` would have **built the very client it then throws
+away**, moving the whole cost from the way in to the way out. It asks
+`dnsClient.IsValueCreated` instead.
+
+### What the number is, and what the control is
+
+Measured on one machine the same day, before and after, 500 iterations:
+
+| p50 | without the fix | with the fix |
+|---|---|---|
+| constructing the client | **57.654 ms** | **0.009 ms** |
+| a fresh client per request, whole | 59.324 ms | 2.347 ms |
+| the same with one shared `DNSClient` | 1.645 ms | 2.406 ms |
+
+The third row is the evidence; the first is only the speed-up. `h1bench`'s
+`connect` scenario runs that row precisely so a figure cannot be read as "the
+connection is expensive" — and handing in a shared `DNSClient`, which had been a
+36-fold win, is now worth nothing at all. There is nothing left to share. What
+remains, about 2 ms, is the handshake and the request, which no resolver can
+account for.
+
+57.7 ms where September had said 38.3 ms, on the same stack: more interfaces are
+up on this machine now than then — WSL, Docker — and the sweep scales with them.
+The finding got worse while sitting in the plan, which is an argument for the
+`h1bench` row existing at all.
+
+### The test suite defended itself against me
+
+`DisposeStopsTimersTests` went red, and that is the best thing that happened all
+day:
+
+```
+timers running while 20 HTTP clients were alive
+```
+
+It counts the timers twenty clients run while alive against those still running
+after disposal — and a DNS client that was never made has no cache timer to
+leave behind. With the constructor no longer making one, the test's assertion
+about *disposal* would have passed over nothing at all. `TimerCount.AssertNoneLeft`
+checks the first count before the second for exactly this reason, in a comment
+written long before this change: *"Without a timer of their own while alive,
+there would be nothing to leave behind, and the second check would pass without
+having looked at anything."*
+
+So this is the fifth instance of the theme this log keeps returning to — and the
+first from the other direction. The four earlier ones were checks of mine that
+could not fail. This was someone else's guard catching **my** change in the act
+of hollowing out their test. The two tests now ask for the DNS client, which
+both gives them something to count and is independent evidence that the laziness
+is real: `Timer.ActiveCount` rather than a clock, twenty clients starting zero
+cache timers between them.
+
+### The new tests, falsified before being believed
+
+`HTTPClientLazyDNSClientTests` observes construction through the **logger
+factory**, not through a stopwatch: the default DNS client is made with a logger
+of its own, and `ATCPClient` asks for an `IDNSClient` logger at exactly one
+place. A counting `ILoggerFactory` therefore reports construction exactly, with
+no timing bound to be flaky about.
+
+Run against the unfixed library, three of its five tests fail — the constructor,
+the disposal, and a whole request to a literal address — and the two that hold
+in both worlds stay green. The request test asserts `200` and `"pong"` *before*
+asserting that no resolver was made, because a request that never happened
+resolves nothing either, and would make the real check true for a reason that
+has nothing to do with DNS.
+
+### H-31, found by reading the thing being fixed
+
+`DNSClient`'s two constructors declare **opposite** defaults for the search:
+`false` where manual servers are given, `true` where none are — without manual
+servers a client that does not search has no servers at all. Both forwarded to
+one body reading `?? true`.
+
+I first described this as "the declared `false` is a lie", and that was too
+strong; checking it corrected it. C# takes the *callee's* declared default for
+an omitted argument, so the overloads that chain without passing the flags got
+`false` and behaved correctly, and an existing test depends on it: three IPv6
+addresses in, exactly one server out, "so that what is counted is only what this
+test put in". What actually broke was an **explicitly passed `null`** — which is
+what forwarding an optional setting does, and the only way a `Boolean?` reaches
+there from configuration.
+
+Narrow, and worth fixing anyway, because the consequence is not merely cost:
+multi-server queries race and the fastest valid response wins, so a resolver
+that joins the set unasked can answer before the one the caller named. The body
+now reads `?? false` and the constructor without manual servers coalesces its
+own `true` before forwarding, so each default is resolved where it was declared
+and read.
+
+Its seven tests each first ask what the search finds on the machine they run on
+and call `Assert.Ignore` when that is nothing: on a container naming no
+resolvers, "searched" and "did not search" look identical, and a green check
+there would be one that could not have gone red. On this machine they run for
+real — seven passed, none skipped — and against the unfixed library exactly the
+`null`-with-manual-servers case fails, the other six passing because the old
+body agreed with the declared default wherever the argument was omitted.
+
+### The pin carries more than the fix, again — including a test framework
+
+[Hermod#87](https://github.com/Vanaheimr/Hermod/pull/87) merged as `77c79106`,
+and master had already moved three merges past it by the time of the bump. The
+pin is master's tip `8c3ac23e`, and what sits between the old pin `285dadd4` and
+it is: #86 (WebSocket over HTTP/2 and HTTP/3 reading a frame in one copy), my
+#87, #88 (NUnit 5 warning follow-up) and #89 (HTTP/3 requests ending with their
+connection). Of library code, only `Hermod/HTTP3/` — nothing under `HTTP1/`,
+`HTTP/`, `TCP/` or `DNS/` outside my own two commits.
+
+One of those deserves singling out, because it changed the ground under this
+repository's measurements rather than its code: **`f96ede7d` moved HermodTests
+from NUnit 4.6.1 to NUnit 5.0.0**, and it is an *ancestor of my own merge
+commit* — master had taken it before GitHub merged #87. Everything I measured
+locally while writing the fix ran under NUnit 4. My two new test files had never
+been compiled, let alone run, under the framework the merged tree actually uses.
+That is precisely the shape of gap this log has a convention about: a green run
+is evidence about the configuration it ran in and about no other.
+
+So it was measured against the pin, and the test project builds with **0
+warnings and 0 errors** under NUnit 5 — the standard #88 had just established
+for every other file — with all tests passing.
+
+### Measured against `8c3ac23e`
+
+| | |
+|---|---|
+| `Tests.HTTP.` | **912** (907 + the five new) |
+| the filter CI gates on | **913** |
+| the protocol regression selection | **377** (374 + H-10's three) |
+| WebSockets | 149, unmoved |
+| `Tests.DNS` | **502** (including H-31's seven) |
+| `Tests.TCP` / `Timers` / `Warden` / `HTTPS` | 113 |
+| WebSocket, Modbus, SMTP, Rendezvous, HTTP/2, HTTP/3 | **1287** (1183 against the old pin — #86 and #89 brought the rest) |
+| this repository's gate | 9/9 harnesses, **303/303** |
+
+H-27's five tests went into a new file and so are in `Tests.HTTP.` but not in
+the regression selection, while H-10's three went into a file that selection
+does name. That is the same eleven-file gap seen from both sides in one week,
+and still a one-line change upstream that nobody has made.
+
+Track B is now **16 of 31** — H-31 is the finding this fix produced, numbered
+rather than buried in the one above it. Of the fifteen still open, none holds a
+gate red.
