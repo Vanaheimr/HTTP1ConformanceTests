@@ -360,33 +360,36 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
         private static void ConfigureAPI(HTTPAPI API)
         {
 
-            #region GET|HEAD /  — the baseline: Content-Length framed, nothing clever
+            #region GET /  — the baseline: Content-Length framed, nothing clever
 
-            // HEAD is registered explicitly alongside GET. RFC 9110 §9.3.2 says a
-            // server SHOULD support HEAD wherever it supports GET, but Hermod does
-            // not derive it — an unregistered HEAD is answered 405 with
-            // "Allow: GET", which also omits HEAD from the very list a client
-            // would consult. Filed upstream as H-23; until then, every GET route
-            // that wants HEAD has to say so.
-            foreach (var method in new[] { HTTPMethod.GET, HTTPMethod.HEAD })
-                API.AddHandler(
-                    method,
-                    HTTPPath.Root,
-                    HTTPDelegate: request => Task.FromResult(
-                        new HTTPResponse.Builder(request) {
-                            HTTPStatusCode  = HTTPStatusCode.OK,
-                            ContentType     = HTTPContentType.Text.PLAIN,
-                            // Opting the *response* into keep-alive is what makes
-                            // HTTP/1.0 persistence possible at all: Hermod honours
-                            // it only when both directions ask for it, so without
-                            // this an HTTP/1.0 "Connection: keep-alive" request is
-                            // answered "Connection: close". HTTP/1.1 is unaffected,
-                            // being persistent by default.
-                            Connection      = ConnectionType.KeepAlive,
-                            Content         = "Hermod HTTP/1.1 demo host\n".ToUTF8Bytes()
-                        }.AsImmutable
-                    )
-                );
+            // GET alone. HEAD used to be registered explicitly beside it, with a
+            // comment attributing "a server SHOULD support HEAD wherever it
+            // supports GET" to RFC 9110 §9.3.2 — a sentence that is not in
+            // §9.3.2, or anywhere else in RFC 9110. What the RFC says is §9.1,
+            // "All general-purpose servers MUST support the methods GET and
+            // HEAD", which binds the server rather than this resource.
+            //
+            // Hermod derives it since 2026-10-03 (H-23), so the registration is
+            // gone and the harness' HEAD checks now measure the derivation
+            // instead of this line compensating for its absence.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root,
+                HTTPDelegate: request => Task.FromResult(
+                    new HTTPResponse.Builder(request) {
+                        HTTPStatusCode  = HTTPStatusCode.OK,
+                        ContentType     = HTTPContentType.Text.PLAIN,
+                        // Opting the *response* into keep-alive is what makes
+                        // HTTP/1.0 persistence possible at all: Hermod honours
+                        // it only when both directions ask for it, so without
+                        // this an HTTP/1.0 "Connection: keep-alive" request is
+                        // answered "Connection: close". HTTP/1.1 is unaffected,
+                        // being persistent by default.
+                        Connection      = ConnectionType.KeepAlive,
+                        Content         = "Hermod HTTP/1.1 demo host\n".ToUTF8Bytes()
+                    }.AsImmutable
+                )
+            );
 
             #endregion
 
@@ -590,14 +593,17 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
-            #region GET|HEAD /files/resource.txt  — conditional requests + Range
+            #region GET /files/resource.txt  — conditional requests + Range
 
-            foreach (var method in new[] { HTTPMethod.GET, HTTPMethod.HEAD })
-                API.AddHandler(
-                    method,
-                    HTTPPath.Root + "files" + "resource.txt",
-                    HTTPDelegate: request => Task.FromResult(ServeResource(request))
-                );
+            // GET alone, as for "/" above: HEAD comes from the derivation, and
+            // ServeResource answers it unchanged — a conditional HEAD still gets
+            // its 304, and a ranged one still gets what the range says, because
+            // the handler is the same handler.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "files" + "resource.txt",
+                HTTPDelegate: request => Task.FromResult(ServeResource(request))
+            );
 
             API.AddHandler(
                 HTTPMethod.OPTIONS,

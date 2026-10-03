@@ -56,6 +56,71 @@ checks.Status("GET /",   await target.RoundTripAsync($"GET / HTTP/1.1\r\nHost: {
     checks.DoesNotContain("HEAD has no body",            response, "Hermod HTTP/1.1 demo host");
 }
 
+// §9.1: "All general-purpose servers MUST support the methods GET and HEAD."
+// The MUST is the server's rather than the resource's — §9.1 names the 405 as
+// how a resource refuses a method it does not allow — but a server refusing
+// HEAD wherever nobody registered one by hand supports HEAD only on the routes
+// somebody remembered.
+//
+// /prose is such a route, and the three checks above were not: the demo
+// registered HEAD for / and for /files/resource.txt explicitly, so H-23 was
+// invisible to this harness for as long as the demo covered it up. Those two
+// registrations are gone, which puts the checks above on the derived answer
+// too.
+{
+
+    static String? HeaderValue(String Response, String FieldName)
+    {
+
+        foreach (var line in Response.Split("\r\n"))
+        {
+
+            if (line.Length == 0)
+                break;
+
+            if (line.StartsWith($"{FieldName}:", StringComparison.OrdinalIgnoreCase))
+                return line[(FieldName.Length + 1)..].Trim();
+
+        }
+
+        return null;
+
+    }
+
+    var get   = await target.RoundTripAsync($"GET /prose HTTP/1.1\r\nHost: {host}\r\n\r\n");
+    var head  = await target.RoundTripAsync($"HEAD /prose HTTP/1.1\r\nHost: {host}\r\n\r\n", Bodyless: true);
+
+    checks.Status        ("HEAD on a resource registering only GET", head, 200);
+    checks.Contains      ("the derived HEAD keeps the ETag",         head, "ETag: \"prose-1\"");
+    checks.DoesNotContain("the derived HEAD has no body",            head, "the quick brown fox");
+
+    // §9.3.2: the server should send the same header fields it would have sent
+    // for GET. Content-Length is the one an implementation loses by answering
+    // HEAD without running the handler, and the one a client asks HEAD for.
+    var getLength   = HeaderValue(get,  "Content-Length");
+    var headLength  = HeaderValue(head, "Content-Length");
+
+    checks.That(
+        "the derived HEAD repeats the GET's Content-Length",
+        getLength is not null && getLength == headLength,
+        $"GET said {getLength ?? "nothing"}, HEAD said {headLength ?? "nothing"}"
+    );
+
+}
+
+// §10.2.1 + §15.5.6: the Allow field has to name the derived HEAD as well — it
+// is the field a client consults precisely because it was just refused, and a
+// resource whose OPTIONS and 405 disagree gives two accounts of itself.
+{
+    var refused  = await target.RoundTripAsync($"DELETE /prose HTTP/1.1\r\nHost: {host}\r\n\r\n");
+    var options  = await target.RoundTripAsync($"OPTIONS /prose HTTP/1.1\r\nHost: {host}\r\n\r\n");
+
+    checks.Status  ("DELETE /prose",                      refused, 405);
+    checks.Contains("the 405's Allow names HEAD",         refused, "Allow: GET, HEAD, OPTIONS");
+    checks.Status  ("OPTIONS /prose",                     options, 204, 200);
+    checks.Contains("the resource OPTIONS names HEAD",    options, "Allow: GET, HEAD, OPTIONS");
+}
+
 checks.Status(
     "POST /echo",
     await target.RoundTripAsync($"POST /echo HTTP/1.1\r\nHost: {host}\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nping"),

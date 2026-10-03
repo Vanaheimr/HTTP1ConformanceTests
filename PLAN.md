@@ -13,7 +13,7 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-10-03):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-19 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **303/303 checks green
+19 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **311/311 checks green
 over cleartext *and* TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
 foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
@@ -23,19 +23,19 @@ differential: `tests/h1desync` in the gate, three implementations compared
 nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
 found **H-29** and **H-30**, and a MUST violation in Go's `net/http` that is
 not ours to fix. **A11 ✅** — CI per push
-on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **31 findings, 16 fixed upstream**
+on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **31 findings, 17 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
 
 | Gate | State |
 |---|---|
-| `dotnet build HTTP1.slnx` | ✅ 0 warnings, 0 errors |
-| `tests/run-tests.sh` | ✅ 303/303 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
-| `tests/run-tests.sh --tls` | ✅ 279/279, ~270 s — `h1desync` drives the cleartext listener only |
-| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ 832, both legs — 537 before H-1, 562 before H-2's second half, 657 at the previous pin. Of the 81 added since, 59 are this repo's five findings and 22 are Hermod master's own WebSocket work; nothing is unaccounted for. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so the ten tests H-26 added run in Hermod's CI and not in ours — worth knowing, given that `AHTTPServer` derives from `ATCPServer` |
-| ↳ `Tests.HTTP.` alone | ✅ 831 — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ 477/477 over 12/12 harnesses — adds the Debian curl, the foreign peers (A7), the smuggling differential (A6) and the fuzzer (A10) |
+| `dotnet build HTTP1.slnx` | ✅ 0 errors. 286 warnings, every one of them in the submodules' own projects (`Hermod`, `HermodTests`, `Styx`, `StyxTests`) and none in this repository's — this row claimed 0 warnings until 2026-10-03, which an incremental build will tell you, because one that compiles nothing reports nothing. Measured with `-t:Rebuild` |
+| `tests/run-tests.sh` | ✅ 311/311 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
+| `tests/run-tests.sh --tls` | ✅ 311/311, 9/9, ~270 s — `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice. This row read 279 and said the TLS leg left them out |
+| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ **919**, both legs — this row said 832 for three pins, which is what a count nobody re-measures does. 537 before H-1, 657 at the pin before H-10, 896 before H-27's five and H-23's six. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so H-26's ten tests run in Hermod's CI and not in ours, and H-27's fix lives in `ATCPClient` — which is why its regression test was written through `HTTPClient` |
+| ↳ `Tests.HTTP.` alone | ✅ **918** — the missing one is all of `Tests.HTTPS.` |
+| `tests/run-tests.sh --wsl` | ✅ **485/485** over 12/12 harnesses — adds the Debian curl (78), the foreign peers (A7, 58), the smuggling differential (A6, 38) and the fuzzer (A10) |
 | third-party: curl | ✅ 78/78 per build, two builds, both transports — 79 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
@@ -147,11 +147,15 @@ re-read the finding.
 
 ## ✅ A2 · Raw-wire harnesses
 
-**201/201 checks pass over both transports** — `tests/run-tests.sh`, ~97 s
-cleartext, ~300 s over TLS. It read 199 when A2 closed; the two since are the
-`308` redirect checks that H-1 unblocked. See [`tests/README.md`](tests/README.md) for the
+**209/209 checks pass over both transports** — `tests/run-tests.sh`, ~97 s
+cleartext, ~300 s over TLS. It read 199 when A2 closed; the ten since are the
+two `308` redirect checks that H-1 unblocked and the eight `HEAD` probes that
+came with H-23 — which this harness had been unable to see, the demo having
+registered `HEAD` by hand on both routes it asked about. See [`tests/README.md`](tests/README.md) for the
 per-harness breakdown and what the checks do and do not establish. One new
-upstream finding: **H-23**.
+upstream finding: **H-23**, fixed on 2026-10-03 — and the harness that found
+it could not see it, because the demo registered `HEAD` by hand on the two
+routes it was asked about.
 
 The original scope below is kept for reference; everything in it shipped except
 the deferred items noted in `tests/README.md`.
@@ -185,13 +189,14 @@ library failure.
 
 **78/78 checks pass over both transports**, wired into `tests/run-tests.sh` —
 the gate stood at **279/279** (201 raw-wire + 78 curl) when this track closed,
-and at **303/303** since A6 added `h1desync`. It read 257 when A3
+at **303/303** since A6 added `h1desync`, and at **311/311** since H-23 took
+the raw-wire half to 209. It read 257 when A3
 closed; the twenty-two since are `308` joining `/redirect/{code}` once H-1
 landed, the five Digest checks that H-3 made possible, four on the `/ws`
 upgrade, and nine on content codings once H-2 was whole. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **477/477**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **485/485**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -622,7 +627,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-30** | Repeated `Transfer-Encoding` field lines made the field **vanish** outside the server's own parse path, and a response refused for a framing reason kept its connection | RFC 9110 §5.3, RFC 9112 §6.3 | P2 | S | Two defects, found while verifying H-29's client half and fixed with it in [Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54). *The field vanishing*: only `HTTPRequest.TryParse`'s server overload combined repeated lines; the public `TryParse(text, out request)` and **every response** kept them as a `String[]`, which `GetHeaderField<String>` cannot cast and so returned null — a message carrying `Transfer-Encoding: chunked` twice was read as declaring no transfer coding at all. Three parse paths, three answers to the same octets, inside one library. *The connection*: `TryValidateResponseFraming` has always refused a response whose coding it cannot frame, but kept the connection — and the refusal's reason is that the body's end is unknown, so it was never consumed. Measured: a second request on that connection came back "Invalid HTTP response status line", having read `5\r\nhello`. It shows only when the body arrives in a later TCP segment than the head, which is why the first version of its test was green before the fix |
 | ✅ | **H-27** | Every `HTTPClient` built its own `DNSClient` **in its constructor**, whose default searches the machine's network configuration for resolvers — tens of milliseconds per construction, even when the URL is a literal IP address that will never be resolved | — | P2 | S | Found by **A9** on 2026-09-26, and measured rather than inferred: a fresh client per request was 39.4 ms p50, of which 38.3 ms was the constructor and 1.06 ms the request, and passing one shared `DNSClient` took the whole thing to 0.449 ms. **Fixed 2026-10-03, merged and pinned, [Hermod#87](https://github.com/Vanaheimr/Hermod/pull/87).** The DNS client is a `Lazy<IDNSClient>`: one handed in is wrapped as a value, one of the client's own making is built when the property is first read — and disposal asks the `Lazy` rather than the property, because reading it would build the very client that line then throws away and move the cost from the way in to the way out. Re-measured the same day on one machine, before and after: constructing the client **57.654 ms → 0.009 ms**, a fresh client per request 59.324 ms → 2.347 ms. The control is the better evidence: a shared `DNSClient` had been a 36-fold win and is now worth nothing at all (2.347 against 2.406 ms in one run), so there is no longer anything to share — the remaining ~2 ms is the handshake and the request, which no resolver can account for. Two existing tests had to change to keep testing what they test: `DisposeStopsTimersTests` counts the timers twenty clients run while alive against those left behind, and with no DNS client made there is no cache timer to leave — `TimerCount`'s own guard against vacuity fired with *"timers running while 20 HTTP clients were alive"*. They now ask for the DNS client, which is both something to count and independent evidence, from `Timer.ActiveCount` rather than from a clock. `HermodTests/HTTP/HTTPClientLazyDNSClientTests.cs` is the regression test, observing construction through the logger factory because the default DNS client is made with a logger of its own and `ATCPClient` asks for an `IDNSClient` logger at exactly one place. Without the fix three of its five tests fail — the constructor, the disposal and a whole request to a literal address — and the two that hold either way stay green. Still eager, deliberately: `ATCPServer`, which hands its DNS client to the Warden inside its own constructor, and `ICMPClient`, `Warden`, `ANotificationSender` and `ModbusTCPClient`, which call `new DNSClient()` directly — same mechanism, other components, and a server pays once per start rather than once per request |
 | ✅ | **H-31** | `DNSClient`'s two constructors declare opposite defaults for the resolver search — `false` with manual servers, `true` without — and both forwarded to one body reading `?? true`, so an **explicitly passed `null`** searched although the signature it was read from says it does not | — | P3 | XS | Found 2026-10-03 while fixing **H-27**, and fixed with it in [Hermod#87](https://github.com/Vanaheimr/Hermod/pull/87). The declared `false` held only as long as the argument was left out — C# takes the callee's default for an omitted one — so the chaining overloads were right and a caller forwarding an optional setting, which is where a `Boolean?` comes from, was not. Not only a cost: multi-server queries race and the fastest valid response wins, so a resolver joining the set unasked can answer before the one the caller named. The body now reads `?? false` and the constructor without manual servers coalesces its own `true` before forwarding, so each default is resolved where it was declared. Nothing upstream passes `null` here, so no caller changed behaviour; what changed is that the signature can be relied on. `HermodTests/DNS/Clients/DNSServerSearchDefaultTests.cs` covers all seven cases and each first asks what the search finds on the machine it runs on, calling `Assert.Ignore` when that is nothing — on a container naming no resolvers, "searched" and "did not search" look alike, and a green check there could not have gone red |
-| ⬜ | **H-23** | `HEAD` is not derived from `GET` — an unregistered `HEAD` is answered `405`, and the `Allow` field it returns omits `HEAD` as well | RFC 9110 §9.3.2 | P2 | S | Found while building A2. "A server SHOULD support HEAD for any resource it supports GET for" — and the `405` naming only `GET` misleads the very client that consulted `Allow` to find out. Every GET route currently has to register `HEAD` by hand |
+| ✅ | **H-23** | `HEAD` was not derived from `GET` — an unregistered `HEAD` was answered `405`, and the `Allow` field it returned omitted `HEAD` as well | RFC 9110 §9.1, §9.3.2 | P2 | S | Found while building **A2**. **Fixed 2026-10-03, merged and pinned, [Hermod#93](https://github.com/Vanaheimr/Hermod/pull/93).** **The citation in this row was wrong until the fix.** It read §9.3.2 and quoted *"A server SHOULD support HEAD for any resource it supports GET for"* — a sentence that is **not in RFC 9110**, in that section or any other; the same misquote sat in a comment in `Demo/Program.cs`. What the RFC says is §9.1, *"All general-purpose servers MUST support the methods GET and HEAD"*, which binds the **server** and not the resource: §9.1 names the `405` as how a resource refuses a method it does not allow, so answering `405` to `HEAD` was per-resource conformant and a server-level MUST it could not back up. §9.3.2 supplies the semantics — `HEAD` is `GET` with the content suppressed, same header fields. Routing now falls back to the `GET` handler at the two sites where the automatic `OPTIONS` answer sits, as one condition rather than a branch; a registered `HEAD` handler still wins. No body logic was needed: `AHTTPServer.HasNoResponseBody` already suppressed it, which is why a chunked `GET` answered as `HEAD` carries `Transfer-Encoding: chunked`, no body, and a reusable connection — RFC 9112 §6.3 item 1 ends any `HEAD` response at the blank line whatever the framing fields say. It costs what the `GET` costs, because the handler generates content the writer drops; §9.3.2 prefers minor header inconsistencies to exactly that, so `HTTP1/README.md` says so and points an expensive handler at `Request.HTTPMethod`. `PathNode.AdvertisedMethods` is now the single definition of what a resource offers — registered plus the two the server adds — read by the `405`, the automatic `OPTIONS` and `GetRegisteredMethods`, through which the CORS pipeline builds `Access-Control-Allow-Methods`: the `+ OPTIONS` of H-10 was right for the two answers beside it and reached nothing else. Six tests upstream, four of them red without the fix; eight probes here, and the demo's two hand-registered `HEAD` handlers are gone, which is what makes the gate's existing `HEAD` checks measure the derivation. Against the unfixed library `h1semantics` then reads 67/73 — including the plain `HEAD /` that had been green since A2 because the demo covered the gap |
 
 ---
 
@@ -635,7 +640,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
                 │
                 └──▶ ✅A5, ✅A6, ✅A7, ✅A8  (external suites)
 
-Track B in parallel: sixteen of thirty-one are in. ✅H-1 and ✅H-2 first
+Track B in parallel: seventeen of thirty-one are in. ✅H-1 and ✅H-2 first
 (small, high leverage), then ✅H-3 and ✅H-16, the two Warden findings
 ✅H-25 and ✅H-26, and ✅H-4 ✅H-6 ✅H-8 ✅H-21 ✅H-22 together on
 2026-09-26. ✅H-29 and ✅H-30 came out of A6, ✅H-10 out of A8 and ✅H-27
@@ -647,7 +652,7 @@ A4 turned out to need none of them, so nothing was ever waiting on this track.
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Six of six, finally: H-2 turned out to be
 four fixes rather than one, and the last of them closed on 2026-09-24. The
-number is now **303/303**, and 78 of those come from a client nobody here wrote
+number is now **311/311**, and 78 of those come from a client nobody here wrote
 — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ✅ A5 — Autobahn reproducible from a

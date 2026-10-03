@@ -3164,3 +3164,163 @@ and still a one-line change upstream that nobody has made.
 Track B is now **16 of 31** — H-31 is the finding this fix produced, numbered
 rather than buried in the one above it. Of the fifteen still open, none holds a
 gate red.
+
+## 2026-10-03 — H-23 closed, and the sentence it was filed on
+
+H-23 said: `HEAD` is not derived from `GET`, an unregistered `HEAD` is answered
+`405`, and the `Allow` field omits `HEAD` as well. It had sat open since A2 with
+a citation — RFC 9110 §9.3.2 — and a quotation:
+
+> A server SHOULD support HEAD for any resource it supports GET for
+
+**That sentence is not in RFC 9110.** Not in §9.3.2, not anywhere else. I had
+been asked whether HEAD really must be offered wherever GET is, went to check
+rather than answer from memory, and found the quotation was mine rather than the
+RFC's. The same misquote sat in a comment in `Demo/Program.cs`, where it had
+been justifying the hand-registered `HEAD` handlers for two years of commits.
+
+What the specification actually says, extracted from the section text:
+
+| | |
+|---|---|
+| §9.1 | "All general-purpose servers MUST support the methods GET and HEAD." |
+| §9.1 | a method recognized and implemented but not allowed for the target resource → SHOULD 405 |
+| §9.3.2 | HEAD is GET except the server MUST NOT send content |
+| §9.3.2 | the server SHOULD send the same header fields GET would have, and MAY omit those determined only while generating the content |
+
+So the answer to the question was **no**: there is no per-resource rule, and a
+resource may allow `GET` and not `HEAD` — §9.1 names the `405` as how it says
+so. The requirement is one level up and it is a **MUST**: a general-purpose
+server must support `HEAD`. A server answering `405` to `HEAD` on every route
+whose handler had not registered one by hand was per-resource conformant and
+server-level in breach, which is a more precise finding than the one that had
+been written down, and a weaker one per resource.
+
+The row in `PLAN.md` now carries the correction rather than a quietly swapped
+citation. A wrong reference that supports the right conclusion is the kind of
+error that survives review, because nobody re-reads a section they agree with.
+
+### §9.3.2 also had an opinion about the implementation
+
+The obvious implementation is to run the `GET` handler and drop the body, and
+§9.3.2 names exactly that:
+
+> These minor inconsistencies are considered preferable to generating and
+> discarding the content for a HEAD request
+
+That is rationale rather than a requirement, and it is the only place the
+specification expresses a preference about cost. It did not change the decision
+— automatic correctness is worth more here than automatic frugality — but it
+changed what had to be written down: the derivation costs what the `GET` costs,
+a 64 MiB download answered as `HEAD` allocates 64 MiB to send nothing, and a
+handler that cares can read `Request.HTTPMethod` and return the header fields
+alone. That is in `HTTP1/README.md` now, where a handler author will meet it.
+
+### What the fix turned out not to need
+
+Nothing for the body. `AHTTPServer.HasNoResponseBody` has always suppressed it
+for a `HEAD` request, and three things follow from that one predicate: no static
+content is copied, no chunk worker starts, and no event-stream worker starts. So
+the header fields that go out are the ones `GET` would have sent — §9.3.2's
+SHOULD, for free — and a chunked `GET` answered as `HEAD` carries
+`Transfer-Encoding: chunked`, no body, and a reusable connection. RFC 9112 §6.3
+item 1 ends any response to `HEAD` at the blank line "regardless of the header
+fields present", so that is unambiguous rather than lucky.
+
+The routing change is one condition at each of the two sites where H-10's
+automatic `OPTIONS` answer already sat, and `PathNode.AdvertisedMethods` is now
+the single definition of what a resource offers. That last part came out of the
+H-10 work rather than this one: appending `OPTIONS` inside `ProcessRequest` was
+right for the two answers beside it and reached nothing else, so anything asking
+routing what a resource offers — `GetRegisteredMethods`, and through it the CORS
+preflight — saw the registered set and never the added ones. One definition,
+three readers.
+
+### The demo was hiding the finding from the harness
+
+This is the part worth keeping. `h1semantics` has had three `HEAD` checks since
+A2 and the curl matrix two more, and all five were green all along — against
+`/` and `/files/resource.txt`, the only two routes where the demo registered
+`HEAD` by hand. Seventeen `GET` routes, two of them covered.
+
+So the harness that found H-23 could not see it. The finding lived in a sentence
+in `PLAN.md`, and the gate it belonged to said nothing, because the consumer had
+worked around the gap before the gate could notice. That is a third variety of
+the vacuum this log keeps cataloguing: not a check that cannot fail, but a check
+whose subject had been quietly repaired underneath it.
+
+Both registrations are gone. Against the library without the fix `h1semantics`
+now reads **67/73**, and the six red checks include the plain `HEAD /` that had
+been green since A2.
+
+Two of the three original checks stay green even against a `405`, incidentally:
+"HEAD keeps representation metadata → contains Content-Type:" and "HEAD has no
+body → does not contain the demo's greeting" are both true of the JSON error
+body. Only the status check distinguishes them, which is why it sits first.
+
+### One harness bug of my own
+
+The upstream test for connection reuse after a chunked `HEAD` sends two requests
+on one connection. The first version stopped as soon as a second status line had
+arrived — and a header section and a body need not arrive in one read, so it
+returned a complete header section and no body. Which looks exactly like a
+server that answers and then fails to send the content: I was two minutes from
+filing a finding against the thing I had just fixed.
+
+"Two status lines have arrived" is not "the second response is complete". It
+reads to EOF now, the second request being the one that asks for the close.
+
+### Measured against `416fcd06`
+
+| | |
+|---|---|
+| `Tests.HTTP.` | **918** (912 + six) |
+| the filter CI gates on | **919** |
+| the protocol regression selection | 377, unmoved — the new tests are in a new file |
+| this repository's gate | 9/9 harnesses, **311/311** (303 + eight probes) |
+
+The pin is my own merge commit this time, with #91 and #92 (HTTP/3) behind it
+and nothing of theirs under `HTTP1/`, `HTTP/`, `TCP/` or `DNS/`.
+
+**And the ground moved again.** Between the branch point and the merge,
+`NUnit.Analyzers 4.15.0` was added to `HermodTests` — so the merged tree runs
+analyzers my files had never been compiled against, exactly as NUnit 5 had been
+added under H-27 a few hours earlier. Measured: **no NUnit analyzer warnings at
+all**, and none of any kind in the three files these two findings added.
+
+That measurement needed a second attempt. The first build after the checkout
+reported "0 warnings" — from an incremental build that had compiled nothing,
+because the previous command had already built the same tree. A no-op build
+reports a clean one. `-t:Rebuild` is what actually runs the analyzers, and the
+honest figure for the solution is 358 warnings, all of them in the submodule's
+own projects.
+
+A third attempt, in fact: the first `-t:Rebuild` of the whole solution failed
+with four `MSB3021`/`MSB3027` errors, because a background `dotnet test` still
+held `testhost` open on the output directory. Four errors that were mine and not
+the code's — worth the line, because "the build is broken" was the first thing
+I thought.
+
+### Three numbers this repository had stopped checking
+
+The counts above are the ones H-23 moved. Re-measuring them turned up three
+that nothing had moved and nobody had re-read:
+
+| Claim | Said | Says now |
+|---|---|---|
+| `dotnet build HTTP1.slnx` | 0 warnings, 0 errors | 0 errors, **286 warnings** — all in the submodules' own projects, none in this repository's |
+| `tests/run-tests.sh --tls` | 279/279, "`h1desync` drives the cleartext listener only" | **311/311, 9/9** — `h1desync` runs in either leg, and its 24 are the same 24 twice |
+| the filter CI gates on | 832 | **919** — the row had stood through three pins |
+
+The first is the interesting one, because it is how the claim survived: an
+incremental build that compiles nothing reports no warnings, so every casual
+check confirmed it. `-t:Rebuild` is the only form of that command which answers
+the question the row was asking.
+
+The `--wsl` leg is **485/485** over 12/12, measured rather than derived: 311
+plus the Debian curl's 78, the five foreign peers' 58 and the smuggling
+differential's 38.
+
+And 1610 passing across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden and DNS
+against the same pin — which is #91's and #92's work, not this repository's, and
+is reported here as "nothing broke" rather than as coverage.

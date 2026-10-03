@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **912 NUnit tests** live with the stack in Hermod
+suite drivers; the **918 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **912 NUnit tests** in `libs/Hermod/HermodTests/`
+**Tests:** most coverage is the **918 NUnit tests** in `libs/Hermod/HermodTests/`
 under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **377** are the HTTP/1.x
 protocol regression selection and **149** cover RFC 6455/7692 WebSockets. CI gates
-on those 912 plus the single test in `Tests.HTTPS.` = **913** — a filter that
+on those 918 plus the single test in `Tests.HTTPS.` = **919** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
 through `ATCPClient`. The regression selection did not move
@@ -149,7 +149,7 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
 **A3 done** — the curl matrix (78 checks, 79 where curl has HTTP/2 *and* the
-target is local — see [`tests/README.md`](tests/README.md)). The gate is **303/303 over both
+target is local — see [`tests/README.md`](tests/README.md)). The gate is **311/311 over both
 transports** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
@@ -183,9 +183,9 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 912 `Tests.HTTP.` / 377 regression selection / 149 WebSockets, all run counts — 913 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: 502 `Tests.DNS`, 113 across `Tests.TCP`/`Timers`/`Warden`/`HTTPS`, and 1287 across WebSocket, Modbus, SMTP, Rendezvous, HTTP/2 and HTTP/3 |
-| this repo's gate | **303/303**, cleartext and TLS (201 raw-wire + 78 curl + 24 desync) |
-| with `--wsl` (second curl build + foreign peers + the smuggling differential) | **477/477** |
+| Hermod's own NUnit suites | 918 `Tests.HTTP.` / 377 regression selection / 149 WebSockets, all run counts — 919 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: 502 `Tests.DNS`, 113 across `Tests.TCP`/`Timers`/`Warden`/`HTTPS`, and 1287 across WebSocket, Modbus, SMTP, Rendezvous, HTTP/2 and HTTP/3 |
+| this repo's gate | **311/311**, cleartext and TLS (209 raw-wire + 78 curl + 24 desync) — 303 until H-23 added eight `HEAD` probes to `h1semantics` |
+| with `--wsl` (second curl build + foreign peers + the smuggling differential) | **485/485** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
 | benchmarks (A9) | `tests/h1bench`, not a gate — 0.240 ms p50 against Kestrel's 0.252 ms on the same loopback |
 | parser fuzzing (A10) | `tests/h1fuzz` — request, response and chunked parsers; deterministic in the gate, ten minutes per target nightly. Found **H-28** on its first run |
