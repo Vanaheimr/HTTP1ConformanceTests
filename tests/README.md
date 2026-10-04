@@ -25,11 +25,12 @@ scrapes output for a marker character.
 
 ## Status
 
-**311/311 checks pass, over both transports** — 209 raw-wire + 78 curl + 24
-desync — across 9/9 harnesses, two of which need no demo response at all: the
+**313 checks pass over cleartext and 314 over TLS** — 211 raw-wire + 78 curl
+(79 over TLS, the ALPN check having no cleartext equivalent) + 24 desync —
+across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
-**485/485** over 12/12.
+**487/487** over 12/12.
 
 The curl figure is 78 **here** and 79 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional, and a

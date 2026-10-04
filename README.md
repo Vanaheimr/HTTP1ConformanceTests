@@ -25,14 +25,14 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 311/311 checks, ~135 s
+tests/run-tests.sh        # 313 checks, ~135 s
 ```
 
 | | |
 |---|---|
-| `tests/` raw-wire harnesses | **209/209** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
+| `tests/` raw-wire harnesses | **211/211** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
 | `tests/curl-matrix.sh` | **78/78** (79 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **311/311** — and **485/485** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
+| both, over cleartext *and* TLS | **313** cleartext and **314** over TLS, the extra one being the ALPN check that only a TLS handshake can carry — and **487/487** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 19 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
@@ -49,15 +49,15 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Measured by | Count | What |
 |---|---|---:|---|
-| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **940** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **975** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
 | ↳ the protocol regression selection | the eleven-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **379** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings in both roles, .NET interop. Unchanged by the five findings of 2026-09-26, because their four fixtures are not in the filter — adding them made it **431** when measured against `5ab74d7f`. Whether they belong is a one-line change to that filter upstream, and it has not been made. It moved from 374 to 377 with H-10, whose three socket tests went into a file the filter does name, and to 379 with H-28's two, which went into `HTTP11AuditRegressionTests`; H-27's five, H-23's six and H-11's fourteen went into new files, and so are in the row above and not in this one — which is the same gap seen from the other side, three times in one week |
 | ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **149** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **941** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 737 and 738, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
+| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **976** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 737 and 738, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
 | Autobahn vs. the **server** (demo host `:8081`) | `tests/autobahn.sh` | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
 Every count above is a **run** count, re-measured on 2026-10-04 against Hermod
-`d2d608d2` and Styx `c530de16` by running the filter in its own row — which is now printed, because
+`23d0dfd2` and Styx `c530de16` by running the filter in its own row — which is now printed, because
 every time a figure here drifted it was a figure whose filter nobody could check.
 
 `--list-tests` and `dotnet test` disagree on this checkout, and by a stable

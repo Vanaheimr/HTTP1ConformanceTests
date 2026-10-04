@@ -1,4 +1,4 @@
-# HTTP/1.1 Conformance Tests — Build Log
+﻿# HTTP/1.1 Conformance Tests — Build Log
 
 The chronological working notes for this repository: every step, the reasoning
 behind it, what was found along the way, and how each thing was verified. For
@@ -3642,3 +3642,104 @@ Styx carries NUnit 5 and `NUnit.Analyzers` into `StyxTests` — the same move
 HermodTests made on 2026-10-03 — and *"Every ParseOptional of a JObject keeps
 one contract"*, which is shared Illias code this stack parses JSON with. Nothing
 here reads it directly; it is in the 1927 by way of Hermod.
+
+## 2026-10-04 — The XS group, and a fix that arrived from the other direction
+
+H-17, H-9, H-12 and H-20 — the four XS findings left of the state analysis — in
+one branch and one commit each ([Hermod#132](https://github.com/Vanaheimr/Hermod/pull/132)),
+plus H-32, which this work produced and somebody else fixed while I was writing
+it.
+
+**Two of the four were not what their row said**, which is now the fourth and
+fifth time in three days:
+
+| | the row said | it was |
+|---|---|---|
+| H-12 | "No HSTS" | emission has existed for years through `SecurityHeaderOptions`, with a two-year default. The **value** was missing: nothing could read the field and nothing checked what was written into it |
+| H-20 | "IPv6 zone identifiers in URIs" | not unsupported — **read wrongly**. `[fe80::a%25en1]` yielded zone `25en1`, a success with the wrong answer rather than a refusal |
+
+H-20's is the worse kind. A refusal is a message; a link-local address dialled
+through an interface that does not exist is a connection that fails somewhere
+else, later, for a reason nobody can see from here.
+
+### H-9 is now a decision, which is what the row asked for
+
+It said: "deliberately not implemented is a valid answer, but then document
+it". So TRACE stays unimplemented, and the answer changed from 405 to **501**:
+§9.1 keeps 405 for a method "recognized and implemented, but not allowed for
+the target resource", and this refusal is the server's for every resource at
+once — a 405 whose `Allow` named GET, HEAD and OPTIONS invited a client to go
+looking for a resource that allows TRACE.
+
+The reason not to implement it is §9.3.8's own, and it is the sort of sentence
+worth quoting at the code: a TRACE response carries the request's fields back,
+so the recipient "SHOULD exclude any request fields that are likely to contain
+sensitive data". That is a judgement about `Authorization`, `Cookie` and
+whatever an application invented, which a library would make once, for
+everybody, and wrong. A registered TRACE handler still decides — the default is
+a default and not a prohibition.
+
+### H-32: reported, and fixed by someone else within the hour
+
+While giving the server an ALPN answer, `AllowedTLSProtocols` turned up next to
+it: accepted by `HTTPServer`, kept, passed down to `ATCPServer` — and read from
+a property of `TCPConnection` that **nothing anywhere assigned**. Null on every
+connection ever made, so a server configured for TLS 1.3 alone went on
+accepting 1.2. The doc comments admitted it: *"kept in AllowedTLSProtocols, but
+not read yet"*, which is the honest version of a setting that does nothing, and
+still a setting that does nothing.
+
+It was not one of the four, so it went into #132's description rather than into
+#132. That turned out to be the fast path: `7dc1d593` landed with the same
+design — down to the default interface member "as `TLSApplicationProtocols`
+is", which is #132's own ALPN property — before I had finished testing mine.
+
+So my implementation went in the bin. **Its tests did not**, because that
+commit says of itself *"built, not tested here"* and names a downstream OCPI
+test as its evidence. A conformance finding closed by a test in another
+repository is closed on somebody else's schedule, and nothing in `HermodTests`
+touched `AllowedTLSProtocols` before or after. Three tests, in
+[Hermod#133](https://github.com/Vanaheimr/Hermod/pull/133).
+
+That is the second time this week that reporting a thing beside the thing was
+worth more than fixing it: the first was #82's shared-HTTP change showing up as
+a test count I could not explain until I looked.
+
+### Two of my own errors
+
+**A test that was green alone and red in the suite.** Not flakiness: I had
+built `Hermod.csproj` and then run the tests with `--no-build`, so the run used
+the older copy of the library sitting in `HermodTests/bin`. The same stale-binary
+trap as this morning's "0 warnings" from an incremental build, in a different
+costume. Build the project you are about to run.
+
+**RFC 6874 §3 is not normative.** I had taken "remove the ZoneID before
+including that URI in an HTTP request" for a MUST and was about to write that
+into a comment; the section opens by saying it makes no normative statements.
+It is "highly desirable", the code says so, and the difference matters because
+the next reader would have believed me.
+
+### Measured against `23d0dfd2`
+
+| | |
+|---|---|
+| `Tests.HTTP.` / the filter CI gates on | **975** / **976** |
+| the protocol regression selection | 379, unmoved — all five findings' tests are in new files |
+| gate, cleartext | 9/9, **313/313** |
+| gate, `--tls` | 9/9, **314/314** |
+| gate, `--wsl` | 12/12, **487/487** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | **2000** — 1927 at the previous pin |
+| `dotnet build HTTP1.slnx -t:Rebuild` | 0 errors, 278 warnings, none in this repository's projects, no NUnit analyzer warnings |
+
+Two probes landed here as well: `TRACE → 501` in `h1semantics`, with a second
+check asserting that the refusal reflects **no** header back out of the
+request — a 501 that echoed one would be the §9.3.8 hazard without the
+feature; and
+the ALPN answer in the curl matrix, on the TLS leg alone. That last one is why
+the two legs now differ by one — ALPN exists only inside a TLS handshake, so
+there is no cleartext equivalent to run, and a matrix that pretended otherwise
+would be the kind of symmetry this repository keeps warning itself about.
+
+Track B is **25 of 32**. The seven open are H-5, H-7, H-13, H-14, H-15, H-18
+and H-19 — one L and six S, and none of them XS any more, which this time is
+measured rather than asserted.

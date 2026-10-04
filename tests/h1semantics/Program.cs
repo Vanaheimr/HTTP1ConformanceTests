@@ -142,6 +142,26 @@ checks.Contains(
     checks.Contains("405 carries Allow",             response, "Allow:");
 }
 
+// §9.1 + §9.3.8: TRACE is recognized and deliberately not implemented, so the
+// answer is 501 and not the 405 routing would give for a method a resource does
+// not register. §9.1 keeps 405 for one "recognized and implemented, but not
+// allowed for the target resource", and this refusal is the server's for every
+// resource at once.
+//
+// Why it is refused rather than reflected is §9.3.8's own: a TRACE response
+// carries the request's fields back, so the recipient "SHOULD exclude any
+// request fields that are likely to contain sensitive data" — a judgement a
+// library would make once, for everybody, and wrong. Cross-Site Tracing was
+// that mistake in 2003.
+{
+    var response = await target.RoundTripAsync(
+                       $"TRACE / HTTP/1.1\r\nHost: {host}\r\nX-Reflect-Me: no\r\n\r\n"
+                   );
+
+    checks.Status        ("TRACE is not implemented",        response, 501);
+    checks.DoesNotContain("and reflects nothing back",       response, "X-Reflect-Me");
+}
+
 // §9.3.7: server-wide OPTIONS.
 checks.Status("OPTIONS *", await target.RoundTripAsync($"OPTIONS * HTTP/1.1\r\nHost: {host}\r\n\r\n"), 200, 204);
 

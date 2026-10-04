@@ -207,6 +207,21 @@ if [ "$HAS_H2" = "yes" ]; then
     wo "--http1.1 honoured by an HTTP/2-capable curl" '%{http_version}' "1.1" --http1.1 "$BASE/"
 fi
 
+# ALPN exists only inside a TLS handshake, so this is the one check here that is
+# conditional on the *transport* rather than on the build — the TLS leg runs 79
+# and the cleartext one 78.
+#
+# The needle is "accepted", because curl prints its own offer on the line above
+# ("ALPN: curl offers http/1.1") and a matrix that passed on that would be
+# asserting what curl does. Until Hermod#132 the answer here was "ALPN: server
+# did not agree on a protocol. Uses default." — the server carried no
+# ApplicationProtocols and left every client to guess.
+case "$BASE" in
+    https://*)
+        trace "the server selects http/1.1 over ALPN" "accepted.*http/1.1" "$BASE/"
+        ;;
+esac
+
 # ---------------------------------------------------------------------------
 # Methods
 # ---------------------------------------------------------------------------
