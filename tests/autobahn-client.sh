@@ -103,6 +103,20 @@ command -v docker >/dev/null 2>&1 || {
     exit 127
 }
 
+# python3 is asked to *run* rather than merely to exist, because on Windows
+# `command -v python3` finds the Microsoft Store stub at
+# WindowsApps/python3, which is not an interpreter: it prints an advertisement
+# and exits non-zero. Three things here need python3 — the readiness probe for
+# the container's port, the wait for the report, and the report's own parse —
+# and the middle one would read a stub as "the report is not ready yet" and,
+# after two minutes, say the suite had written nothing. That is a wrong answer
+# rather than a missing one, which is worse, so it is settled here instead.
+python3 -c 'import json' >/dev/null 2>&1 || {
+    echo "python3 does not run here (it is needed to read the suite's report)." >&2
+    echo "On Windows, 'python3' is often the Microsoft Store stub; run this from WSL." >&2
+    exit 127
+}
+
 # --- build -----------------------------------------------------------------
 if [ "$nobuild" -eq 0 ]; then
     echo "Building the client driver..."
@@ -239,15 +253,64 @@ echo
 echo "fuzzingserver log (tail):"
 docker logs "$container" 2>&1 | tail -5
 
-# --- parse the report ------------------------------------------------------
+# --- wait for the report ---------------------------------------------------
+#
+# /updateReports is acknowledged long before the report exists, and this used to
+# be a single existence check. The nightly of 2026-10-03 went red on it: the
+# driver printed "Asking the fuzzingserver to write its reports..." at
+# 09:35:11.312, came back 11 ms later, and this check ran 150 ms after that and
+# declared that the suite had written nothing. All 517 cases had in fact run,
+# 0 stalled and 0 threw. No conformance question was answered either way; the
+# leg was red about a race.
+#
+# The container is detached and still serving at this point, so nothing tells us
+# the suite has finished writing except the file itself. Readiness is "it
+# parses", not "it exists": a half-written index.json exists too, and would come
+# apart in the parser below with a message about JSON rather than about timing.
+#
+# The wait is not skipped when the driver reported that /updateReports failed.
+# That failure can be the close handshake rather than the request, in which case
+# the report is on its way regardless — so waiting can only turn a missing
+# verdict into a readable one, and two minutes on a run that has already gone
+# wrong is the cheapest thing here.
 indexfile="$repdir/index.json"
-if [ ! -f "$indexfile" ]; then
+report_wait=120                        # seconds
+polls=$(( report_wait * 2 ))           # at 0.5s each
+waited_halves=0
+report_ready=0
+
+while [ "$polls" -gt 0 ]; do
+
+    if [ -f "$indexfile" ] &&
+       python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$indexfile" >/dev/null 2>&1; then
+        report_ready=1
+        break
+    fi
+
+    sleep 0.5
+    polls=$(( polls - 1 ))
+    waited_halves=$(( waited_halves + 1 ))
+
+done
+
+if [ "$report_ready" -ne 1 ]; then
     echo >&2
-    echo "No index.json in $repdir -- the suite never wrote a report." >&2
+    echo "No readable index.json in $repdir after ${report_wait}s -- the suite wrote no report." >&2
+    echo >&2
+    echo "This is not a verdict about the client: every case may have passed. It says the" >&2
+    echo "verdict could not be read, which is why this exits 3 and a floor failure exits 1." >&2
     echo "Container log:" >&2
     docker logs "$container" 2>&1 | tail -40 >&2
-    exit 1
+    exit 3
 fi
+
+# Printed only when it actually had to wait, so that the next time this gets
+# slower there is a number to compare against rather than a memory.
+if [ "$waited_halves" -gt 0 ]; then
+    echo "The report took $(( waited_halves / 2 )).$(( (waited_halves % 2) * 5 ))s to appear."
+fi
+
+# --- parse the report ------------------------------------------------------
 
 # Three buckets, not two, exactly as on the server side:
 #   passing  OK / NON-STRICT / INFORMATIONAL   must stay at or above min_pass

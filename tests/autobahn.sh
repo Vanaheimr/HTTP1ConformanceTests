@@ -307,6 +307,14 @@ MSYS_NO_PATHCONV=1 $runner docker run --name "$CONTAINER" -e PYTHONUNBUFFERED=1 
     }
 
 # --- parse the report ------------------------------------------------------
+#
+# One existence check is enough here, and deliberately so: `docker run` above is
+# in the foreground, so the suite has finished and the container has exited
+# before this line runs, and a bind mount has the file by then. The client-side
+# driver cannot do this — there the container stays up and serving while our
+# driver drives it, and the report is written after /updateReports returns, so
+# tests/autobahn-client.sh waits for the file. The asymmetry is the container
+# lifecycle and not an oversight in either of them.
 INDEXFILE="$REPDIR/index.json"
 [ -f "$INDEXFILE" ] || { echo "No Autobahn report at $INDEXFILE (did the container reach the server?)" >&2; exit 1; }
 

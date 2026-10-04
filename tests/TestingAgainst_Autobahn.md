@@ -212,6 +212,49 @@ result:
 | `autobahn` | `tests/autobahn.sh` | 481 |
 | `autobahn-client` | `tests/autobahn-client.sh` | 445 |
 
+### When the suite writes no report: a red leg about a race
+
+The nightly of **2026-10-03** failed the `autobahn-client` leg, and nothing was wrong with the
+client. From the log:
+
+```
+09:35:11.312  Asking the fuzzingserver to write its reports...
+09:35:11.324  Ran 517 cases. Stalled: 0, threw: 0.
+09:35:11.466  No index.json in .../reports-client -- the suite never wrote a report
+```
+
+`/updateReports` came back in **11 ms** for a 517-case report, and the driver checked for the file
+**142 ms** after that. All 517 cases had run, none stalled, none threw. The leg was red about a
+race, in a step that cannot distinguish "the verdict is bad" from "there is no verdict".
+
+Both halves of that are now fixed in [`tests/autobahn-client.sh`](autobahn-client.sh):
+
+- it **waits** for `index.json`, up to 120 s, polling twice a second, and readiness is *"it
+  parses"* rather than *"it exists"* — a half-written report exists too, and would come apart in
+  the parser with a message about JSON instead of about timing;
+- a report that never arrives exits **3** rather than 1, and says in so many words that this is not
+  a verdict about the client.
+
+The server-side driver keeps its single existence check, and the asymmetry is the container
+lifecycle rather than an oversight: there `docker run` is in the foreground, so the suite has
+finished and the container has exited before the check runs. Here the container stays up and
+serving while our driver drives it, and the report is written after `/updateReports` returns.
+
+**The race did not reproduce locally** — 445/517 again, and the new "the report took *N*s" line did
+not print at all, the file being there on the first look. A fix whose trigger will not reproduce is
+a fix that has not been exercised, so the loop was driven directly against the four states it has
+to tell apart: a report already there (ready at once), none at all (times out, 3), a half-written
+one (times out, 3), and one that appears after three seconds (**ready after 3.0 s**). The last is
+the case the nightly needed.
+
+That test also found something the suite run never would have. The readiness probe failed on *all
+four* states at first, including the one that should pass immediately — because on Windows
+`command -v python3` finds the Microsoft Store stub in `WindowsApps/`, which prints an
+advertisement and exits 49 instead of running Python. In the wait loop that reads as "the report is
+not ready yet", for two minutes, and then as "the suite wrote no report": a wrong answer rather
+than a missing one. So the script now asks python3 to *run* rather than to exist, up front, where
+all three of its uses are covered at once.
+
 ## When *we* are the one that fails: 12.4.18, and a log that said nothing
 
 On 2026-09-23 the nightly's server job went red for the first time, on case **12.4.18** — "send

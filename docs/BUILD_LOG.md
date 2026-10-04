@@ -3463,3 +3463,80 @@ than about that code.
 Track B is **20 of 31**, and the eleven still open are what is left of the state
 analysis: H-5, H-7, H-9, H-12, H-13, H-14, H-15, H-17, H-18, H-19, H-20. None
 holds a gate red; none is XS any more.
+
+## 2026-10-04 — A red nightly that was about a race, and a stub that lied about Python
+
+The scheduled nightly of 2026-10-03 failed its `autobahn-client` leg, and had
+been red since. It was the first thing to look at when asked what was left to
+do, and it is worth the entry because **nothing was wrong with the client**:
+
+```
+09:35:11.312  Asking the fuzzingserver to write its reports...
+09:35:11.324  Ran 517 cases. Stalled: 0, threw: 0.
+09:35:11.466  No index.json in .../reports-client -- the suite never wrote a report
+```
+
+`/updateReports` returned in **11 ms** for a 517-case report; the driver looked
+for the file **142 ms** later and declared it missing. All 517 cases had run,
+none stalled, none threw. The leg was red about a race, in a step that cannot
+tell "the verdict is bad" from "there is no verdict" — the same conflation this
+log keeps finding in its own checks, this time in the reporting of one.
+
+The fix is in `tests/autobahn-client.sh`: wait for `index.json`, up to 120 s at
+two polls a second, with readiness defined as *it parses* rather than *it
+exists* — a half-written report exists too, and would come apart in the parser
+below with a message about JSON instead of about timing. A report that never
+arrives now exits **3**, not 1, and says that this is not a verdict about the
+client.
+
+The server-side driver keeps its single existence check, and that asymmetry is
+now written down beside it so nobody levels it: there `docker run` is in the
+foreground, so the container has exited before the check; here it stays up and
+serving, and the report is written after `/updateReports` returns. Nine other
+single-shot `[ -f ... ]` checks across `tests/*.sh` were looked at: seven are
+build outputs, where nothing writes concurrently, and the only two about a file
+a container writes are these.
+
+### The race would not reproduce, so the branch was tested instead
+
+Locally the suite came back 445/517 with 72 declined and no hard failures — the
+documented figures — and the new "the report took *N*s" line **did not print at
+all**. The file was there on the first look. The GitHub runner is slower and
+more contended; this machine is not.
+
+A guard whose trigger will not reproduce is a guard that has not been
+exercised, which is the thing this repository has a convention about. So the
+loop was driven directly against the four states it has to separate:
+
+| | |
+|---|---|
+| a report already there | ready at once |
+| none at all | times out, exit 3 |
+| a half-written one | times out, exit 3 |
+| one that appears after 3 s | **ready after 3.0 s** |
+
+The third row is why readiness is a parse, and the fourth is the case the
+nightly needed.
+
+### And the test found what the suite run could not
+
+On the first attempt **all four states failed**, including the one that should
+pass immediately. The probe was fine; `python3` was not. On Windows,
+`command -v python3` finds the Microsoft Store stub in `WindowsApps/`, which
+prints an advertisement and exits 49 rather than running Python — so the
+readiness check read it as "not ready yet", would have waited the full two
+minutes, and would then have reported that the suite wrote no report.
+
+A wrong answer rather than a missing one, and it only showed because the branch
+was tested in the environment that has the stub. The script now asks python3 to
+*run* rather than to exist, before anything else happens, which covers all
+three of its uses at once: the container's port probe, this wait, and the
+report's parse.
+
+Verified end to end afterwards in WSL, where `python3` is real: a three-case
+slice goes green through the new prerequisite check, the wait and the parse, and
+the container log shows "Updating reports, requested by peer ... / Report
+generation complete." for a report that needs no waiting at all.
+
+The next scheduled nightly is at 03:37 UTC, about three hours after this
+landed, which is where the fix meets the machine that produced the race.
