@@ -216,7 +216,9 @@ and the server declines, because .NET's `DeflateStream` cannot set `windowBits`.
 RFC 7692 §7.1.2.1 requires declining an offer that cannot be satisfied, so this is
 correct behaviour and Autobahn says `UNIMPLEMENTED` rather than `FAILED`.
 
-It runs nightly at 03:37 UTC and gates on a **floor** of 481 rather than on
+It is scheduled nightly for 03:37 UTC — and starts around 10:00 UTC, the whole
+family of four running about six hours late; see the `cron` comment in
+`.github/workflows/nightly.yml` — and gates on a **floor** of 481 rather than on
 perfection: passing must not drop below it, and a single hard failure (`FAILED`,
 `WRONG CODE`, `UNCLEAN`) fails the run whatever the count says. Excluding the two
 sections to buy a green badge would have been the alternative, and it is the worse

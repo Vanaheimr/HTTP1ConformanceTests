@@ -180,8 +180,10 @@ so the gap is "not offered as a feature" rather than "impossible".
 
 ## In CI: the nightly, gated on a floor
 
-[`.github/workflows/nightly.yml`](../.github/workflows/nightly.yml) runs this every night at
-03:37 UTC on `ubuntu-latest`, and **fails on the result** — a nightly that reports a number
+[`.github/workflows/nightly.yml`](../.github/workflows/nightly.yml) asks for this every night at
+03:37 UTC on `ubuntu-latest` — and gets it at about 10:00 UTC, GitHub's scheduler running all four
+repositories of the family some six hours late and in order; see the comment on the `cron` line. It
+**fails on the result** — a nightly that reports a number
 without failing on it is a report nobody reads. It is not in the push gate because of how the
 suite is *acquired* rather than how it behaves: Autobahn ships usably only as a Docker Hub image,
 and a registry rate limit turning a push red would teach people to ignore the gate.

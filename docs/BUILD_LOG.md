@@ -3540,3 +3540,60 @@ generation complete." for a report that needs no waiting at all.
 
 The next scheduled nightly is at 03:37 UTC, about three hours after this
 landed, which is where the fix meets the machine that produced the race.
+
+### The nightly that followed, and the clock that is six hours off
+
+2026-10-04, 10:04 UTC: **9/9 jobs green**, and the leg that had been red reports
+445/517 passing, 72 declined, 0 hard failures — `INFORMATIONAL 3, NON-STRICT 12,
+OK 430, UNIMPLEMENTED 72`, at the floor exactly.
+
+**The new guard did not fire.** No "the report took *N*s" line in the log, so
+the leg is green for the same reason it was green before the fix, not because of
+it. One green run shows the fix broke nothing; it does not show that it works.
+What shows that is the four-state test of the loop — the evidence has to come
+from where the condition can be made to happen.
+
+The timestamps are the interesting part, and they refine the diagnosis:
+
+| | 2026-10-03 (red) | 2026-10-04 (green) |
+|---|---|---|
+| `/updateReports` → returned | **11 ms** | **596 ms** |
+| report present when checked | no | yes |
+
+Fifty-four times longer for the same call. That looks less like "the suite needs
+a moment to write 517 cases" and more like the failing run's request having
+returned without being processed — the 11 ms being the symptom rather than the
+cause. The guard covers either reading, because it waits on the artefact instead
+of trusting the call, which is why it was written that way and not as a fixed
+sleep.
+
+One failure in seven nights is the base rate, so the condition may not recur for
+weeks.
+
+### And while looking at the run times
+
+`nightly.yml` asks for 03:37 UTC. It has never once run then. Measured across
+the seven preceding scheduled runs of each of the four repositories:
+
+| | cron | observed, 2026-10-04 |
+|---|---|---|
+| Hermod | 02:17 | 08:27 |
+| HTTP/3 | 02:43 | 08:45 |
+| HTTP/2 | 03:11 | 09:37 |
+| HTTP/1 | 03:37 | 10:04 |
+
+About **six hours** late, every night, all four. The comment on the `cron` line
+had claimed GitHub's scheduler "delays runs by tens of minutes", which is what
+being off the hour was supposed to mitigate; the measurement says otherwise and
+the comment now says what was measured.
+
+The useful half of that: **the stagger survives.** The four slip together and in
+order, still 18–52 minutes apart, so the thing the stagger exists for — four
+repositories not contending for runners — still holds, and these times are not
+worth changing for that reason. What does change is a reader's expectation: a
+"nightly" result is waiting at mid-morning UTC, not before breakfast. Also
+worth knowing before anyone shifts one of the four by itself, which would walk
+it into a neighbour.
+
+Three documents said 03:37 as if it were when the run happens. They now say what
+it asks for and what it gets.

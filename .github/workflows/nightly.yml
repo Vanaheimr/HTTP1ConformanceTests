@@ -20,9 +20,23 @@ name: Nightly
 on:
   schedule:
     # 03:37 UTC. The family staggers so the four do not contend for runners:
-    # Hermod 02:17, HTTP/3 02:43, HTTP/2 03:11, this one last. Off the hour on
-    # purpose — GitHub's scheduler is busiest there and delays runs by tens of
-    # minutes.
+    # Hermod 02:17, HTTP/3 02:43, HTTP/2 03:11, this one last. Off the hour
+    # because GitHub's scheduler is busiest there.
+    #
+    # What the cron asks for is not when it runs. Measured on 2026-10-04 over
+    # the seven preceding scheduled runs of each repository, every one of the
+    # four starts about SIX HOURS late, not the "tens of minutes" this comment
+    # used to claim:
+    #
+    #   Hermod   02:17 -> 08:27     HTTP/2   03:11 -> 09:37
+    #   HTTP/3   02:43 -> 08:45     HTTP/1   03:37 -> 10:04
+    #
+    # The stagger survives it, which is the part that matters here: the four
+    # slip together, in order, and still land 18-52 minutes apart. So this is
+    # not a reason to change the times — but it does mean a "nightly" result
+    # is waiting at mid-morning UTC rather than before breakfast, and that
+    # shifting any one of these four without the others would walk it into a
+    # neighbour.
     - cron: '37 3 * * *'
   workflow_dispatch:
 
