@@ -1,4 +1,4 @@
-﻿# HTTP/1.1 Conformance Tests — Build Log
+# HTTP/1.1 Conformance Tests — Build Log
 
 The chronological working notes for this repository: every step, the reasoning
 behind it, what was found along the way, and how each thing was verified. For
@@ -3743,3 +3743,169 @@ would be the kind of symmetry this repository keeps warning itself about.
 Track B is **25 of 32**. The seven open are H-5, H-7, H-13, H-14, H-15, H-18
 and H-19 — one L and six S, and none of them XS any more, which this time is
 measured rather than asserted.
+
+## 2026-10-04 — H-18: the modernisation had happened to the copy
+
+H-18's row said *"~4 000 lines of probable dead code"*, P3, clarify before the
+harnesses depend on either. That is the sixth row in four days to be wrong
+about itself, and the first where the error pointed the dangerous way: what it
+called dead was partly the opposite.
+
+`HTTP1/Server/URLMapping_old/` held 3 727 lines in seven files:
+
+| | lines | live |
+|---|---|---|
+| `ContentTypeNode`, `HTTPMethodNode`, `HTTPStandardHandlers`, `HostnameNode`, `URL_Node` | 2 228 | one each — the `namespace` line |
+| `HTTPStandardHandlersX.cs` | 1 453 | **848** |
+| `URLReplacement.cs` | 46 | **19** |
+
+`62edf0a3` (2026-04-20, *"Deprecated old HTTP implementation in favour of new
+one!"*) had created the directory by moving `URLMapping/` into it, every file
+already commented out; the two commits since only carried it along in tree-wide
+moves. One file came back to life as a copy called `HTTPStandardHandlersX`, and
+the modernisation then happened **to the copy** — extension methods on today's
+`HTTPAPI`, `HTTPExtAPI` and `HTTPServer` — while the deprecated twin kept the
+plain name. That was the suspicion when the two member lists were laid side by
+side — there should only ever have been one `HTTPStandardHandlers.cs` — and the
+lists bore it out: the copy has every member of the twin but two `IHTTPServer`
+overloads it replaced with `HTTPAPI` ones, plus `Logger`, a third redirect
+handler and a fourth folder overload.
+
+### A search that could not have found anything
+
+My first check for callers searched for the class names, found none outside
+the directory, and I reported "six of seven are unreachable". For five that was
+true. For `HTTPStandardHandlersX` the search was **structurally incapable** of
+finding a caller: extension methods are called as `httpAPI.MapSomething(…)` and
+never by the name of their class. Searching for the member names instead found
+eight files in five other repositories — Norn's three among them, committed
+yesterday — and four tests in Hermod itself, one of them inside the 975 CI
+gates on. The code in `_old` was being executed by the gate.
+
+The anti-vacuity check that made the *other* zeros trustworthy was cheap: the
+same globs on `URLReplacement`, a type known to be live, returned seven
+downstream files. A filter that sees nothing would have returned none.
+
+### Two PRs, because the first was merged while I was correcting it
+
+[Hermod#138](https://github.com/Vanaheimr/Hermod/pull/138) moved the two live
+files into `URLMapping/`, renamed the class back to `HTTPStandardHandlers`, and
+deleted the five comment-only files — and with them the seventh RFC 2616
+citation that H-8 had left because it sat in commented-out code. The rename is
+invisible to every caller: extension methods resolve by namespace and
+signature, and the namespace is the same on both sides.
+
+The tests are surface tests, because a move cannot change behaviour but can
+lose an overload, and that breaks a caller in another repository at compile
+time where this suite never looks. They reach the class **by name** rather
+than through `typeof`, so the fixture compiles against the old assembly and
+"red before" is a measurement rather than "would not have built": renaming the
+class back turned 4/4 red.
+
+It was merged as `6dae1d9d` while I was amending it, because recounting the
+coverage gap for this entry had shown my own figure wrong: I had written that
+four of the eleven overloads have no caller. My count had included the new
+fixture's list of expected names — the test pinning the methods was the only
+thing "calling" them. It is four *methods* and **seven** *overloads*.
+
+[Hermod#143](https://github.com/Vanaheimr/Hermod/pull/143) carried that
+correction, and Achim's two follow-ups:
+
+- **the last `X`.** `HTTPRequestHandlersX` → `HTTPRequestHandlers`, fourteen
+  occurrences in five files and no name anywhere outside Hermod. The one thing
+  that looked like a conflict was not: `MethodNode` already has a *property*
+  of exactly that name, which C# allows, since one is read in type position and
+  the other in expression position.
+- **Apache 2.0 throughout.** Three files were GPL v3. A fourth,
+  `HTTPEventSourceTests.cs`, was **AGPL** — found only on a second pass,
+  because the first searched for the GPL's wording and the Affero header is
+  worded differently. Seven had no header at all, all written in Hermod by
+  git's own record. Six files of `Hermod/IP/` stay headerless on purpose: added
+  in 2011 as *"Some RAW IP stuff..."*, they read like the Windows SDK's
+  raw-socket samples, and whether they are GraphDefined's to license is not
+  something a script can settle.
+
+### H-33, the gap the fixture names
+
+Seven of `HTTPStandardHandlers`' eleven overloads — the file and
+embedded-resource serving, and all three on `HTTPExtAPI` — have no caller in
+Hermod's tests, while Norn and HTTPSSETests call them. That would be a P3
+coverage note but for two of them mapping URLs onto the file system, where the
+classic defect is a security defect. On reading, `MapFileSystemFolder`'s
+traversal guard is `GetFullPath(Combine(root, path)).StartsWith(root)`, which
+without a trailing separator also lets a sibling directory sharing the prefix
+through; `RegisterFileSystemFile` opens whatever path a caller-supplied builder
+makes of the raw URL parameters. Both are hypotheses, not results: whether
+`..` reaches them at all depends on what the request-target parser has
+normalised first, and that is the first thing a test has to establish. Filed
+P2.
+
+### My own mess
+
+Every Python patch in this session read files as `utf-8-sig` and wrote them
+back the same way, which **adds a byte-order mark** to any file that had none.
+Found when the first three bytes of `PLAN.md` stopped matching `HEAD`: here,
+`CLAUDE.md`, `PLAN.md` and this log, all stripped again in this commit; in
+Hermod, its `HTTP1/README.md` and six `.cs` files, already merged with #138 and
+#143. Hermod's `.cs` files are split 643 to 1033 on BOMs, so those six are
+harmless; the README is the odd one out of sixteen. They go back in the next
+Hermod PR rather than in a pin bump of their own.
+
+They went back in [Hermod#145](https://github.com/Vanaheimr/Hermod/pull/145),
+checked against the first three bytes each file had before #138, together with
+the Apache header for the six raw-IP files under `Hermod/IP/` that were the last
+sources without one. Those six have a BOM of their own, and they keep it.
+
+### Measured against `04dca36d`
+
+The pin is not `a0abb530`, the merge of #143, but two merges further on. #145
+was merged while the measurement ran, and another session's
+[Hermod#144](https://github.com/Vanaheimr/Hermod/pull/144) (SMTP, DANE)
+landed between the two. Nothing was pinned unmeasured, so everything below was
+run again against `04dca36d`.
+
+| | |
+|---|---|
+| `Tests.HTTP.` / the filter CI gates on | **980** / **981** — H-18's five |
+| the protocol regression selection | 379, unmoved |
+| `Tests.HTTP.WebSockets` | **154** — the README said 149 since `bd34db7c`. Two WebSocket commits of 2026-10-03 added to it, and three pin bumps since then never re-ran that row |
+| gate, cleartext | 9/9, **313/313** |
+| gate, `--tls` | 9/9, **314/314** |
+| gate, `--wsl` | 12/12, **487/487** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | **2083 of 2084** |
+
+The one failure in that last row is `DANE_EE_authenticates_the_next_hop`. It
+fails five times out of five on its own, always after 17 s, with `TempFail`,
+"All MX hosts unreachable", and the connection aborted by the host. It fails
+the same way at `a0abb530`, so neither #144 nor #145 caused it. It did not
+exist yet at `23d0dfd2`. It came with `aa5daed3`, merged as
+[Hermod#136](https://github.com/Vanaheimr/Hermod/pull/136) in the other
+session's work, so this is the first time it has run on this machine, and it
+has never passed here. That is SMTP, and outside what this repository measures
+for. It is recorded here, and in the row in
+`CLAUDE.md`, rather than fixed here.
+
+A first run of the CI filter here read 980 of 981. The one was
+`SendTwoTextFrames_Slow_Test`, failing after 114 ms while I was building and
+testing in a second worktree beside it. Alone it passed twenty times out of
+twenty. Its asserts read server-side event flags right after the client's
+`Connect()` returns, which is a race that only load can lose. The run above is
+the clean one; nothing else ran beside it.
+
+Two measurement scripts of mine also failed. The first printed only the last
+lines of each gate leg and lost the check counts. The second piped through
+`tee /dev/stderr` into a file that stdout already wrote to, so the second
+handle wrote from offset zero over everything before it. Only the WSL leg
+survived. Everything above comes from the third script, which ran each step on
+its own.
+
+### H-33, measured instead of read
+
+Both hypotheses in the H-33 row were wrong, and the defect was somewhere
+else. `..` never reaches the handler: the request parser answers `400` to
+every spelling tried. A colon does reach it, and on Windows
+`GET /files/C:secret.txt` served a file from the sibling directory, by way of
+`Path.Combine` and the separator-less `StartsWith` together. Any missing file
+was a `500` carrying the absolute path on the server. The fix is in review
+as [Hermod#152](https://github.com/Vanaheimr/Hermod/pull/152). Its full story
+belongs to the pin bump that includes it.

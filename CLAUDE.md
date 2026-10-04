@@ -1,4 +1,4 @@
-﻿# HTTP/1.1 Conformance Tests & Demo — C# / .NET 10
+# HTTP/1.1 Conformance Tests & Demo — C# / .NET 10
 
 This repository is the **runnable demo host** plus the **conformance / interop
 test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **975 NUnit tests** live with the stack in Hermod
+suite drivers; the **980 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **975 NUnit tests** in `libs/Hermod/HermodTests/`
+**Tests:** most coverage is the **980 NUnit tests** in `libs/Hermod/HermodTests/`
 under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **379** are the HTTP/1.x
-protocol regression selection and **149** cover RFC 6455/7692 WebSockets. CI gates
-on those 975 plus the single test in `Tests.HTTPS.` = **976** — a filter that
+protocol regression selection and **154** cover RFC 6455/7692 WebSockets. CI gates
+on those 980 plus the single test in `Tests.HTTPS.` = **981** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
 through `ATCPClient`. The regression selection did not move
@@ -107,8 +107,7 @@ Everything below lives in the submodule, not here.
 | `Response/` | `HTTPResponse`, its builder, and the response-only typed fields |
 | `Server/` | `AHTTPServer` → `HTTPServer` / `HTTPTestServer`, `HTTPConnection`, pipelines, security |
 | `Server/ChunkedTransferEncoding/` | `ChunkedTransferEncodingStream`, chunk extensions, trailer validation, metadata limits |
-| `Server/URLMapping/` | the current routing tree (host → path → method → content type) |
-| `Server/URLMapping_old/` | **the previous routing generation — probably dead. See H-18** |
+| `Server/URLMapping/` | the routing tree (host → path → method → content type), `HTTPRequestHandlers`, and `HTTPStandardHandlers` — the static-file, resource and redirect helpers. One generation since H-18; the second was 2 228 lines of comment and two live files filed as old |
 | `Client/` | `HTTPClient` / `HTTPSClient`, `HTTPClientPool`, logging, SOAP |
 | `ServerSentEvents/` | `HTTPEventSource`, `HTTPEvent` — SSE server + client |
 | `WebSocket/` | RFC 6455 + RFC 7692, server + client, `IncrementalUtf8Validator`, per-message deflate |
@@ -183,7 +182,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 975 `Tests.HTTP.` / 379 regression selection / 149 WebSockets, all run counts — 976 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2000** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does |
+| Hermod's own NUnit suites | 980 `Tests.HTTP.` / 379 regression selection / 154 WebSockets, all run counts — 981 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2084** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does. One of the 2084 fails on this machine: `DANE_EE_authenticates_the_next_hop`, deterministically, at this pin and at `a0abb530`, and it has never passed here since it arrived with Hermod#136 — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04) rather than fixed here |
 | this repo's gate | **313** cleartext, **314** over TLS (211 raw-wire + 78 curl + 24 desync; the TLS leg's 79th is the ALPN check, which has no cleartext equivalent) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **487/487** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
