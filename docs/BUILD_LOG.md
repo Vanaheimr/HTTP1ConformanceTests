@@ -3597,3 +3597,48 @@ it into a neighbour.
 
 Three documents said 03:37 as if it were when the run happens. They now say what
 it asks for and what it gets.
+
+## 2026-10-04 — Both submodules forward, and a TLS handshake that can now time out
+
+Hermod `0044ecf7` → `d2d608d2`, **27 PRs** (#101–#127), and Styx `ba317094` →
+`c530de16`, six commits. Almost all of the Hermod range is SMTP, which this
+repository does not execute. Four files in it are ours, from three commits of
+one idea:
+
+| | |
+|---|---|
+| `HTTP1/Client/AHTTPClient.cs` | `TLSHandshakeTimeout => ConnectTimeout` |
+| `HTTP1/WebSocket/Client/WebSocketClient.cs` | the same for WSS |
+| `TCP/TCPClient/ATLSClient.cs` | where the timeout is applied |
+| `DNS/Client/DNSTLSClient.cs` | and for DNS-over-TLS |
+
+The reasoning upstream is worth repeating here, because it is the shape of
+defect this repository has met twice: *"nothing else ended a handshake that the
+server never answered: SendRequest waited for as long as its caller's token
+allowed, and the background renewal, which passes none, for good."* An unbounded
+wait on a peer that stops talking — the same mechanism as the harness hang of
+2026-09-21, from the other end.
+
+So the **TLS leg** was the measurement that mattered, not the cleartext one, and
+a handshake timeout that is too tight would show up there as flakiness rather
+than as a failure. It did not:
+
+| | |
+|---|---|
+| `Tests.HTTP.` | **940** |
+| the filter CI gates on | **941** |
+| the protocol regression selection | 379, unmoved |
+| gate, cleartext | 9/9, **311/311** |
+| gate, `--tls` | 9/9, **311/311** |
+| gate, `--wsl` | 12/12, **485/485** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | **1927** |
+| `dotnet build HTTP1.slnx -t:Rebuild` | 0 errors, **273** warnings — 286 at the previous pin, and still none in this repository's own projects |
+
+The three tests the handshake commits brought with them are in `Tests.HTTP.`
+(`HTTPSClientHandshakeTimeoutTests`, `WebSocketClientHandshakeTimeoutTests` and
+a `SilentTLSServer` helper to go with them), which is where 938 became 941.
+
+Styx carries NUnit 5 and `NUnit.Analyzers` into `StyxTests` — the same move
+HermodTests made on 2026-10-03 — and *"Every ParseOptional of a JObject keeps
+one contract"*, which is shared Illias code this stack parses JSON with. Nothing
+here reads it directly; it is in the 1927 by way of Hermod.
