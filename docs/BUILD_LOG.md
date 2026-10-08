@@ -3909,3 +3909,89 @@ every spelling tried. A colon does reach it, and on Windows
 was a `500` carrying the absolute path on the server. The fix is in review
 as [Hermod#152](https://github.com/Vanaheimr/Hermod/pull/152). Its full story
 belongs to the pin bump that includes it.
+
+## 2026-10-08 — A red nightly whose driver could not count down
+
+The scheduled nightly of 2026-10-08 failed the `autobahn-client` leg with exit 3,
+no report. Nothing had changed: the same commit `c6653e3`, the same runner image
+(ubuntu-24.04 20261004.327.1) and the same fuzzingserver image digest
+(`519915fb…`) had been green on 10-05, 10-06 and 10-07.
+
+What happened on the suite's side: case 500, 13.7.1, took about 35 s where a
+13.7 case takes about one, and after it the fuzzingserver served nothing more.
+Its log, unbuffered since `PYTHONUNBUFFERED=1`, ends at `Running test case ID
+13.7.1`. What the driver said about it: the remaining seventeen cases took
+80 ms, and then `Ran 517 cases. Stalled: 0, threw: 0.` The script then waited
+120 s for a report that the server had never been asked to write.
+
+### The line that could not go red
+
+`WebSocketClient.Connect()` does not throw when the connection or the handshake
+fails. It returns the failure response, or a synthetic `400 Timeout ... reached`,
+and leaves the client disconnected. `RunCase` ignored that return value and read
+`!client.Connected` as "the server hung up, the case is done". A case that never
+reached the server therefore counted as one that ran, and "Stalled: 0, threw: 0"
+was a line no failure of the server could change. That makes it the fourth
+check in this repository that was structurally unable to fail. The first three
+are listed under *Ask of a green check what would make it red* in `CLAUDE.md`.
+`UpdateReports` had the same blind spot, which is how "the suite wrote no
+report" came to be printed about a request that never arrived.
+
+Since then a case counts as begun only on a **101**. The first case that does
+not get one stops the run, and the driver exits 4 without asking for a report:
+a report of a partial run would be read by the floor as a verdict about the
+client. The script turns 4 into 3 immediately. `/updateReports` checks its own
+handshake. The container's state, meaning status, exit code and `OOMKilled`, is
+now printed on every run. The container had been started without `--rm`
+expressly so that this state would survive, and nothing had ever read it.
+
+### Tested by causing it
+
+The fuzzingserver ran in WSL on the slice 495..517, and its container was
+`docker kill`ed once 13.7.3 had started. Each run used the driver DLL built on
+Windows, and `--no-build`, so that WSL wrote nothing into the Windows `obj/`.
+
+| | old driver | new driver |
+|---|---|---|
+| driver says | `Ran 23 cases. Stalled: 0, threw: 0.` | `case 503: never connected — the handshake answered HTTP 400`; `8 of 23 cases ran, 15 did not` |
+| container | not recorded | `status=exited exit=137 oomkilled=false` |
+| script | 120 s wait, "the suite wrote no report", exit 3 | "stopped accepting connections", exit 3 |
+| duration | 128 s | 8 s |
+
+The old row is the nightly, reproduced on demand. The case the kill lands in
+still counts as finished, because from the client's side a server that dies
+mid-case looks like one that closes at the end of it. The next case is where the
+difference shows.
+
+### Not a one-off: the manual re-run
+
+Run by hand ([37775444364](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/37775444364),
+still with the old driver), the leg failed again, and this time with
+evidence. 13.7.1 to 13.7.7 took seven minutes where they take seven seconds,
+and two cases stalled. The counters added on 2026-09-23 for exactly this
+reported:
+
+| stalled case | received | echoed | queued |
+|---|---|---|---|
+| 427 | 699 | 699 | 0 |
+| 507 (13.7.8) | 935 | 935 | 0 |
+
+Everything received had been echoed. So it was **the fuzzingserver that
+stopped talking**, not our send side that jammed, which settles the question
+the counters were added to answer. A case that has said "Timeout case after
+60 secs" was still open after 120 s, which suggests the server process was not
+running its own timers either. After our forced disconnect at 13.7.8 it served
+nothing more. That is the pattern of 2026-09-23.
+
+A full local run with the new driver came out unchanged: **445/517**, 72
+declined, 0 hard failures, `Ran 517 of 517`. The new container line read
+`status=running … oomkilled=false`, which is the baseline for the next failure.
+
+### Still open
+
+Why the fuzzingserver stopped is still unknown. There is no traceback, and the
+cases afterwards failed within milliseconds, which points to a process killed
+from outside, the OOM killer for instance, rather than one that crashed in
+Python. That is an inference. The container line will settle it the next time.
+13.7.1 is also where the run of 2026-09-23 broke, though that time it was our
+own forced disconnect.

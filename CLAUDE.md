@@ -247,12 +247,14 @@ verifies the demo — not the library.
   interop test is .NET against .NET. That is the single biggest weakness in the
   current coverage: two stacks sharing a runtime also share assumptions. The
   third-party tracks (A3–A8) exist to break that.
-- **Ask of a green check what would make it red.** Three defects in this
+- **Ask of a green check what would make it red.** Four defects in this
   repository were not tests that passed wrongly but checks *structurally
   incapable* of failing: a known-difference file that could not tell "stopped
   differing" from "never looked", a `--filter` that read *not measured* as *no
-  longer differs*, and an `.exe`-preference bug unreachable on `ubuntu-latest`
-  so that the green nightly leg was never evidence about that path. Running the
+  longer differs*, an `.exe`-preference bug unreachable on `ubuntu-latest`
+  so that the green nightly leg was never evidence about that path, and an
+  Autobahn driver whose `Stalled: 0, threw: 0` counted a case that never
+  connected as one that ran (2026-10-08). Running the
   suite more often reproduces the same vacuum. **A passing CI leg is evidence
   about the configuration CI runs and about no other** — a Windows-built tree
   driven from WSL is not one of them. See `docs/BUILD_LOG.md`, 2026-10-02.

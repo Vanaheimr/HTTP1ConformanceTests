@@ -162,6 +162,17 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# What became of the container, in one line. The container is started without
+# --rm so that this survives - and until 2026-10-08 nothing read it: that
+# nightly's fuzzingserver stopped serving during case 13.7.1 with no traceback in
+# its log, and whether it had exited, been OOM-killed or was still running was
+# then gone with the `docker rm -f` above. Printed on every run, so that a
+# failure has a healthy run's line to be compared with.
+container_state() {
+    docker inspect -f 'status={{.State.Status}} running={{.State.Running}} exit={{.State.ExitCode}} oomkilled={{.State.OOMKilled}} restarts={{.RestartCount}} finished={{.State.FinishedAt}} error="{{.State.Error}}"' \
+        "$container" 2>&1 || true
+}
+
 echo "Starting the Autobahn fuzzingserver (image $image) on :$port..."
 # Deliberately not --rm: an auto-removed container takes its exit status and its
 # logs with it, and those are the only view of the suite's own side of a failure.
@@ -240,18 +251,37 @@ if [ "$run_timeout" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
     runner="timeout --signal=TERM --kill-after=30s ${run_timeout}s"
 fi
 
+driver_rc=0
+
 # shellcheck disable=SC2086  # $runner and $args are fixed literals or empty
 $runner dotnet "$driver" $args || {
-    rc=$?
-    case "$rc" in
+    driver_rc=$?
+    case "$driver_rc" in
         124) echo "The client driver exceeded the ${run_timeout}s cap." >&2 ;;
-        *)   echo "The client driver returned $rc" >&2 ;;
+        *)   echo "The client driver returned $driver_rc" >&2 ;;
     esac
 }
 
 echo
+echo "fuzzingserver container: $(container_state)"
 echo "fuzzingserver log (tail):"
 docker logs "$container" 2>&1 | tail -5
+
+# The driver returns 4 when a case's handshake was not answered with 101: the
+# fuzzingserver stopped accepting connections mid-run. Nothing was asked to write
+# a report then, so waiting two minutes for one below would only end in the same
+# "no report" with a worse explanation - which is what the 2026-10-08 nightly
+# printed, after a driver that could not yet tell this apart had reported all
+# 517 cases as run.
+if [ "$driver_rc" -eq 4 ]; then
+    echo >&2
+    echo "The fuzzingserver stopped accepting connections before the run was over, so" >&2
+    echo "there is no report to read. This is not a verdict about the client, which is" >&2
+    echo "why this exits 3 and a floor failure exits 1." >&2
+    echo "Container log:" >&2
+    docker logs "$container" 2>&1 | tail -40 >&2
+    exit 3
+fi
 
 # --- wait for the report ---------------------------------------------------
 #
@@ -299,6 +329,7 @@ if [ "$report_ready" -ne 1 ]; then
     echo >&2
     echo "This is not a verdict about the client: every case may have passed. It says the" >&2
     echo "verdict could not be read, which is why this exits 3 and a floor failure exits 1." >&2
+    echo "Container: $(container_state)" >&2
     echo "Container log:" >&2
     docker logs "$container" 2>&1 | tail -40 >&2
     exit 3

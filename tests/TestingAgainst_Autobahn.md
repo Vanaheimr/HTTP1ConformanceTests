@@ -257,6 +257,50 @@ not ready yet", for two minutes, and then as "the suite wrote no report": a wron
 than a missing one. So the script now asks python3 to *run* rather than to exist, up front, where
 all three of its uses are covered at once.
 
+### When the suite stops serving: a count that could not go down
+
+The scheduled nightly of **2026-10-08** failed the same leg, with the same commit, runner image
+and fuzzingserver image digest that had been green the three nights before. Case 500 — 13.7.1,
+a thousand compressed messages — took about 35 s where a 13.7 case takes one, and after it the
+fuzzingserver served nothing. Its own log, unbuffered, ends at `Running test case ID 13.7.1`.
+The driver nevertheless went through the remaining seventeen cases in 80 ms, printed
+`Ran 517 cases. Stalled: 0, threw: 0.`, and the script waited 120 s for a report that
+`/updateReports` had never reached the server to request.
+
+The 80 ms was the driver's defect. `WebSocketClient.Connect()` does not throw when the
+connection or the handshake fails: it returns the failure response, or a synthetic
+`400 Timeout ... reached`, and leaves the client disconnected. The driver ignored that return
+value and read "not connected" as "the server has hung up, the case is done", so a case that
+never reached the server counted as one that ran and finished. "Stalled: 0, threw: 0" was a line
+that no failure of the server could change.
+
+Now a case counts as begun only when its handshake answers **101**. The first one that does not
+stops the run, since every case after it would fail the same way. The driver says where, and
+exits **4** without asking for a report: a server that came back would write a report of a
+partial run, and the floor would read its count as a verdict about the client. The script turns
+4 into **3** at once, without the two-minute wait. `/updateReports` checks its own handshake, too.
+And the script now prints the container's state on every run — status, exit code, `OOMKilled` —
+which the container was started without `--rm` to preserve and which nothing had ever read.
+
+**Tested by causing it.** The fuzzingserver ran locally on a slice through section 13.7, and its
+container was `docker kill`ed once 13.7.3 had started:
+
+| | before | after |
+|---|---|---|
+| driver | `Ran 23 cases. Stalled: 0, threw: 0.` | `case 503: never connected — the handshake answered HTTP 400`, then `8 of 23 cases ran, 15 did not` |
+| container | not recorded | `status=exited exit=137 oomkilled=false` |
+| script | 120 s wait, "the suite wrote no report", exit 3 | "stopped accepting connections", exit 3 |
+| time | 128 s | 8 s |
+
+The case the kill lands in still counts as finished. From the client's side, a server that dies
+mid-case and one that closes at the end of it look the same. The case after it is where the
+difference shows.
+
+**Why the fuzzingserver stopped is still open.** No traceback in its log, and cases failing
+within milliseconds afterwards, suggest a process killed from outside rather than one that
+crashed in Python — an inference, not a finding. The container line will answer it the next
+time.
+
 ## When *we* are the one that fails: 12.4.18, and a log that said nothing
 
 On 2026-09-23 the nightly's server job went red for the first time, on case **12.4.18** — "send

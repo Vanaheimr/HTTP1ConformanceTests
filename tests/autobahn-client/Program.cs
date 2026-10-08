@@ -134,8 +134,10 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
             Console.WriteLine($"{caseCount} cases reported, running {first}..{last}");
             Console.WriteLine();
 
-            var stalled = new List<Int32>();
-            var threw   = new List<Int32>();
+            var stalled         = new List<Int32>();
+            var threw           = new List<Int32>();
+            var neverConnected  = (Int32?) null;
+            var ran             = 0;
 
             for (var n = first; n <= last; n++)
             {
@@ -148,7 +150,27 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
                 try
                 {
-                    if (!await RunCase(baseURL, n, agent, deflate))
+
+                    var (outcome, handshake) = await RunCase(baseURL, n, agent, deflate);
+
+                    if (outcome == CaseOutcome.NeverConnected)
+                    {
+
+                        // The fuzzingserver serves every case on its own connection, so a case it
+                        // will not even answer the handshake for means it has stopped serving, and
+                        // every case after this one would fail the same way. Running them anyway
+                        // is how the nightly of 2026-10-08 came to print "Ran 517 cases. Stalled:
+                        // 0, threw: 0" about a run in which the last seventeen cases and
+                        // /updateReports never reached the server at all.
+                        neverConnected = n;
+                        Console.WriteLine($"  case {n}: never connected — the handshake answered {handshake}");
+                        break;
+
+                    }
+
+                    ran++;
+
+                    if (outcome == CaseOutcome.Stalled)
                     {
 
                         stalled.Add(n);
@@ -171,6 +193,19 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
             }
 
+            var total = last - first + 1;
+
+            // No /updateReports here: a server that stopped answering handshakes will not answer
+            // that one either, and one that came back would write a report of a partial run, whose
+            // count the floor would then read as a verdict about the client.
+            if (neverConnected.HasValue)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"The fuzzingserver stopped accepting connections at case {neverConnected}: {ran} of {total} cases ran, " +
+                                  $"{total - ran} did not. Stalled: {stalled.Count}, threw: {threw.Count}.");
+                return 4;
+            }
+
             Console.WriteLine();
             Console.WriteLine("Asking the fuzzingserver to write its reports...");
 
@@ -185,7 +220,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
             }
 
             Console.WriteLine();
-            Console.WriteLine($"Ran {last - first + 1} cases. Stalled: {stalled.Count}, threw: {threw.Count}.");
+            Console.WriteLine($"Ran {ran} of {total} cases. Stalled: {stalled.Count}, threw: {threw.Count}.");
 
             // Deliberately NOT a verdict. Neither a stall nor an exception here is by itself a
             // conformance failure — some cases exist precisely to make a client give up, and the
@@ -234,16 +269,44 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         #endregion
 
+        #region CaseOutcome
+
+        /// <summary>
+        /// How one case ended, as far as this side can tell.
+        /// </summary>
+        private enum CaseOutcome
+        {
+
+            /// <summary>The server hung up: the case ran, and the suite has a verdict on it.</summary>
+            Finished,
+
+            /// <summary>Still connected after <see cref="caseTimeout"/>, and disconnected by us.</summary>
+            Stalled,
+
+            /// <summary>The handshake did not answer 101, so no case ran at all.</summary>
+            NeverConnected
+
+        }
+
+        #endregion
+
         #region RunCase(BaseURL, Number, Agent, Deflate)
 
         /// <summary>
         /// Runs one case: connect, echo everything back with its type preserved, and wait for the
-        /// server to hang up. Returns false if it never did within <see cref="caseTimeout"/>.
+        /// server to hang up. Returns how that went, and what the handshake answered.
         /// </summary>
-        private static async Task<Boolean> RunCase(String   BaseURL,
-                                                   Int32    Number,
-                                                   String   Agent,
-                                                   Boolean  Deflate)
+        /// <remarks>
+        /// <see cref="WebSocketClient.Connect"/> does not throw when the connection or the handshake
+        /// fails: it returns the response, or a synthetic one, and leaves the client disconnected.
+        /// Until 2026-10-08 that return value was ignored here, and "not connected" was read as "the
+        /// server has hung up" — so a case that never reached the server counted as a case that ran
+        /// and finished. That is what the handshake check below separates.
+        /// </remarks>
+        private static async Task<(CaseOutcome Outcome, String Handshake)> RunCase(String   BaseURL,
+                                                                                   Int32    Number,
+                                                                                   String   Agent,
+                                                                                   Boolean  Deflate)
         {
 
             var client = new WebSocketClient(URL.Parse($"{BaseURL}/runCase?case={Number}&agent={Uri.EscapeDataString(Agent)}")) {
@@ -289,7 +352,16 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
                 return Task.CompletedTask;
             };
 
-            await client.Connect();
+            var (_, httpResponse) = await client.Connect();
+            var handshake         = $"HTTP {httpResponse.HTTPStatusCode}";
+
+            // Not client.Connected: a short case can be over, and the client disconnected again,
+            // before this line runs. The 101 is what says a case began.
+            if (httpResponse.HTTPStatusCode != HTTPStatusCode.SwitchingProtocols)
+            {
+                await CloseQuietly(client);
+                return (CaseOutcome.NeverConnected, handshake);
+            }
 
             // Sends are swallowed, because a case ending mid-echo is normal here rather than
             // exceptional: several cases close the moment they have seen enough, and a write into
@@ -333,7 +405,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
             echoQueue.Writer.TryComplete();
             await pump.WaitAsync(TimeSpan.FromSeconds(10)).ContinueWith(_ => { });
 
-            return finished;
+            return (finished ? CaseOutcome.Finished : CaseOutcome.Stalled, handshake);
 
         }
 
@@ -343,14 +415,22 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests
 
         /// <summary>
         /// Connects to <c>/updateReports</c>, which is what makes the server write index.json.
-        /// Without this the whole run leaves nothing behind.
+        /// Without this the whole run leaves nothing behind. Throws when the handshake is not
+        /// answered with 101, because then the server was never asked, and the report that
+        /// tests/autobahn-client.sh waits for will not come.
         /// </summary>
         private static async Task UpdateReports(String BaseURL, String Agent)
         {
 
             var client    = new WebSocketClient(URL.Parse($"{BaseURL}/updateReports?agent={Uri.EscapeDataString(Agent)}"));
 
-            await client.Connect();
+            var (_, httpResponse) = await client.Connect();
+
+            if (httpResponse.HTTPStatusCode != HTTPStatusCode.SwitchingProtocols)
+            {
+                await CloseQuietly(client);
+                throw new InvalidOperationException($"the /updateReports handshake answered HTTP {httpResponse.HTTPStatusCode}, so the server was never asked");
+            }
 
             var deadline  = DateTime.UtcNow + controlTimeout;
 
