@@ -3995,3 +3995,129 @@ from outside, the OOM killer for instance, rather than one that crashed in
 Python. That is an inference. The container line will settle it the next time.
 13.7.1 is also where the run of 2026-09-23 broke, though that time it was our
 own forced disconnect.
+
+It settled it on 2026-10-21, and the other way: see the pin bump of
+2026-10-28.
+
+## 2026-10-28 — Both submodules forward: H-33 pinned, and a server that was not killed
+
+Hermod `04dca36d` → `b38805ec`, 63 merges (81 commits); Styx `c530de16` →
+`1262aa28`, 32 commits. Both move together because Hermod's own CI builds
+against Styx master, and so does this repository's `against-hermod-master`
+leg. Pinning Hermod alone would have measured a combination nobody else
+builds.
+
+By the files each merge touched, the range is mostly not HTTP/1.x: 21 merges
+touch `Hermod/HTTP`, nearly all of them `HTTPExtAPI` (SSH keys, API keys bound
+to addresses, a hash chain per database file, rationed password guesses,
+`ConfirmPassword`, passkeys behind the password), 15 touch SMTP, 7 DNS, and
+8 `Hermod/HTTP1`. Those eight are the ones this repository is for:
+
+- **#152**, H-33's fix, merged 2026-10-04 and pinned only now;
+- **`AWebSocketEndpoint`**: the WebSocket protocol taken out of
+  `AWebSocketServer` into an endpoint without a TCP server of its own,
+  +3388/−3485 lines between the two files, plus a connection that equals only
+  itself and a removal that removes only that connection;
+- **`QueryString`**: a value kept whole, commas and all, split at `&` and at the
+  first `=` before decoding; reals and timestamps read and written as on the
+  wire whatever the server's culture, and a timestamp whose `+` arrived
+  unencoded keeping its offset;
+- the method **`COMMIT`**, not safe but idempotent; `application/cbor`;
+  `HTTPEventSource.LastEventId`; `Secure` cookies and HSTS decided per request
+  behind a proxy; and a `SameOrigin` pipeline that judges by `Origin`.
+
+### Measured against `b38805ec` and `1262aa28`
+
+Each row on its own, one after the other, nothing else running beside them.
+That last part is the lesson of `SendTwoTextFrames_Slow_Test` on 2026-10-04.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 981 | **1063** |
+| `Tests.HTTP.` | 980 | **1062** |
+| the protocol regression selection | 379 | **381** |
+| `Tests.HTTP.WebSockets` | 154 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2083 of 2084 | **2321 of 2321** |
+| gate, cleartext | 9/9, 313/313 | 9/9, **313/313** |
+| gate, `--tls` | 9/9, 314/314 | 9/9, **314/314** |
+| gate, `--wsl` | 12/12, 487/487 | 12/12, **487/487** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+67 of the 82 new `Tests.HTTP.` tests are six new fixtures:
+`QueryStringValueTests` 24, `MapFileSystemFolderTests` 13,
+`HTTPExtAPISSHKeyTests` 12, `HTTPExtAPIDatabaseHashChainTests` 10,
+`LicenseJSONTests` 6, `HTTPExtAPIUserUpdateTests` 2. The other 15 went into
+existing ones. The regression selection's two are one in `HTTPClientTests`
+and one in `HTTP11AuditRegressionTests`, both files its filter names. The
+seven WebSocket tests are three new fixtures under `HermodTests/WebSocket/`,
+whose namespace is `Tests.HTTP.WebSockets` although their directory is not.
+
+Every wire-level count is identical, and so are both Autobahn directions. For
+the server that is the result that mattered. Half of `AWebSocketServer` moved
+into a new class, and the demo's `:8081` echo server is an `AWebSocketServer`.
+The suite that drives it case by case found nothing different.
+
+### DANE_EE passes, and why
+
+`DANE_EE_authenticates_the_next_hop` failed five times out of five here at the
+last pin, always after 17 s. It passes now, in 2.4 s. The range contains
+`09da8f3f`, *"Under DANE the server's chain is built offline"*: Windows built
+the server's chain with the default policy, went looking for missing issuers
+by their AIA URLs, waited about fifteen seconds, and came back without the
+certificates the server had sent. Seventeen seconds is that wait plus the
+test. The commit message is about DANE-TA. The EE test went through the same
+chain building, and its time is the evidence that it was the same cause.
+
+### H-33 closed, H-34 and H-35 opened
+
+With #152 in the pin, H-33 is ✅ for what made it P2: `GET /files/C:secret.txt`
+no longer leaves the root, and a miss is a `404` that names no path. It is not
+✅ for what its title said. Six of the eleven overloads still have no caller in
+Hermod's tests, and that is **H-34** now, P3.
+
+**H-35** is what the fixture found beside the hole. `/files` and `/files/`
+answer `405`, so `MapFileSystemFolder` never serves the `DefaultFilename` it
+takes as a parameter. That was measured on 2026-10-04, and reading the code at
+`b38805ec` gives the reason: the `HTTPAPI` overload registers only
+`URLTemplate/{ResourceName..}`, where `MapResourceAssemblyFolder` registers the
+template itself as well.
+
+### The autobahn-client failure of 2026-10-21: running, not killed
+
+Nineteen scheduled nights have run the driver of 2026-10-08, and one was red:
+[39572449206](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/39572449206).
+It is the first failure the new driver reported, and it reported the opposite
+of what the entry of 2026-10-08 had inferred:
+
+```
+case 427: received 954, echoed 954, queued 0
+case 427: still connected after 120s — disconnected by us
+case 503: received 179, echoed 179, queued 0
+case 503: still connected after 120s — disconnected by us
+case 504: never connected — the handshake answered HTTP 408 - Request Timeout
+fuzzingserver container: status=running running=true exit=0 oomkilled=false restarts=0 …
+```
+
+The container was running. Its own log ends at `Running test case ID 13.7.5`,
+case 504: it had accepted the connection and begun the case, and then never
+answered the opening handshake in the 89 s the client waits. Before that,
+13.2.18 (case 427) and 13.7.4 (case 503) had stalled with every message
+received also echoed, and 13.7.1 to 13.7.3 had taken about a minute and a
+half. A server that is alive, slow, and finally silent is not one the OOM
+killer took. The manual re-run of 2026-10-08 stalled at the same 13.2.18 and
+then in 13.7, and the scheduled run that day stopped at 13.7.1. These are the
+sections that compress the largest messages, in Python, on a two-core runner.
+That the fuzzingserver falls behind there and does not recover is the
+remaining inference. That nothing kills it is now a measurement. The case
+numbers were mapped to their ids against the local report of this pin, where
+the same run went through `Ran 517 of 517` with nothing stalled.
+
+The leg stays as it is. One red night in nineteen is red for a reason the
+driver now names. Hiding 13.7 to buy the green would cost the cases where the
+client's inflate path does the most work.
+
+### Housekeeping
+
+The two scratchpad worktrees from #152 are gone, along with the merged local
+branch `http1/h33-file-system-traversal`.

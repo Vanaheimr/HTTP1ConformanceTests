@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **980 NUnit tests** live with the stack in Hermod
+suite drivers; the **1062 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **980 NUnit tests** in `libs/Hermod/HermodTests/`
-under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **379** are the HTTP/1.x
-protocol regression selection and **154** cover RFC 6455/7692 WebSockets. CI gates
-on those 980 plus the single test in `Tests.HTTPS.` = **981** — a filter that
+**Tests:** most coverage is the **1062 NUnit tests** in `libs/Hermod/HermodTests/`
+under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **381** are the HTTP/1.x
+protocol regression selection and **161** cover RFC 6455/7692 WebSockets. CI gates
+on those 1062 plus the single test in `Tests.HTTPS.` = **1063** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
 through `ATCPClient`. The regression selection did not move
@@ -182,7 +182,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 980 `Tests.HTTP.` / 379 regression selection / 154 WebSockets, all run counts — 981 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2084** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does. One of the 2084 fails on this machine: `DANE_EE_authenticates_the_next_hop`, deterministically, at this pin and at `a0abb530`, and it has never passed here since it arrived with Hermod#136 — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04) rather than fixed here |
+| Hermod's own NUnit suites | 1062 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1063 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2321** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2084 a pin ago. All 2321 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
 | this repo's gate | **313** cleartext, **314** over TLS (211 raw-wire + 78 curl + 24 desync; the TLS leg's 79th is the ALPN check, which has no cleartext equivalent) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **487/487** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
@@ -195,13 +195,13 @@ pointed at a foreign suite. See
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |
 
 Building A1 and A2 produced three upstream findings between them (**H-21** and
-**H-22**, both fixed 2026-09-26, and **H-23**, still open), which is the pattern
+**H-22**, both fixed 2026-09-26, and **H-23**, fixed 2026-10-03), which is the pattern
 to expect: this repository is the first consumer of these APIs that is not also
 a test written by their author.
 
 ### What the state analysis found
 
-Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-30 in
+Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-35 in
 [`PLAN.md`](PLAN.md). The four that mattered most are the four that are done —
 kept here struck through rather than deleted, because what each one turned out to
 be is more useful than what it was reported as:

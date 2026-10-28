@@ -296,10 +296,34 @@ The case the kill lands in still counts as finished. From the client's side, a s
 mid-case and one that closes at the end of it look the same. The case after it is where the
 difference shows.
 
-**Why the fuzzingserver stopped is still open.** No traceback in its log, and cases failing
-within milliseconds afterwards, suggest a process killed from outside rather than one that
-crashed in Python — an inference, not a finding. The container line will answer it the next
-time.
+**Why the fuzzingserver stopped: not killed.** No traceback in its log, and cases failing
+within milliseconds afterwards, had suggested a process killed from outside — an inference,
+which the next failure refuted. On **2026-10-21**
+([39572449206](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/39572449206)),
+the first red night since the fix and one of nineteen nights with this driver, the leg reported:
+
+```
+case 503: received 179, echoed 179, queued 0
+case 503: still connected after 120s — disconnected by us
+case 504: never connected — the handshake answered HTTP 408 - Request Timeout
+The fuzzingserver stopped accepting connections at case 504: 503 of 517 cases ran, 14 did not. Stalled: 2, threw: 0.
+fuzzingserver container: status=running running=true exit=0 oomkilled=false restarts=0 …
+```
+
+The container was **running**, never OOM-killed, never restarted. And its own log's last line is
+`Running test case ID 13.7.5` — case 504. It had accepted the connection and begun the case, and
+then not answered the opening handshake in the 89 s our client waits. The cases before it were
+already slow. 13.7.1 to 13.7.3 took about a minute and a half, where they take seconds locally.
+13.7.4 stalled after 179 of its messages, every one of them echoed. Case 427, which is 13.2.18,
+had stalled the same way three minutes earlier, with 954 received and 954 echoed. That is a
+process alive and not getting through its work. It is not a dead process, and it is not our send
+side.
+
+The pattern holds across all three red runs. The manual re-run of 10-08 stalled at 427 and then
+in 13.7 too, and the scheduled one stopped at 13.7.1. These are the sections where the suite
+compresses its largest messages, a thousand per case in 13.7, in Python on a two-core hosted
+runner. That fits a server that falls behind and does not recover, but it is still an inference.
+What is no longer open is that nothing kills it.
 
 ## When *we* are the one that fails: 12.4.18, and a log that said nothing
 
