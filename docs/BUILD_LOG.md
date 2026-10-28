@@ -4241,7 +4241,7 @@ required one. Its source says why: `Curl_altsvc_parse` (`lib/altsvc.c`) passes
 the text before `=` unchanged to `Curl_alpn2alpnid` (`lib/connect.c`), which
 compares it with the literals `h1`, `h2`, `h3` and `http/1.1`. Read on master
 today, so it is not fixed upstream either. It is curl's to fix, not ours, and
-whether to report it is a decision for the user.
+was reported the same day as [curl/curl#23654](https://github.com/curl/curl/issues/23654).
 
 ### The checks
 

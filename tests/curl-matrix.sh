@@ -239,7 +239,7 @@ has   "Alt-Svc arrives percent-encoded (RFC 7838 §3)" 'Alt-Svc: http%2F1\.1=":8
 # the RFC's spelling is an unknown protocol and skipped, while the unencoded
 # one, which is not a token, is accepted. Measured 2026-10-28 with both builds
 # here, 8.21 (Schannel) and 8.14 (OpenSSL), against five protocol-ids: h1, h2, h3
-# and "http/1.1" are recorded, http%2F1.1 is not.
+# and "http/1.1" are recorded, http%2F1.1 is not. Reported as curl/curl#23654.
 #
 # Over TLS only, because curl ignores Alt-Svc on a cleartext connection, which
 # both builds confirm. And only where the cache file is readable from here, as

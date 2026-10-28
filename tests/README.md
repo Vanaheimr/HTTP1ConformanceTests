@@ -80,6 +80,7 @@ Measured 2026-10-28 with both builds against five protocol-ids, over TLS:
 | any of them over cleartext | nothing | nothing |
 
 So curl accepts the spelling the RFC forbids and ignores the one it requires.
+Reported as [curl/curl#23654](https://github.com/curl/curl/issues/23654).
 The check is written to go red in both directions that matter: if the demo
 sends `http/1.1` unencoded again, curl records it (measured: 79/81, both
 alt-svc checks red, and the second names the entry curl wrote); if curl learns
