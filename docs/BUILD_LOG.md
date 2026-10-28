@@ -4164,3 +4164,52 @@ read the source rather than the findings alone.
 
 The rows still marked ❌ were read too. Each is either an open finding (H-5, H-13,
 H-14, H-15, H-19) or a specification no finding has been filed for.
+
+## 2026-10-28 — Hermod to `e128267d`: H-35 and H-7 pinned
+
+Three merges past `b38805ec`: [Hermod#160](https://github.com/Vanaheimr/Hermod/pull/160)
+(H-35), [Hermod#161](https://github.com/Vanaheimr/Hermod/pull/161) (H-7), and
+#159, a QUIC stream-reassembly fix whose two files are under `QUIC/` and whose
+test is in `Tests.QUIC`, which none of the filters below selects. Styx stays at
+`1262aa28`; nothing was merged there.
+
+### Measured against `e128267d` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1063 | **1085** |
+| `Tests.HTTP.` | 1062 | **1084** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2321 | **2321** |
+| gate, cleartext | 9/9, 313/313 | 9/9, **313/313** |
+| gate, `--tls` | 9/9, 314/314 | 9/9, **314/314** |
+| gate, `--wsl` | 12/12, 487/487 | 12/12, **487/487** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 22 are H-35's five in `MapFileSystemFolderTests` and H-7's seventeen in
+the new `AlternativeServicesTests`, all under `Tests.HTTP.` and none in a file
+the regression filter names. The HTTP/2 suite is unchanged at the count it had,
+with `HTTPAlternativeService` moved out of `HTTP2/Core` beneath it: its six
+`AlternativeServiceTests` needed one `using` and nothing else.
+
+### H-35 and H-7 closed, H-34 down to five
+
+H-35 is ✅: `/files` and `/files/` serve the folder's `DefaultFilename`, a
+folder without one answers `404` rather than `405`, and on `HTTPExtAPI` both
+routes share one delegate, so the index is behind the same authentication as
+every file. That test also calls the `HTTPExtAPI` overload of
+`MapFileSystemFolder`, which takes it out of H-34: five uncalled overloads now,
+not six.
+
+H-7 is ✅ and is the third finding of its shape — a correct grammar stranded in
+`HTTP2/`, after H-3's authentication framework and H-11's date parser. Moving
+it is what found three departures from RFC 7838 §3 in it, fixed for HTTP/2 as
+well: `clear` beside alternatives was skipped rather than clearing them,
+`Clear` was not `clear`, and `http/1.1` went out unencoded. Whether the demo
+should announce an alternative, and what curl's `--alt-svc` then records, is
+the open question after it. Nothing here sends `Alt-Svc` yet, so nothing here
+has measured it on the wire against a client that is not Hermod's.
