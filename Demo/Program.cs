@@ -925,6 +925,44 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
+            #region GET /alt-svc  — RFC 7838: an alternative service, announced on one route only
+
+            // The one alternative this host can truthfully announce: the same
+            // routes, over HTTP/1.1, on the TLS listener. An Alt-Svc field claims
+            // that the origin is served there too (RFC 7838 §2.1), so announcing
+            // h2 or h3 here would be a claim nothing in this process honours,
+            // and a client that remembered it would try it on the next request.
+            //
+            // On this route and on no other, for the same reason: a browser or a
+            // curl with an alt-svc cache that met it on / would carry it into
+            // every check after that one.
+            //
+            // "http/1.1" is not a token, so it goes out as "http%2F1.1" (§3),
+            // which is what makes this route worth driving with a client that
+            // is not Hermod's: the encoding was H-7's third fix.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "alt-svc",
+                HTTPDelegate: request => Task.FromResult(
+                    new HTTPResponse.Builder(request) {
+                        HTTPStatusCode  = HTTPStatusCode.OK,
+                        ContentType     = HTTPContentType.Text.PLAIN,
+                        AltSvc          = AlternativeServices.Of(
+                                              new HTTPAlternativeService(
+                                                  ProtocolId:  "http/1.1",
+                                                  Host:        "",
+                                                  Port:        httpsPort,
+                                                  MaxAge:      TimeSpan.FromMinutes(1),
+                                                  Persist:     false
+                                              )
+                                          ),
+                        Content         = $"also served as http/1.1 on :{httpsPort}\n".ToUTF8Bytes()
+                    }.AsImmutable
+                )
+            );
+
+            #endregion
+
             #region GET /events  — Server-Sent Events
 
             var eventSource = API.AddEventSource<String>(

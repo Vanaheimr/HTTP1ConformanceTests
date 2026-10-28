@@ -25,37 +25,72 @@ scrapes output for a marker character.
 
 ## Status
 
-**313 checks pass over cleartext and 314 over TLS** — 211 raw-wire + 78 curl
-(79 over TLS, the ALPN check having no cleartext equivalent) + 24 desync —
+**314 checks pass over cleartext and 316 over TLS** — 211 raw-wire + 79 curl
+(81 over TLS, the ALPN check and curl's alt-svc cache having no cleartext
+equivalent) + 24 desync —
 across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
-**487/487** over 12/12.
+**489/489** over 12/12.
 
-The curl figure is 78 **here** and 79 on the CI Debian leg, and that is not a
-discrepancy to reconcile. Two of the matrix's checks are conditional, and a
-third is always present but expects a different answer per build:
+The curl figure is 79 **here** and 80 on the CI Debian leg, and that is not a
+discrepancy to reconcile. Two of the matrix's checks are conditional on the
+build or the filesystem, two more on the transport, and a fifth is always
+present but expects a different answer per build:
 
 | Check | Runs when |
 |---|---|
 | `--http1.1 honoured by an HTTP/2-capable curl` | the curl under test was built with nghttp2 — a build that *cannot* upgrade proves nothing by not upgrading |
 | `curl stored the ETag` | the target is local, so `--etag-save` writes somewhere this script can read |
+| `the server selects http/1.1 over ALPN` | the base is `https://` — ALPN exists only inside a TLS handshake |
+| `curl records no http%2F1.1 alternative` | the base is `https://` *and* the target is local: curl ignores `Alt-Svc` on a cleartext connection, and its cache file has to be readable from here. A **known curl deviation**, pinned rather than passed — see below |
 | `--digest SHA-256` | *always runs*, but expects 200 from a build that implements RFC 7616 with SHA-256 and 401 from one that does not. curl 8.14 (OpenSSL) does; curl 8.21 (Schannel) sends no `Authorization` at all. Predicted from the TLS backend in the version banner and then asserted, so a build that breaks the pattern fails rather than being quietly accommodated |
 
-So 77 checks always run, and the two counting flags give three real combinations:
+So 78 checks always run, and over cleartext the two counting flags give three
+real combinations. CI runs the cleartext gate only:
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the CI Windows leg | no | yes | 78 | **279** |
-| the Debian curl reached through WSL (`--wsl`) | yes | no | 78 | — |
-| the CI `debian:13` container | yes | yes | 79 | **280** |
+| Windows / Git Bash, and the CI Windows leg | no | yes | 79 | **314** |
+| the Debian curl reached through WSL (`--wsl`) | yes | no | 79 | — |
+| the CI `debian:13` container | yes | yes | 80 | **315** |
 
-The first two agree at 60 for opposite reasons, which is worth knowing before
-someone reconciles them into one number.
+The first two agree at 79 for opposite reasons, which is worth knowing before
+someone reconciles them into one number. Over TLS the Windows curl runs 81.
+
+#### `Alt-Svc`, and what curl does with it
+
+`/alt-svc` announces `http%2F1.1=":8443"; ma=60`, the one alternative the demo
+can truthfully name. The always-run check asserts those bytes: `/` is not a
+`tchar`, so RFC 7838 §3 has the sender percent-encode `http/1.1`, and until
+H-7 Hermod did not. The TLS check asserts what curl then records, which is
+**nothing**: curl does not percent-decode the protocol-id. `Curl_alpn2alpnid`
+(`lib/connect.c`) knows the literals `h1`, `h2`, `h3` and `http/1.1`, and
+`Curl_altsvc_parse` (`lib/altsvc.c`) hands it the text before `=` unchanged.
+
+Measured 2026-10-28 with both builds against five protocol-ids, over TLS:
+
+| `Alt-Svc` sent | curl 8.21 (Schannel) | curl 8.14 (OpenSSL) |
+|---|---|---|
+| `h2=":8443"` | recorded `h2` | recorded `h2` |
+| `h3=":8443"` | recorded `h3` | recorded `h3` |
+| `h1=":8443"` — not a registered ALPN id | recorded `h1` | recorded `h1` |
+| `http/1.1=":8443"` — **not a token** | recorded `h1` | recorded `h1` |
+| `http%2F1.1=":8443"` — what §3 requires | **nothing** | **nothing** |
+| any of them over cleartext | nothing | nothing |
+
+So curl accepts the spelling the RFC forbids and ignores the one it requires.
+The check is written to go red in both directions that matter: if the demo
+sends `http/1.1` unencoded again, curl records it (measured: 79/81, both
+alt-svc checks red, and the second names the entry curl wrote); if curl learns
+to decode, it records it too, and the check should then become a pass. It also
+requires curl's cache file to exist with curl's own header in it, because
+"nothing recorded" equally describes a build without alt-svc support or a
+cache curl never wrote.
 
 | Harness | Checks | Covers |
 |---|---:|---|
-| `curl-matrix.sh` | 78–79 | **third-party**: version handling, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
+| `curl-matrix.sh` | 79–81 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |
@@ -102,7 +137,7 @@ interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
 ```bash
-tests/run-tests.sh --wsl        # 357/357 — both curl builds
+tests/run-tests.sh --wsl        # 489/489 — both curl builds
 ```
 
 `--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the
@@ -405,8 +440,8 @@ Every image is pulled rather than built, so this costs a minute of docker pull
 rather than the compiler-hours the HTTP Garden does. It still takes about ten
 minutes to run, which is why it is a nightly.
 
-Four measurements. **curl** runs the whole 78-check matrix through each chain
-against 78/78 direct; **framing** runs `h1desync --observe` through each chain
+Four measurements. **curl** runs the whole 79-check matrix through each chain
+against 79/79 direct; **framing** runs `h1desync --observe` through each chain
 against the same run made directly; **poison** sends an ambiguous message and
 then asks innocent questions on fresh connections; **via** checks the
 intermediary-facing things visible from outside — a chunked body arriving

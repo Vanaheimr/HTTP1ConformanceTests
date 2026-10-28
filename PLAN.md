@@ -13,8 +13,8 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-10-03):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-19 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **313 checks green over
-cleartext and 314 over TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
+20 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **314 checks green over
+cleartext and 316 over TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
 foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
 control. **A10 ✅** — `tests/h1fuzz`, deterministic in the gate and exploring
@@ -31,12 +31,12 @@ citation sweep last so that it covered what the other four added.
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 errors. 286 warnings, every one of them in the submodules' own projects (`Hermod`, `HermodTests`, `Styx`, `StyxTests`) and none in this repository's — this row claimed 0 warnings until 2026-10-03, which an incremental build will tell you, because one that compiles nothing reports nothing. Measured with `-t:Rebuild` |
-| `tests/run-tests.sh` | ✅ 313/313 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
-| `tests/run-tests.sh --tls` | ✅ 314/314, 9/9, ~270 s — one more than the cleartext leg, the ALPN check having no cleartext equivalent. `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice |
+| `tests/run-tests.sh` | ✅ 314/314 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
+| `tests/run-tests.sh --tls` | ✅ 316/316, 9/9, ~270 s — two more than the cleartext leg, the ALPN check and curl's alt-svc cache having no cleartext equivalent. `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice |
 | Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ **1085**, both legs — this row said 832 for three pins, which is what a count nobody re-measures does. 537 before H-1, 657 at the pin before H-10, 896 before H-27's five and H-23's six, 976 before H-18's five, 981 before the 82 of 2026-10-28, 67 of them in six new fixtures, and 1063 before H-35's 5 and H-7's 17 the same day. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so H-26's ten tests run in Hermod's CI and not in ours, and H-27's fix lives in `ATCPClient` — which is why its regression test was written through `HTTPClient` |
 | ↳ `Tests.HTTP.` alone | ✅ **1084** — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ **487/487** over 12/12 harnesses — adds the Debian curl (78), the foreign peers (A7, 58), the smuggling differential (A6, 38) and the fuzzer (A10) |
-| third-party: curl | ✅ 78/78 per build, two builds, both transports — 79 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
+| `tests/run-tests.sh --wsl` | ✅ **489/489** over 12/12 harnesses — adds the Debian curl (79), the foreign peers (A7, 58), the smuggling differential (A6, 38) and the fuzzer (A10) |
+| third-party: curl | ✅ 79/79 per build over cleartext, 81/81 over TLS, two builds — 80 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 58/58 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
@@ -45,7 +45,7 @@ citation sweep last so that it covered what the other four added.
 | smuggling: our differential | ✅ `tests/h1desync` 24/24 in the gate; `tests/smuggle.sh` 38/38 over 3 implementations, 10 known disagreements, nightly |
 | smuggling: third-party | ✅ `tests/smuggler.sh` — smuggler 134/134 mutations, nothing found; h2csmuggler finds no h2c surface, pinned as a regression |
 | smuggling: http-garden | ✅ target built and contract-verified; the full 45-server differential is compiler-hours, run by hand — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
-| third-party: proxies (A5) | ✅ five reverse proxies, 63 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
+| third-party: proxies (A5) | ✅ five reverse proxies, 61 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
 | third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — **27/27** since H-10 closed on 2026-10-03 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
@@ -131,6 +131,7 @@ comparable. All ✅ and exercised by the A2 harnesses:
 | `/expect` | `Expect: 100-continue` and `417` |
 | `/redirect/{code}` | `301` `302` `303` `307` `308` — the last since H-1 landed on 2026-09-23 |
 | `/status/{code}` | arbitrary status codes, for the third-party drivers |
+| `/alt-svc` | RFC 7838 `Alt-Svc`, percent-encoded — since H-7, 2026-10-28 |
 
 Also: `--fast-timeouts` shortens the read deadlines from 30 s to 3 s so the
 timeout checks resolve quickly; the runner passes it.
@@ -188,17 +189,18 @@ library failure.
 
 ## ✅ A3 · curl matrix
 
-**78/78 checks pass over both transports**, wired into `tests/run-tests.sh` —
+**79/79 checks pass over cleartext and 81/81 over TLS**, wired into `tests/run-tests.sh` —
 the gate stood at **279/279** (201 raw-wire + 78 curl) when this track closed,
 at **303/303** since A6 added `h1desync`, at **311/311** since H-23 took the
-raw-wire half to 209, and at **313** cleartext / **314** over TLS since H-9's
-`TRACE` probe and H-17's ALPN one. It read 257 when A3
+raw-wire half to 209, at **313** cleartext / **314** over TLS since H-9's
+`TRACE` probe and H-17's ALPN one, and at **314** / **316** since H-7's
+`Alt-Svc` on 2026-10-28. It read 257 when A3
 closed; the twenty-two since are `308` joining `/redirect/{code}` once H-1
 landed, the five Digest checks that H-3 made possible, four on the `/ws`
 upgrade, and nine on content codings once H-2 was whole. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **487/487**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **489/489**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -284,7 +286,7 @@ Four measurements, and they are not equally strong:
 
 | | what | |
 |---|---|---|
-| `curl` | all 78 curl checks through each chain, against 78/78 direct | every difference recorded by name, a new one fails |
+| `curl` | all 79 curl checks through each chain, against 79/79 direct | every difference recorded by name, a new one fails |
 | `framing` | `h1desync --observe` through each chain, against direct | says what each proxy does with an ambiguous message |
 | `poison` | the attack: send it, then ask innocent questions on fresh connections | **see the calibration below** |
 | `via` | chunked bodies intact, trailers through a re-framing hop, `Connection: close` | |
@@ -608,7 +610,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-4** | `Forwarded` not implemented (only `X-Forwarded-For`) | RFC 7239 | P2 | S | Already marked `//ToDo` at `HTTP1/Request/HTTPRequest.cs:1125`. **Fixed 2026-09-26, merged and pinned, [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43).** `ForwardedElement` and `ForwardedNode` in `HTTP/General/`, parsed and serialisable, preferred over the `X-Forwarded-For` family where both arrive (§7.4) and recorded *beside* the peer socket rather than instead of it, because all of it is hearsay (§8.1). Quote-aware out of necessity rather than taste: a quoted value may contain both the comma that separates elements and the semicolon that separates pairs — the first version of that claim in the comments blamed IPv6 and was wrong, which measuring it is what showed. A second defect found on the way and fixed with it: the existing `X-Forwarded-For` path did `.Skip(1)`, discarding the client — the one address the field exists to carry, with the socket it kept being the *immediate* peer rather than a stand-in. 17 tests |
 | ⬜ | **H-5** | No RFC 9111 cache (client- or server-side) | RFC 9111, 5861, 8246 | P2 | L | `HTTP2/Core/HTTPCache.cs` + `HTTPCacheControl`/`HTTPCacheDecision`/`HTTPStoredResponse` exist. Same lift as H-2, much larger. Verifiable against `cache-tests.fyi` |
 | ✅ | **H-6** | No Structured Field Values parser/serializer | RFC 9651 | P2 | M | Prerequisite for most modern fields (9530, 9211, 9213, 9218, Client Hints). **Fixed 2026-09-26, merged and pinned, [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43).** Lists, Dictionaries and Items over all eight bare types, including the Date and Display String that RFC 8941 did not have; Section 4.2 parsing, Section 4.1 serialization, byte-for-byte round trips for every canonical form — which is the property RFC 9421 signatures would need. Strict on purpose: a trailing comma, a sixteenth digit, an upper-case key, an upper-case percent escape and a display string that is not valid UTF-8 all fail rather than get repaired, because two implementations that each repair a different malformed field are two implementations that disagree. Nothing uses it yet; it is the prerequisite H-13 and the rest are defined in terms of. 33 tests |
-| ✅ | **H-7** | No `Alt-Svc` | RFC 7838 | P2 | S | **Fixed 2026-10-28, merged and pinned, [Hermod#161](https://github.com/Vanaheimr/Hermod/pull/161), and the third of its shape.** The grammar existed: `HTTPAlternativeService`, written for HTTP/2's ALTSVC frame, in `HTTP2/Core` where HTTP/1.x could not reach it — as H-3's authentication framework and H-11's date parser had been. It moved to `Hermod/HTTP/`, and beside it `AlternativeServices`, the field value: the alternatives in order of preference, or `clear`. Typed `Alt-Svc` on the response and its builder, `Alt-Used` on the request. The response getter joins repeated field lines before parsing, because the field is a list (RFC 9110 §5.3) and the generic typed lookup returns null for the array two lines leave. A value with nothing usable in it is refused rather than read as an empty list, which a client could not tell apart from `clear`. **The move found three departures from §3, fixed for HTTP/2 as well:** `clear` beside alternatives was skipped as an entry without `=` and the alternatives kept, where §3 has it invalidate all of them "including those specified in the same response"; `Clear` was not `clear`, although an ABNF literal is case-insensitive; and an ALPN id outside the token alphabet went out as it was, `http/1.1` where §3 wants `http%2F1.1`. 17 tests, 7 red with the three fixes reverted and one more with the generic getter. **Announcing an alternative stays the application's**, as with HSTS: it claims the origin is served there too, which only the application knows. The client records alternatives and does not act on them. curl's `--alt-svc` is not yet a check here — the demo announces nothing |
+| ✅ | **H-7** | No `Alt-Svc` | RFC 7838 | P2 | S | **Fixed 2026-10-28, merged and pinned, [Hermod#161](https://github.com/Vanaheimr/Hermod/pull/161), and the third of its shape.** The grammar existed: `HTTPAlternativeService`, written for HTTP/2's ALTSVC frame, in `HTTP2/Core` where HTTP/1.x could not reach it — as H-3's authentication framework and H-11's date parser had been. It moved to `Hermod/HTTP/`, and beside it `AlternativeServices`, the field value: the alternatives in order of preference, or `clear`. Typed `Alt-Svc` on the response and its builder, `Alt-Used` on the request. The response getter joins repeated field lines before parsing, because the field is a list (RFC 9110 §5.3) and the generic typed lookup returns null for the array two lines leave. A value with nothing usable in it is refused rather than read as an empty list, which a client could not tell apart from `clear`. **The move found three departures from §3, fixed for HTTP/2 as well:** `clear` beside alternatives was skipped as an entry without `=` and the alternatives kept, where §3 has it invalidate all of them "including those specified in the same response"; `Clear` was not `clear`, although an ABNF literal is case-insensitive; and an ALPN id outside the token alphabet went out as it was, `http/1.1` where §3 wants `http%2F1.1`. 17 tests, 7 red with the three fixes reverted and one more with the generic getter. **Announcing an alternative stays the application's**, as with HSTS: it claims the origin is served there too, which only the application knows. The client records alternatives and does not act on them. **Driven with curl 2026-10-28**: the demo's `/alt-svc` announces `http%2F1.1=":8443"`, the field arrives exactly so, and neither curl build records it — curl does not percent-decode the protocol-id and matches the literal `http/1.1` instead, which is not a token. A curl deviation, pinned in the TLS leg of the curl matrix, not ours to fix; see [`tests/README.md`](tests/README.md) |
 | ✅ | **H-8** | ~70 source comments still cite RFC 2616 / RFC 7230-series | — | P2 | S | Mechanical; the HTTP1 README already flags it. **Fixed 2026-09-26, merged and pinned, [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43).** 62 of 69 rewritten to each field's current defining document *and section*, taken from the IANA HTTP Field Name registry rather than from memory — 45 lookups, where being confident about 44 is not the same as being right about all of them. Seven remain deliberately: six are RFC 4918 quoting RFC 2616 in text this codebase quotes in turn, where rewriting them would misquote RFC 4918, so each of the three blocks now carries a remark naming the current reference; the seventh is inside commented-out code under `URLMapping_old/`, which is H-18's question and not this one's |
 | ✅ | **H-9** | No server-side `TRACE` | RFC 9110 §9.1, §9.3.8 | P3 | XS | Token + client exist; the server never handled it. **Answered as a decision 2026-10-04, merged and pinned, [Hermod#132](https://github.com/Vanaheimr/Hermod/pull/132).** The row said "deliberately not implemented is a valid answer, but then document it" — so: §9.1 makes it a choice, every method but `GET` and `HEAD` being OPTIONAL, and §9.3.8 gives the reason not to. A `TRACE` response carries the request's own fields back, so the recipient "SHOULD exclude any request fields that are likely to contain sensitive data": a judgement about `Authorization`, `Cookie` and whatever an application invented, which a library would make once, for everybody, and wrong. Cross-Site Tracing was that mistake in the browsers of 2003. What changed is the code: **501, not 405**. §9.1 keeps 405 for a method "recognized and implemented, but not allowed for the target resource" and puts one "unrecognized or not implemented" on the 501 side — this refusal is the server's for every resource at once, and a 405 whose `Allow` named GET, HEAD and OPTIONS invited a client to look for a resource that allows `TRACE`. It sits after routing, so a registered `TRACE` handler still decides. 4 tests, 3 red before; and a probe here, which was the 405 before |
 | ✅ | **H-10** | No automatic CORS preflight | WHATWG Fetch | P2 | M | `Access-Control-*` were settable, but the `OPTIONS` preflight was answered `405` — and it is the one request a handler cannot own, because routing refuses it before any handler is consulted. **Fixed 2026-10-03, [Hermod#81](https://github.com/Vanaheimr/Hermod/pull/81), three commits.** First the resource-level `OPTIONS` (RFC 9110 §9.3.7), which routing was refusing while the rejection already carried `Methods.Keys` — that alone does not fix a preflight. Then an opt-in `HTTPCORSPipeline` + `CORSPolicy` installed *ahead of* routing, which is the only place the application can take the decision back. Then the pipeline asking the router for the methods the route actually has, so `Access-Control-Allow-Methods` cannot promise what no handler answers. **Demonstrated closed by A8: 27/27, up from 24/27**, all three engines, and `tests/browser-known.txt` is now empty — deleting a line there is how the fix was verified, not an assertion here |
@@ -661,7 +663,7 @@ A4 turned out to need none of them, so nothing was ever waiting on this track.
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Six of six, finally: H-2 turned out to be
 four fixes rather than one, and the last of them closed on 2026-09-24. The
-number is now **313**, and 78 of those come from a client nobody here wrote
+number is now **314**, and 79 of those come from a client nobody here wrote
 — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ✅ A5 — Autobahn reproducible from a

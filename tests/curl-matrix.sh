@@ -208,8 +208,8 @@ if [ "$HAS_H2" = "yes" ]; then
 fi
 
 # ALPN exists only inside a TLS handshake, so this is the one check here that is
-# conditional on the *transport* rather than on the build — the TLS leg runs 79
-# and the cleartext one 78.
+# conditional on the *transport* rather than on the build, with curl's alt-svc
+# cache below — the TLS leg runs 81 and the cleartext one 79.
 #
 # The needle is "accepted", because curl prints its own offer on the line above
 # ("ALPN: curl offers http/1.1") and a matrix that passed on that would be
@@ -219,6 +219,48 @@ fi
 case "$BASE" in
     https://*)
         trace "the server selects http/1.1 over ALPN" "accepted.*http/1.1" "$BASE/"
+        ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Alternative services — RFC 7838
+# ---------------------------------------------------------------------------
+echo "  -- alt-svc --"
+# /alt-svc announces the one alternative the demo can truthfully name: the same
+# routes over HTTP/1.1 on the TLS listener. "http/1.1" is not a token — "/" is
+# not a tchar — so §3 has the sender percent-encode it, and the field has to
+# arrive as http%2F1.1. Until Hermod#161 it went out as "http/1.1".
+has   "Alt-Svc arrives percent-encoded (RFC 7838 §3)" 'Alt-Svc: http%2F1\.1=":8443"; ma=60' -D- "$BASE/alt-svc"
+
+# What curl does with it, and that is a curl deviation pinned rather than a
+# pass: curl does not percent-decode the protocol-id. Curl_alpn2alpnid
+# (lib/connect.c) knows the literals "h1", "h2", "h3" and "http/1.1", and
+# Curl_altsvc_parse (lib/altsvc.c) hands it the text before "=" unchanged, so
+# the RFC's spelling is an unknown protocol and skipped, while the unencoded
+# one, which is not a token, is accepted. Measured 2026-10-28 with both builds
+# here, 8.21 (Schannel) and 8.14 (OpenSSL), against five protocol-ids: h1, h2, h3
+# and "http/1.1" are recorded, http%2F1.1 is not.
+#
+# Over TLS only, because curl ignores Alt-Svc on a cleartext connection, which
+# both builds confirm. And only where the cache file is readable from here, as
+# with the ETag store. The file itself must exist with curl's header in it:
+# without that, "nothing recorded" would equally describe a build without
+# alt-svc, or a cache curl never wrote. If this goes red with an entry for
+# :8443, either the demo is sending "http/1.1" unencoded again, which the check
+# above says, or curl has learned to decode — then this becomes a pass.
+case "$BASE" in
+    https://*)
+        if [ "$REMOTE" = "no" ]; then
+            ALTSVC_FILE="$TMP/alt-svc"
+            $CURL -s $INSECURE "${TIMEOUTS[@]}" -o /dev/null --alt-svc "$ALTSVC_FILE" "$BASE/alt-svc" 2>/dev/null
+            if ! grep -qi "alt-svc cache" "$ALTSVC_FILE" 2>/dev/null; then
+                fail "curl records no http%2F1.1 alternative (known curl deviation)" "curl wrote no alt-svc cache, so an empty one proves nothing"
+            elif grep -v '^#' "$ALTSVC_FILE" | grep -q '[^[:space:]]'; then
+                fail "curl records no http%2F1.1 alternative (known curl deviation)" "curl recorded: $(grep -v '^#' "$ALTSVC_FILE" | tr -d '\r' | head -c 160)"
+            else
+                pass "curl records no http%2F1.1 alternative (known curl deviation)"
+            fi
+        fi
         ;;
 esac
 

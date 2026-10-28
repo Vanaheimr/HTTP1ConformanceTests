@@ -4213,3 +4213,81 @@ well: `clear` beside alternatives was skipped rather than clearing them,
 should announce an alternative, and what curl's `--alt-svc` then records, is
 the open question after it. Nothing here sends `Alt-Svc` yet, so nothing here
 has measured it on the wire against a client that is not Hermod's.
+
+## 2026-10-28 — `Alt-Svc` on the wire: curl ignores the spelling the RFC requires
+
+H-7 closed with nothing here sending the field, so nothing had seen it from a
+client that is not Hermod's. The demo now has `/alt-svc`, announcing the one
+alternative it can truthfully name — the same routes, over HTTP/1.1, on the
+TLS listener: `Alt-Svc: http%2F1.1=":8443"; ma=60`. On that route only, so
+that a client with an alt-svc cache does not carry it into another check.
+
+### What curl records
+
+Before writing a check, a temporary route served six fixed values, and both
+curl builds were asked what they put into their `--alt-svc` cache:
+
+| sent | 8.21 Schannel | 8.14 OpenSSL |
+|---|---|---|
+| `h2=":8443"`, `h3=":8443"` | `h2`, `h3` | `h2`, `h3` |
+| `h1=":8443"` | `h1` | `h1` |
+| `http/1.1=":8443"` | `h1` | `h1` |
+| `http%2F1.1=":8443"` | nothing | nothing |
+| any, over cleartext | nothing | nothing |
+
+`http/1.1` is not a token, `/` not being a `tchar`, and RFC 7838 §3 has the
+sender percent-encode it. curl accepts the forbidden spelling and ignores the
+required one. Its source says why: `Curl_altsvc_parse` (`lib/altsvc.c`) passes
+the text before `=` unchanged to `Curl_alpn2alpnid` (`lib/connect.c`), which
+compares it with the literals `h1`, `h2`, `h3` and `http/1.1`. Read on master
+today, so it is not fixed upstream either. It is curl's to fix, not ours, and
+whether to report it is a decision for the user.
+
+### The checks
+
+Two, in `tests/curl-matrix.sh`:
+
+- **always**: the field arrives as `http%2F1.1=":8443"; ma=60` — the bytes
+  H-7's encoding fix put there;
+- **TLS, local target only**: curl's cache exists with curl's own header in
+  it, and holds no entry. Pinned as a known curl deviation, not counted as
+  a pass of ours.
+
+Falsified with the demo sending `http/1.1` unencoded: **79/81**, exactly these
+two red, and the second names what curl wrote —
+`h1 127.0.0.1 8443 h1 127.0.0.1 8443 …`. It goes red the same way if curl
+learns to decode, and should then be turned into a pass.
+
+**The falsification cost a false red first.** Restoring `Program.cs` with
+`Copy-Item` kept the copy's older timestamp, MSBuild found the falsified
+assembly newer than its source, and the next `--wsl` run drove the falsified
+demo: 78/79 on both curls, for a reason that was mine. A restored source file
+needs touching before the build that is meant to see it.
+
+### Through the proxies
+
+`tests/proxy.sh` ran the new check through all five chains. nginx, HAProxy,
+httpd and Envoy pass the field through unchanged; **Caddy removes it** — it
+lists `Alt-Svc` in `hopHeaders` (`modules/caddyhttp/reverseproxy/reverseproxy.go`)
+and strips the list in both directions. RFC 9110 §7.6.1 does not make the field
+hop-by-hop. But an alternative with no host names the host the *client* sees,
+which through a proxy is the proxy's, and nothing listens on its `:8443`: the
+four that pass it through relay a claim that stopped being true at the hop.
+Recorded in `tests/proxy-known.txt` as Caddy's, and written up in
+`docs/TestingAgainst_Proxies.md`.
+
+The count of recorded differences is 61: 23 curl, 37 framing, 1 via. README
+and PLAN said 63, the figure of 2026-09-27, three framing rows having been
+pruned on 2026-10-02 without the count following.
+
+### Measured
+
+| | before | now |
+|---|---:|---:|
+| curl matrix, cleartext / TLS | 78 / 79 | **79 / 81** |
+| gate, cleartext | 313/313 | **314/314** |
+| gate, `--tls` | 314/314 | **316/316** |
+| gate, `--wsl` | 487/487 | **489/489** |
+| proxies | 32/32 | **32/32**, Caddy's one new difference recorded |
+
+Demo routes: 20.

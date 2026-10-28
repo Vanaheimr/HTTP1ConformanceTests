@@ -147,9 +147,9 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
-**A3 done** — the curl matrix (78 checks, 79 where curl has HTTP/2 *and* the
-target is local — see [`tests/README.md`](tests/README.md)). The gate is **313 cleartext and
-314 over TLS** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
+**A3 done** — the curl matrix (79 checks, 80 where curl has HTTP/2 *and* the
+target is local, 81 over TLS — see [`tests/README.md`](tests/README.md)). The gate is **314 cleartext and
+316 over TLS** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
 rather than on perfection.
@@ -183,8 +183,8 @@ pointed at a foreign suite. See
 | | |
 |---|---|
 | Hermod's own NUnit suites | 1084 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1085 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2321** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2084 a pin ago. All 2321 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
-| this repo's gate | **313** cleartext, **314** over TLS (211 raw-wire + 78 curl + 24 desync; the TLS leg's 79th is the ALPN check, which has no cleartext equivalent) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's |
-| with `--wsl` (second curl build + foreign peers + the smuggling differential) | **487/487** |
+| this repo's gate | **314** cleartext, **316** over TLS (211 raw-wire + 79 curl + 24 desync; the TLS leg's two more are the ALPN check and curl's alt-svc cache, neither of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28 |
+| with `--wsl` (second curl build + foreign peers + the smuggling differential) | **489/489** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
 | benchmarks (A9) | `tests/h1bench`, not a gate — 0.240 ms p50 against Kestrel's 0.252 ms on the same loopback |
 | parser fuzzing (A10) | `tests/h1fuzz` — request, response and chunked parsers; deterministic in the gate, ten minutes per target nightly. Found **H-28** on its first run; fixed 2026-10-03, and `known-findings.txt` is empty again |

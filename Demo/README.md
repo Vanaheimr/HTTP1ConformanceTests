@@ -36,6 +36,7 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/expect` | POST | `Expect: 100-continue` |
 | `/redirect/{code}` | GET | `301` `302` `303` `307` `308` |
 | `/status/{code}` | GET | arbitrary status codes, for the drivers |
+| `/alt-svc` | GET | RFC 7838 `Alt-Svc`, announcing the TLS listener as `http%2F1.1=":8443"` — on this route only, so no client carries it into another check |
 | `/events` | GET | SSE — `retry`, `id`, `event`, a 2 s ticker |
 | `/ws` | GET | RFC 9110 §7.8 `Upgrade` — a WebSocket echo on the HTTP port itself, cleartext and TLS. A plain GET gets `426` |
 

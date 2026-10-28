@@ -21,6 +21,7 @@
 #   httpd:2.4-alpine
 #   nginx:1.31-alpine
 
+curl	caddy	Alt-Svc arrives percent-encoded (RFC 7838 §3)	
 curl	caddy	HTTP/1.0 response closes	
 curl	caddy	server-wide OPTIONS *	
 curl	caddy	the identity one keeps the plain ETag	

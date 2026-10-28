@@ -25,15 +25,15 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 313 checks, ~135 s
+tests/run-tests.sh        # 314 checks, ~135 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **211/211** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **78/78** (79 on the CI Debian leg — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **313** cleartext and **314** over TLS, the extra one being the ALPN check that only a TLS handshake can carry — and **487/487** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
-| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 19 routes |
+| `tests/curl-matrix.sh` | **79/79** (80 on the CI Debian leg, 81 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **314** cleartext and **316** over TLS, the extra two being the ALPN check that only a TLS handshake can carry and curl's alt-svc cache, which curl fills only over TLS — and **489/489** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
+| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 20 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
 | `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
@@ -42,7 +42,7 @@ tests/run-tests.sh        # 313 checks, ~135 s
 | `tests/smuggle.sh` | **38/38** over Hermod, Go `net/http` and Node `node:http`. 28 rows agree; the 10 that do not are [written up](docs/TestingAgainst_Smuggling.md) and pinned in `tests/smuggle-known.txt` |
 | `tests/smuggler.sh` | **134/134** Transfer-Encoding obfuscations from [smuggler](https://github.com/defparam/smuggler), nothing found; [h2csmuggler](https://github.com/BishopFox/h2csmuggler) finds no h2c surface, which is now a pinned regression |
 | `tests/http-garden/` | Hermod as a target in [the HTTP Garden](https://github.com/narfindustries/http-garden), which compares parse trees across 45 implementations. Contract-verified on every run; the full sweep is compiler-hours and is run by hand |
-| `tests/proxy.sh` | **32/32** — the demo behind nginx, HAProxy, Caddy, Apache and Envoy. 63 differences from the direct run, each recorded by name; no chain poisons a connection, though [the detector is calibrated-unfired](docs/TestingAgainst_Proxies.md) |
+| `tests/proxy.sh` | **32/32** — the demo behind nginx, HAProxy, Caddy, Apache and Envoy. 61 differences from the direct run, each recorded by name; no chain poisons a connection, though [the detector is calibrated-unfired](docs/TestingAgainst_Proxies.md) |
 | `tests/browser.sh` | **27/27** — Chromium, Firefox and WebKit through Playwright. The three failures are one finding, [H-10](docs/TestingAgainst_Browsers.md), on each engine |
 
 On top of that, the coverage inside Hermod itself:
@@ -308,7 +308,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) §4 | WebSocket handshake | ✅ see below |
 | [RFC 2817](https://www.rfc-editor.org/rfc/rfc2817) | Upgrading to TLS within HTTP/1.1 | ⬜ |
 | RFC 9113 (removes RFC 7540 §3.2) | `Upgrade: h2c` | ⬜ **correctly not implemented** — h2c upgrade was removed from the standard, and its absence is a smuggling defence, pinned as a regression by `h2csmuggler` in `tests/smuggler.sh` |
-| [RFC 7838](https://www.rfc-editor.org/rfc/rfc7838) | `Alt-Svc` — advertising h2/h3 | 🟡 typed `Alt-Svc` on responses and `Alt-Used` on requests, with the grammar HTTP/2's ALTSVC frame uses (H-7, 2026-10-28). Whether to announce an alternative is the application's; the client records alternatives and does not act on them |
+| [RFC 7838](https://www.rfc-editor.org/rfc/rfc7838) | `Alt-Svc` — advertising h2/h3 | 🟡 typed `Alt-Svc` on responses and `Alt-Used` on requests, with the grammar HTTP/2's ALTSVC frame uses (H-7, 2026-10-28). Whether to announce an alternative is the application's; the client records alternatives and does not act on them. The demo's `/alt-svc` sends `http%2F1.1=":8443"`, which **curl does not recognise** — it matches the unencoded `http/1.1` the RFC forbids, and records nothing for the encoding it requires. Pinned in the curl matrix |
 
 ## WebSocket
 

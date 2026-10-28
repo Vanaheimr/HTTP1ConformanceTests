@@ -48,16 +48,16 @@ as an environment variable so that nothing else has to know.
 
 ### curl, through each proxy
 
-The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 78 checks —
+The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 79 checks —
 run directly and then through each chain. Differences are expected: a proxy is
 an HTTP endpoint on both sides and rewrites a great deal. Each one is recorded
 by name in [`tests/proxy-known.txt`](../tests/proxy-known.txt), and a *new*
 one fails the run.
 
-Direct is 78/78, which is what makes the rest of the column meaningful: a
+Direct is 79/79, which is what makes the rest of the column meaningful: a
 difference below is the proxy's doing and not a pre-existing failure.
 
-The differences cluster into four recognisable behaviours, and none of them is
+The differences cluster into recognisable behaviours, and none of them is
 a Hermod defect:
 
 | what | nginx | HAProxy | Caddy | httpd | Envoy |
@@ -67,6 +67,19 @@ a Hermod defect:
 | does not forward an `Upgrade` without being configured for it | ✔ | | | ✔ | ✔ |
 | keeps the client connection for an HTTP/1.0 request | | ✔ | ✔ | | |
 | refuses an unregistered method (`QUERY`, RFC 10008) | | | | | ✔ |
+| removes the upstream's `Alt-Svc` | | | ✔ | | |
+
+**The last row, since 2026-10-28**, is the one where the odd proxy out is the
+one that is right. The demo's `/alt-svc` announces `http%2F1.1=":8443"`, and an
+alternative with no host names the host of the origin *the client sees*
+(RFC 7838 §2.1). Through a proxy that is the proxy's host, and nothing listens
+on its `:8443`: nginx, HAProxy, httpd and Envoy hand the client a claim that
+stopped being true at the hop. Caddy lists `Alt-Svc` in its `hopHeaders` and
+strips it in both directions (`modules/caddyhttp/reverseproxy/reverseproxy.go`).
+RFC 9110 §7.6.1 does not make it hop-by-hop, so this is Caddy's judgement rather
+than a requirement — but it is the judgement that keeps the client's view
+consistent, and the four that pass it through are relaying an origin's
+statement about itself as though it were their own.
 
 ### framing, direct against each chain
 
