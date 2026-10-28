@@ -190,7 +190,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | Spec | Title | Hermod HTTP/1.x |
 |---|---|---|
 | [RFC 1945](https://www.rfc-editor.org/rfc/rfc1945) | HTTP/1.0 | ✅ requests/responses, `Content-Length`, close-delimited bodies, default close, negotiated keep-alive, chunked rejection, `HTTP/1.0` status line |
-| [RFC 2616](https://www.rfc-editor.org/rfc/rfc2616) | HTTP/1.1 (obsolete) | 🟢 superseded by 9110/9112; still the citation in ~70 legacy source comments → cleanup ToDo |
+| [RFC 2616](https://www.rfc-editor.org/rfc/rfc2616) | HTTP/1.1 (obsolete) | 🟢 superseded by 9110/9112. Of the 69 source comments that still cited it, 62 now cite each field's current document and section (H-8, 2026-09-26); six remain on purpose, RFC 4918 quoting RFC 2616 in text Hermod quotes in turn, each block with a remark naming the current reference |
 | [RFC 7230](https://www.rfc-editor.org/rfc/rfc7230)–[7235](https://www.rfc-editor.org/rfc/rfc7235) | HTTP/1.1 series (obsolete) | 🟢 superseded by 9110–9112 |
 | [RFC 2145](https://www.rfc-editor.org/rfc/rfc2145) | Use and interpretation of HTTP version numbers | ✅ non-canonical versions (`HTTP/1`, `HTTP/01.1`, wrong case) are rejected |
 | "HTTP/1.0 Keep-Alive" (never standardized) | `Connection: Keep-Alive` + `Keep-Alive` field | ✅ honoured only when negotiated in both directions; `close` wins |
@@ -204,9 +204,9 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | RFC 9112 §6 | Message body length, the 7-step algorithm | ✅ incl. duplicate/conflicting `Content-Length`, `CL`+`TE` conflict, overflow/sign/non-decimal |
 | RFC 9112 §7 | Transfer codings | ✅ `chunked` (both directions, both roles), chunk extensions, trailers, forbidden-trailer list. `gzip`/`deflate`/`compress` **transfer** codings ❌ |
 | RFC 9112 §9 | Persistence, pipelining, `Connection` | ✅ persistent by default, pipelining in wire order, chunked request delimited before the next, invalid leading request closes the connection |
-| RFC 9112 §11.2 | Message smuggling / response splitting | ✅ strict rejection of ambiguous framing, and verified differentially since 2026-09-27: `tests/h1desync` 24/24 against the requirements RFC 9112 states, three implementations compared in `tests/smuggle.sh`, two third-party probe suites, and Hermod added to the HTTP Garden. One finding, **H-29** — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
+| RFC 9112 §11.2 | Message smuggling / response splitting | ✅ strict rejection of ambiguous framing, and verified differentially since 2026-09-27: `tests/h1desync` 24/24 against the requirements RFC 9112 states, three implementations compared in `tests/smuggle.sh`, two third-party probe suites, and Hermod added to the HTTP Garden. Two findings, **H-29** and **H-30**, both fixed the day they were found ([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54)) — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
 | RFC 9110 §7.6.1 | Connection-specific (hop-by-hop) fields | 🟡 `Connection`, `Trailer`, `Upgrade`, `Via` typed |
-| [RFC 7239](https://www.rfc-editor.org/rfc/rfc7239) | `Forwarded` HTTP extension | ❌ — only `X-Forwarded-For` is typed. Marked `//ToDo` in `HTTPRequest.cs:1125` |
+| [RFC 7239](https://www.rfc-editor.org/rfc/rfc7239) | `Forwarded` HTTP extension | ✅ `ForwardedElement`/`ForwardedNode`, parsed and serialisable, preferred over the `X-Forwarded-For` family where both arrive (§7.4) and recorded beside the peer socket rather than instead of it (§8.1) — H-4, 2026-09-26 |
 | [RFC 9440](https://www.rfc-editor.org/rfc/rfc9440) | `Client-Cert` / `Client-Cert-Chain` | ❌ (mTLS itself is supported at the TLS layer) |
 | [RFC 8586](https://www.rfc-editor.org/rfc/rfc8586) | `CDN-Loop` | ⬜ |
 | [RFC 9209](https://www.rfc-editor.org/rfc/rfc9209) | `Proxy-Status` | ⬜ |
@@ -216,11 +216,11 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | Spec | Title | Hermod HTTP/1.x |
 |---|---|---|
 | [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) | URI Generic Syntax (STD 66) | ✅ `URL`, `HTTPPath`, `QueryString`, `URIScheme`, `URLHost`; fragments, bad percent-escapes, encoded separators, dot segments, repeated slashes and double-encoding all rejected |
-| [RFC 6874](https://www.rfc-editor.org/rfc/rfc6874) | IPv6 zone identifiers in URIs | ❌ |
+| [RFC 6874](https://www.rfc-editor.org/rfc/rfc6874) | IPv6 zone identifiers in URIs | ✅ `IPv6Address.TryParseURIHost` reads `%25` as the zone delimiter, which the plain parser had read as part of the zone (`25en1`); `URL.HostHeader` drops the zone — H-20, 2026-10-04 |
 | [RFC 5234](https://www.rfc-editor.org/rfc/rfc5234) / [RFC 7405](https://www.rfc-editor.org/rfc/rfc7405) | ABNF (STD 68) | ✅ used as the parsing reference |
 | [RFC 3629](https://www.rfc-editor.org/rfc/rfc3629) | UTF-8 (STD 63) | ✅ incl. the incremental validator in the WebSocket path |
-| RFC 9110 §5.6.7 + [RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) | HTTP-date (IMF-fixdate) | 🟢 IMF-fixdate produced/parsed; obsolete RFC 850 and asctime forms ❌ |
-| [RFC 9651](https://www.rfc-editor.org/rfc/rfc9651) | Structured Field Values (obsoletes 8941) | ❌ no structured-field parser/serializer |
+| RFC 9110 §5.6.7 + [RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) | HTTP-date (IMF-fixdate) | ✅ `HTTPDate`: IMF-fixdate produced, all three formats parsed as recipients MUST, the RFC 850 two-digit year by §5.6.7's sliding window — H-11, 2026-10-03 |
+| [RFC 9651](https://www.rfc-editor.org/rfc/rfc9651) | Structured Field Values (obsoletes 8941) | ✅ Lists, Dictionaries and Items over all eight bare types, §4.2 parsing and §4.1 serialization, strict rather than repairing — H-6, 2026-09-26. No typed field uses it yet; it is what H-13's `Content-Digest` would be built on |
 | [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187) | Charset/language in field parameters (`filename*`) | ❌ |
 | [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) | `Content-Disposition` in HTTP | 🟡 typed field, no parameter-encoding logic |
 | [RFC 8288](https://www.rfc-editor.org/rfc/rfc8288) | Web Linking (`Link`) | ❌ |
@@ -230,7 +230,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 
 | Spec | Methods | Hermod HTTP/1.x |
 |---|---|---|
-| RFC 9110 §9 | `GET` `HEAD` `POST` `PUT` `DELETE` `OPTIONS` `TRACE` `CONNECT` | ✅ routed, incl. server-wide `OPTIONS *`, resource `OPTIONS`, `405` + `Allow`. `TRACE` 🟡 (token + client only, no server echo). `CONNECT` → `501` ⬜ |
+| RFC 9110 §9 | `GET` `HEAD` `POST` `PUT` `DELETE` `OPTIONS` `TRACE` `CONNECT` | ✅ routed, incl. server-wide `OPTIONS *`, resource `OPTIONS`, `405` + `Allow`, and `HEAD` derived from `GET` with `Allow` naming it (H-23, 2026-10-03). `TRACE` → `501` by decision (H-9, 2026-10-04): what an echo may carry back is §9.3.8's judgement about sensitive fields, which only the application can make, and a registered `TRACE` handler still decides. `CONNECT` → `501` ⬜ |
 | [RFC 5789](https://www.rfc-editor.org/rfc/rfc5789) | `PATCH`, `Accept-Patch` | 🟡 method + `Accept-Patch` typed; patch-document semantics 🔵 |
 | [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008) | `QUERY` (safe, body-carrying read) | ✅ modeled safe+idempotent, end-to-end tested with fixed-length and chunked content, trailers, chunk extensions. `Accept-Query` 🟡, negotiation/caching 🔵 |
 | [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918) | WebDAV — `COPY` `LOCK` `MKCOL` `MOVE` `PROPFIND` `PROPPATCH` `UNLOCK` | 🟡 method tokens + `DAV`/`Depth`/`Destination`/`If`/`Lock-Token`/`Overwrite`/`Timeout` fields typed; no WebDAV resource implementation |
@@ -242,14 +242,14 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | Spec | Codes | Hermod |
 |---|---|---|
 | RFC 9110 §15 | 1xx/2xx/3xx/4xx/5xx core set | ✅ present and used |
-| [RFC 8297](https://www.rfc-editor.org/rfc/rfc8297) | `103 Early Hints` | ❌ not defined |
-| [RFC 7538](https://www.rfc-editor.org/rfc/rfc7538) → 9110 §15.4.9 | `308 Permanent Redirect` | ❌ not defined |
-| RFC 9110 §15.5.20 | `421 Misdirected Request` | ❌ not defined |
-| [RFC 8470](https://www.rfc-editor.org/rfc/rfc8470) | `425 Too Early` | ❌ the slot `425` is present but named `NoCode` (a stale RFC 2518 draft name) — **bug** |
-| [RFC 7725](https://www.rfc-editor.org/rfc/rfc7725) | `451 Unavailable For Legal Reasons` | ❌ not defined |
-| [RFC 6585](https://www.rfc-editor.org/rfc/rfc6585) | `428` `429` `431` `511` | 🟢 `428`/`429`/`431` ✅ (with a token-bucket rate limiter), `511` ❌ |
-| RFC 4918 / [RFC 5842](https://www.rfc-editor.org/rfc/rfc5842) | `207` `422` `423` `424` `507` / `208` `508` | 🟢 `207`/`422`/`423`/`424`/`507` ✅; `208`/`508` ❌ |
-| [RFC 3229](https://www.rfc-editor.org/rfc/rfc3229) | `226 IM Used` (delta encoding) | ⬜ |
+| [RFC 8297](https://www.rfc-editor.org/rfc/rfc8297) | `103 Early Hints` | 🟡 defined since H-1 (2026-09-23). Sending it as an interim response ahead of the final one is not something this matrix has verified |
+| [RFC 7538](https://www.rfc-editor.org/rfc/rfc7538) → 9110 §15.4.9 | `308 Permanent Redirect` | ✅ defined since H-1 (2026-09-23) |
+| RFC 9110 §15.5.20 | `421 Misdirected Request` | ✅ defined since H-1 (2026-09-23) |
+| [RFC 8470](https://www.rfc-editor.org/rfc/rfc8470) | `425 Too Early` | ✅ `TooEarly` — named `NoCode`, a stale RFC 2518 draft name, until H-1 (2026-09-23) |
+| [RFC 7725](https://www.rfc-editor.org/rfc/rfc7725) | `451 Unavailable For Legal Reasons` | ✅ defined since H-1 (2026-09-23) |
+| [RFC 6585](https://www.rfc-editor.org/rfc/rfc6585) | `428` `429` `431` `511` | ✅ `428`/`429`/`431` (with a token-bucket rate limiter), and `511` since H-1 (2026-09-23) |
+| RFC 4918 / [RFC 5842](https://www.rfc-editor.org/rfc/rfc5842) | `207` `422` `423` `424` `507` / `208` `508` | ✅ `207`/`422`/`423`/`424`/`507`, and `208`/`508` since H-1 (2026-09-23) |
+| [RFC 3229](https://www.rfc-editor.org/rfc/rfc3229) | `226 IM Used` (delta encoding) | ⬜ delta encoding; the code itself is defined since H-1 |
 | [RFC 2295](https://www.rfc-editor.org/rfc/rfc2295) | `506 Variant Also Negotiates` | 🟡 code present, TCN not implemented |
 | [RFC 2324](https://www.rfc-editor.org/rfc/rfc2324) | `418 I'm a teapot` | ✅ obviously |
 
@@ -260,7 +260,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | RFC 9110 §11 | Authentication framework, `WWW-Authenticate`, `Authorization`, `Proxy-*` | ✅ challenge/credential plumbing + `WWWAuthenticate` builder; policy 🔵 |
 | [RFC 7617](https://www.rfc-editor.org/rfc/rfc7617) | Basic | ✅ typed parse/serialize + end-to-end server tests (challenge, malformed, invalid, forbidden) |
 | [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750) | OAuth 2.0 Bearer | 🟡 typed parse/serialize; validation 🔵 |
-| [RFC 7616](https://www.rfc-editor.org/rfc/rfc7616) | Digest (SHA-256) | ❌ **`HTTPDigestAuthentication` is not RFC 7616** — it is a custom `Digest base64(user):base64(secret)` scheme with no realm/nonce/qop/nc/cnonce/response. Misleading name → rename or implement |
+| [RFC 7616](https://www.rfc-editor.org/rfc/rfc7616) | Digest (SHA-256) | ✅ `DigestAuthenticationScheme`, RFC 7616 with SHA-256, reachable from HTTP/1.x since the RFC 9110 §11 framework moved out of `HTTP2/` (H-3, 2026-09-24); `HTTPDigestAuthentication` parses and reserializes the credentials. curl 8.14 authenticates with SHA-256. The old custom `Digest base64(user):base64(secret)` scheme was dead code |
 | [RFC 2617](https://www.rfc-editor.org/rfc/rfc2617) | Basic + Digest (obsolete) | ⬜ superseded |
 | [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421) | HTTP Message Signatures | ❌ (`Argus` has its own non-RFC signature verification) |
 | [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530) | Digest Fields (`Content-Digest`, `Repr-Digest`) | ❌ — only the obsolete `Content-MD5` ([RFC 1864](https://www.rfc-editor.org/rfc/rfc1864)) is typed |
@@ -290,10 +290,10 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 
 | Spec | Title | Hermod HTTP/1.x |
 |---|---|---|
-| RFC 9110 §8.4 | Content codings | ❌ **no codec** — `Content-Encoding`/`Accept-Encoding` are 🟡 header models only. Neither the server nor the client compresses or decompresses. *(the HTTP/2 stack has `HTTP2/Core/HTTPContentCoding.cs` with `br`/`gzip`/`deflate` — HTTP/1 has nothing)* |
-| [RFC 1950](https://www.rfc-editor.org/rfc/rfc1950) / [1951](https://www.rfc-editor.org/rfc/rfc1951) / [1952](https://www.rfc-editor.org/rfc/rfc1952) | ZLIB / DEFLATE / GZIP | ❌ for HTTP bodies (DEFLATE **is** used by WebSocket `permessage-deflate`) |
-| [RFC 7932](https://www.rfc-editor.org/rfc/rfc7932) | Brotli (`br`) | ❌ |
-| [RFC 8878](https://www.rfc-editor.org/rfc/rfc8878) | Zstandard (`zstd`) | ❌ |
+| RFC 9110 §8.4 | Content codings | ✅ `HTTPContentCoding` in `HTTP/General/`: a buffered body decoded in reverse order and a streamed one inside `HTTPBodyStream`, unknown codings refused, a 64 MiB ceiling; the client's `AutomaticDecompression` and the server's `AutomaticContentCompression`, both off by default — H-2, 2026-09-24. The row said "neither compresses" until then, which was half wrong: `SinglePageAppHandler` had compressed static files all along |
+| [RFC 1950](https://www.rfc-editor.org/rfc/rfc1950) / [1951](https://www.rfc-editor.org/rfc/rfc1951) / [1952](https://www.rfc-editor.org/rfc/rfc1952) | ZLIB / DEFLATE / GZIP | ✅ `gzip` and both of `deflate`'s formats, ZLIB-wrapped and raw, for HTTP bodies since H-2 — and DEFLATE in WebSocket `permessage-deflate` |
+| [RFC 7932](https://www.rfc-editor.org/rfc/rfc7932) | Brotli (`br`) | ✅ since H-2, via the BCL's `BrotliStream` |
+| [RFC 8878](https://www.rfc-editor.org/rfc/rfc8878) | Zstandard (`zstd`) | ❌ — the BCL has no codec, and the stack takes no dependency for one; refused as an unknown coding |
 | RFC 9110 §12 | Proactive negotiation — `Accept`, `Accept-Charset`, `Accept-Language`, `Accept-Encoding`, `Vary` | 🟢 `AcceptTypes.BestMatchingContentType()` for media types; language/charset/encoding negotiation and `Vary` bookkeeping 🔵 |
 | [RFC 2295](https://www.rfc-editor.org/rfc/rfc2295) / [2296](https://www.rfc-editor.org/rfc/rfc2296) | Transparent content negotiation | ⬜ |
 | [RFC 6838](https://www.rfc-editor.org/rfc/rfc6838) / [6839](https://www.rfc-editor.org/rfc/rfc6839) | Media types, `+json`/`+xml` suffixes | 🟢 `HTTPContentType` |
@@ -304,17 +304,17 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 
 | Spec | Title | Hermod HTTP/1.x |
 |---|---|---|
-| RFC 9110 §7.8 + RFC 9112 §9.6 | `Upgrade`, `101 Switching Protocols` | 🟢 the WebSocket server performs the upgrade; the **general** HTTP server has no `Upgrade` dispatch — the two are separate listeners |
+| RFC 9110 §7.8 + RFC 9112 §9.6 | `Upgrade`, `101 Switching Protocols` | ✅ a WebSocket can live on an HTTP path of the general server since Hermod `3bc56fdb` (2026-09-16, `WebSocketOnAnHTTPPathTests`), beside the standalone WebSocket listener; the demo's `/ws` route uses it — H-16 |
 | [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) §4 | WebSocket handshake | ✅ see below |
 | [RFC 2817](https://www.rfc-editor.org/rfc/rfc2817) | Upgrading to TLS within HTTP/1.1 | ⬜ |
-| RFC 9113 (removes RFC 7540 §3.2) | `Upgrade: h2c` | ⬜ **correctly not implemented** — h2c upgrade was removed from the standard, and its absence is a smuggling defence (`h2csmuggler` → plan item) |
+| RFC 9113 (removes RFC 7540 §3.2) | `Upgrade: h2c` | ⬜ **correctly not implemented** — h2c upgrade was removed from the standard, and its absence is a smuggling defence, pinned as a regression by `h2csmuggler` in `tests/smuggler.sh` |
 | [RFC 7838](https://www.rfc-editor.org/rfc/rfc7838) | `Alt-Svc` — advertising h2/h3 | ❌ — would be the natural bridge to the h2/h3 stacks |
 
 ## WebSocket
 
 | Spec | Title | Hermod |
 |---|---|---|
-| [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) | The WebSocket Protocol | ✅ server + client. Framing, masking, fragmentation state machine, control-frame rules, strict UTF-8 (§8.1) with incremental validation, close handshake + status-code validation, handshake validation both directions (`400`/`426`), CSPRNG nonces and masking keys, subprotocol negotiation. **Autobahn: 296 + 242 cases, 0 failed** |
+| [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) | The WebSocket Protocol | ✅ server + client. Framing, masking, fragmentation state machine, control-frame rules, strict UTF-8 (§8.1) with incremental validation, close handshake + status-code validation, handshake validation both directions (`400`/`426`), CSPRNG nonces and masking keys, subprotocol negotiation. **Autobahn: 296 + 242 cases, 0 failed** by Hermod's own count; driven here, **481/517 + 36 declined** against the server and **445/517 + 72 declined** against the client, 0 hard failures either way — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | [RFC 7692](https://www.rfc-editor.org/rfc/rfc7692) | `permessage-deflate` | ✅ negotiated, sync-flush, RSV1 only on the first frame, decompression-bomb guard. **Autobahn 12/13: 126 + 126, 0 failed.** Limitation: window bits < 15 unsupported (`DeflateStream`), `no_context_takeover` always negotiated |
 | [RFC 8307](https://www.rfc-editor.org/rfc/rfc8307) | Well-Known URIs for WebSocket | ⬜ |
 | [RFC 8441](https://www.rfc-editor.org/rfc/rfc8441) / [RFC 9220](https://www.rfc-editor.org/rfc/rfc9220) | WebSocket over HTTP/2 / HTTP/3 | ⬜ here — implemented in the HTTP/2 stack (`HTTP2/WebSocket/`) |
@@ -333,20 +333,20 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | Spec | Title | Hermod HTTP/1.x |
 |---|---|---|
 | [RFC 8446](https://www.rfc-editor.org/rfc/rfc8446) | TLS 1.3 | ✅ via `SslStream` |
-| [RFC 7301](https://www.rfc-editor.org/rfc/rfc7301) | ALPN | 🟢 `ApplicationProtocols` is settable on the client; the server does not negotiate `http/1.1` explicitly → plan item |
+| [RFC 7301](https://www.rfc-editor.org/rfc/rfc7301) | ALPN | ✅ settable on the client; the server offers `http/1.1` alone and refuses a client insisting on `h2` with §3.2's `no_application_protocol` — H-17, 2026-10-04, and probed on the TLS leg of the gate |
 | [RFC 9525](https://www.rfc-editor.org/rfc/rfc9525) | Service identity in TLS (obsoletes 6125) | 🟢 delegated to `SslStream` + configurable validators |
 | [RFC 2818](https://www.rfc-editor.org/rfc/rfc2818) | HTTP over TLS | 🟢 superseded by RFC 9110 §4.2.2 |
-| [RFC 6797](https://www.rfc-editor.org/rfc/rfc6797) | HSTS | ❌ no `Strict-Transport-Security` |
+| [RFC 6797](https://www.rfc-editor.org/rfc/rfc6797) | HSTS | 🟡 `StrictTransportSecurity` parsed strictly where §6.1 is strict, with a typed response field — H-12, 2026-10-04. `SecurityHeaderOptions` had carried the field all along; whether to send it is the application's, and the default is nothing |
 | RFC 9110 §7.2 | `Host` vs. TLS SNI consistency | 🟢 `Host` validated; SNI/`Host` cross-check not enforced |
 
 ## Browser-facing (non-IETF)
 
 | Spec | Topic | Hermod |
 |---|---|---|
-| [WHATWG Fetch](https://fetch.spec.whatwg.org/) | CORS | 🟡 `Access-Control-*` response fields typed and settable; **no automatic preflight handling** |
-| [W3C CSP](https://www.w3.org/TR/CSP3/) | `Content-Security-Policy` | ❌ |
-| — | `X-Frame-Options` | 🟡 typed |
-| [WHATWG HTML](https://html.spec.whatwg.org/) | `EventSource`, `WebSocket` APIs | 🟢 the browser side of SSE + WS — verified manually, not in CI → plan item |
+| [WHATWG Fetch](https://fetch.spec.whatwg.org/) | CORS | ✅ `Access-Control-*` typed, and the `OPTIONS` preflight answered by an opt-in `HTTPCORSPipeline` + `CORSPolicy` ahead of routing, with `Access-Control-Allow-Methods` taken from the route — H-10, 2026-10-03, which the browser track found and verifies |
+| [W3C CSP](https://www.w3.org/TR/CSP3/) | `Content-Security-Policy` | 🟢 sent as a string by `SinglePageAppHandler` for HTML documents and only for them, from `SecurityHeaderOptions`, whose default is same-origin throughout with `frame-ancestors 'none'` — asserted in `SinglePageAppTests`. No policy model and no parser, and no other handler sends it. The row said ❌ until 2026-10-28; the handler had been sending it all along, the same shape of error as H-12's |
+| — | `X-Frame-Options` | 🟡 typed; `SinglePageAppHandler` sends `DENY` for HTML documents, beside the CSP's `frame-ancestors` |
+| [WHATWG HTML](https://html.spec.whatwg.org/) | `EventSource`, `WebSocket` APIs | ✅ the browser side of SSE + WS — `tests/browser.sh`, Chromium, Firefox and WebKit, nightly (A8, 27/27) |
 
 ---
 

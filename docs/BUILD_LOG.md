@@ -4121,3 +4121,46 @@ client's inflate path does the most work.
 
 The two scratchpad worktrees from #152 are gone, along with the merged local
 branch `http1/h33-file-system-traversal`.
+
+## 2026-10-28 — The specification matrix catches up with the findings
+
+`README.md`'s matrix is the reader-facing statement of what Hermod does per
+RFC, and 27 of its rows still described the state analysis of September. The
+fixes had been recorded where they were made, in `PLAN.md`'s row for each
+finding, and the matrix row beside the RFC was never revisited. A reader who
+looked up RFC 7616 was told that `HTTPDigestAuthentication` was not RFC 7616,
+five weeks after H-3 had made it so; a reader who looked up ALPN was pointed
+at a "plan item" that H-17 had closed.
+
+Each row was checked against its finding and against the source at this pin
+rather than copied from `PLAN.md`:
+
+| findings | rows |
+|---|---|
+| H-1 | `103`, `308`, `421`, `425`, `451`, the `511` of RFC 6585, the `208`/`508` of RFC 5842, and a note on `226` |
+| H-2 | content codings, ZLIB/DEFLATE/GZIP, Brotli; Zstandard stays ❌, the BCL having no codec |
+| H-3 | Digest |
+| H-4, H-6, H-11, H-20 | `Forwarded`, Structured Fields, HTTP-date, IPv6 zone identifiers |
+| H-8 | RFC 2616: six citations remain on purpose, RFC 4918 quoting it |
+| H-9, H-23 | the methods row: `TRACE` is `501` by decision, `HEAD` derived from `GET` |
+| H-10 | CORS, and the browser side of SSE and WebSocket, which A8 runs nightly |
+| H-12, H-16, H-17 | HSTS, `Upgrade`, ALPN |
+| H-29, H-30 | the smuggling row named one finding; there were two |
+| — | `h2c`: h2csmuggler is a pinned regression, not a plan item. RFC 6455: this repository's Autobahn figures beside Hermod's own |
+
+The markers were set by the legend, not by "fixed". HSTS is 🟡, not ✅:
+`StrictTransportSecurity` parses and has a typed field, and whether to send
+one stays the application's, with nothing as the default. 103 is 🟡 too: the
+code is defined, and sending it ahead of a final response is not something
+anything here has measured.
+
+**One row was wrong the other way.** CSP read ❌, and `SinglePageAppHandler`
+sends a `Content-Security-Policy` on every HTML document it serves — from
+`SecurityHeaderOptions`, same-origin throughout with `frame-ancestors 'none'`,
+and asserted in `SinglePageAppTests`. It is 🟢 now: a string a handler sends,
+with no policy model and no parser. That is H-12's shape, a field the code
+carried while the matrix said it was absent, and it is the reason this pass
+read the source rather than the findings alone.
+
+The rows still marked ❌ were read too. Each is either an open finding (H-5, H-13,
+H-14, H-15, H-19) or a specification no finding has been filed for.
