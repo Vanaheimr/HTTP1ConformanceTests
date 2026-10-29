@@ -49,6 +49,7 @@ citation sweep last so that it covered what the other four added.
 | third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — **27/27** since H-10 closed on 2026-10-03 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
+| Nightly (the gate's TLS leg, `windows-latest` + `debian:13`) | 🔶 the `tls` job, added 2026-10-29. 326 on Windows and 327 on Debian were measured before it existed, the Debian figure in a Linux-built clone inside WSL. Until then nothing in CI drove the TLS listener. It becomes ✅ when its first run is green |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
 
 ## Upstream workflow (Track B)
@@ -574,7 +575,9 @@ that needs it.
 
 `.github/workflows/nightly.yml` runs both Autobahn directions, in two jobs
 rather than two steps of one, each gated on a floor: `autobahn` at 481,
-`autobahn-client` at 445.
+`autobahn-client` at 445. Its `tls` job runs `tests/run-tests.sh --tls` on the
+same two legs as `ci.yml`, because the per-push gate drives the cleartext
+listener only.
 
 What the nightly does **not** have is the proxy, smuggling and browser jobs this
 section originally listed. That is not unfinished CI work — A5, A6 and A8 do not

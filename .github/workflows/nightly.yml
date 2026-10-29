@@ -438,6 +438,56 @@ jobs:
           path: artifacts/h1fuzz/
           if-no-files-found: ignore
 
+  tls:
+    # The gate's TLS leg, tests/run-tests.sh --tls. ci.yml runs the cleartext
+    # leg only, and until 2026-10-29 nothing in CI ran this one, so whatever only
+    # a TLS connection carries was evidence from one machine: the ALPN check,
+    # curl's alt-svc cache, and H-36's four misdirected requests, a 421 for a
+    # Host the certificate does not name.
+    #
+    # Nightly rather than per push because of its length: about 270 s, against
+    # the cleartext leg's 100. The same two legs as ci.yml. Measured before this
+    # job existed: 326 checks on Windows (curl 8.21, Schannel) and 327 on Debian
+    # 13 (curl 8.14, OpenSSL), where curl can do HTTP/2 and so runs
+    # "--http1.1 honoured by an HTTP/2-capable curl" as well. The step names
+    # harnesses rather than checks for the reason ci.yml gives.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            leg: windows-latest
+          - os: ubuntu-latest
+            container: debian:13
+            leg: debian-13-container
+    name: tls (${{ matrix.leg }})
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+      # Before the checkout, as in ci.yml: a bare debian:13 has no git for the
+      # submodules, and no curl for the matrix.
+      - name: Install prerequisites (Debian container)
+        if: runner.os == 'Linux'
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Debug, for the reason ci.yml gives: run-tests.sh drives each harness
+      # through `dotnet run --no-build`.
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      - name: Harness suite over TLS (9 harnesses)
+        timeout-minutes: 30
+        shell: bash
+        run: tests/run-tests.sh --no-build --tls
+
   against-hermod-master:
     # The two jobs above test the revision the gitlink pins, which is the right
     # question for "would a fresh clone build". It is the wrong question for what

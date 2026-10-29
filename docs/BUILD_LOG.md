@@ -4689,3 +4689,33 @@ WSL dials. Measured from the Debian side: `https://172.23.32.1:8443/` is a
 `421`, and `http://172.23.32.1:8080/` a `200`. The same should hold for a LAN
 address. The one tried here, `10.5.0.2`, did not answer from Windows at all
 (curl `000`), so it tells us nothing either way.
+
+## 2026-10-29 — The TLS leg in the nightly
+
+Writing H-36's entry turned up a gap. Nothing in CI ran `run-tests.sh --tls`.
+`ci.yml` drives the cleartext listener on both legs, and the nightly drove
+nothing over TLS at all. So every check that only a TLS connection carries was
+evidence from one Windows machine: ALPN, curl's alt-svc cache, and as of
+today H-36's four.
+
+The nightly now has a `tls` job, on the same two legs as `ci.yml`. Before
+writing it, I ran the leg where it had never run, on Linux. The Windows tree
+driven from WSL would not have counted, because it is a configuration CI does
+not run. So this was a fresh clone inside WSL at `26c5681`, with its
+submodules fetched at the pins, built there by Debian 13's .NET 10.0.401 and
+driven by its own curl 8.14.1 (OpenSSL):
+
+| | Windows, curl 8.21 (Schannel) | Debian 13, curl 8.14 (OpenSSL) |
+|---|---:|---:|
+| raw-wire + desync | 235 | 235 |
+| curl matrix over TLS | 91 | **92** |
+| gate, `--tls` | 9/9, 326/326 | 9/9, **327/327** |
+
+The one extra is `--http1.1 honoured by an HTTP/2-capable curl`, which the
+Debian build runs because it has nghttp2. That is the same reason the
+cleartext legs differ by one, 320 against 321. Nothing came up that only
+Linux sees. The TLS listener, the harnesses' `SslStream` client, and the
+self-signed certificate the demo makes at startup all work there.
+
+The job's first run is the first time CI has driven this repository's TLS
+listener. PLAN's row stays 🔶 until that run is green.

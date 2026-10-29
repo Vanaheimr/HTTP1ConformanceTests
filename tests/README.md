@@ -48,7 +48,7 @@ present but expects a different answer per build:
 | `--digest SHA-256` | *always runs*, but expects 200 from a build that implements RFC 7616 with SHA-256 and 401 from one that does not. curl 8.14 (OpenSSL) does; curl 8.21 (Schannel) sends no `Authorization` at all. Predicted from the TLS backend in the version banner and then asserted, so a build that breaks the pattern fails rather than being quietly accommodated |
 
 So 84 checks always run, and over cleartext the two counting flags give three
-real combinations. CI runs the cleartext gate only:
+real combinations. CI runs the cleartext gate per push:
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
@@ -57,7 +57,20 @@ real combinations. CI runs the cleartext gate only:
 | the CI `debian:13` container | yes | yes | 86 | **321** |
 
 The first two agree at 85 for opposite reasons, which is worth knowing before
-someone reconciles them into one number. Over TLS the Windows curl runs 91.
+someone reconciles them into one number.
+
+Over TLS the six transport-conditional checks join in, and the nightly's
+`tls` job runs that leg on both platforms:
+
+| Context | HTTP/2 | local target | curl checks | suite |
+|---|---|---|---:|---:|
+| Windows / Git Bash, and the nightly's Windows leg | no | yes | 91 | **326** |
+| Debian 13, and the nightly's `debian:13` leg | yes | yes | 92 | **327** |
+
+Both were measured on 2026-10-29 before the job existed. The Debian figure
+comes from a fresh clone built and run inside WSL, a Linux-built tree, and
+not from the Windows tree driven from WSL, which is not a configuration CI
+runs.
 
 #### `Alt-Svc`, and what curl does with it
 
