@@ -242,7 +242,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | Spec | Codes | Hermod |
 |---|---|---|
 | RFC 9110 §15 | 1xx/2xx/3xx/4xx/5xx core set | ✅ present and used |
-| [RFC 8297](https://www.rfc-editor.org/rfc/rfc8297) | `103 Early Hints` | 🟡 defined since H-1 (2026-09-23). Sending it as an interim response ahead of the final one is not something this matrix has verified |
+| [RFC 8297](https://www.rfc-editor.org/rfc/rfc8297) | `103 Early Hints` | ❌ on HTTP/1.x. The status code has been defined since H-1 (2026-09-23), but the server cannot send it: the only interim response it ever writes is a fixed `100 Continue`, and a handler has no way to write one. The client skips a `103` correctly, `Link` fields and all, and keeps none of them. HTTP/2 does both, with `WriteInterimResponseAsync` and `HTTP2Response.InformationalResponses`. H-40, 2026-10-29. Until then this row read 🟡 "not something this matrix has verified", which was true and hid that there was nothing to verify |
 | [RFC 7538](https://www.rfc-editor.org/rfc/rfc7538) → 9110 §15.4.9 | `308 Permanent Redirect` | ✅ defined since H-1 (2026-09-23) |
 | RFC 9110 §15.5.20 | `421 Misdirected Request` | ✅ defined since H-1 (2026-09-23) |
 | [RFC 8470](https://www.rfc-editor.org/rfc/rfc8470) | `425 Too Early` | ✅ `TooEarly` — named `NoCode`, a stale RFC 2518 draft name, until H-1 (2026-09-23) |

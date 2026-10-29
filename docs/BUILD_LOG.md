@@ -4992,3 +4992,43 @@ field untouched, on `HEAD` too, and `proxy-known.txt` needed no new line.
 Four findings are open: H-5, H-19, H-37 and H-38. H-19 is half done, since
 `HTTPExtendedValue` came with H-14, and what remains is `Content-Disposition`
 (RFC 6266).
+
+## 2026-10-29 — H-40: Early Hints, which HTTP/1.x can neither send nor pass on
+
+With H-14 the stack can send and read `Link`. Pagination is one of its two
+common uses. The other is preload hints, sent in a `103 Early Hints` (RFC 8297)
+before the final response, so that a browser starts fetching a stylesheet
+while the server is still building the page. For that the server has to send a
+`1xx`, and the client has to keep what was in it. HTTP/1.x does neither.
+
+**The server.** The only interim response the HTTP/1.x server ever writes is
+`AHTTPServer.SendContinueResponse`, one fixed `100 Continue` for
+`Expect: 100-continue`. A handler returns its final response and nothing
+before it. HTTP/2 has `IHTTP2ResponseStream.WriteInterimResponseAsync`, and
+HTTP/3 has `Http3Response.InterimResponses`.
+
+**The client.** The only test of a `103` was
+`GET_Skips_Headerless_InformationalResponses_And_Returns_Final_Response`, and
+its `103` has no fields. So I added two cases for the length of one run: a
+`103` with `Link: </style.css>; rel=preload; as=style`, once in the same
+segment as the final `200` and once in its own. Both passed. `AHTTPClient`
+skips a `1xx` other than `101` and returns the final response, as RFC 9110
+§15.2 requires. It also drops the `103`'s fields, and nothing on
+`HTTPResponse` keeps them. The two cases were removed again, since the test
+they would belong with is the fix's. HTTP/2's client keeps interim responses
+on `HTTP2Response.InformationalResponses`.
+
+The README's RFC 8297 row read 🟡, "not something this matrix has verified".
+That was true, but there was nothing on HTTP/1.x to verify, and the row is ❌
+now.
+
+Neither half is a conformance defect. RFC 8297 lets a server send hints and
+does not require it, and a client that skips them is conformant. Whatever
+fixes it has to keep sending opt-in, per response. RFC 8297's security
+considerations warn about an HTTP/1.1 client that takes a `1xx` for the final
+response: it will misread everything after it on the same connection. They
+suggest not sending hints over HTTP/1.1 unless the client is known to handle
+them.
+
+Filed as **H-40**, P3. Track B is at 40 findings, 35 fixed, and five open:
+H-5, H-19, H-37, H-38 and H-40.
