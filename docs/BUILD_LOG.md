@@ -4506,3 +4506,66 @@ are written down now, because a caller would not guess either:
 - a manifest name is flat, so `assets/app.js` and `assets.app.js` are one
   resource;
 - six overloads take a `Hostname` they never use.
+
+## 2026-10-29 — What is left in `HTTP2/Core`: H-36, H-37, H-38
+
+Four findings have had the same shape so far: H-3's authentication framework,
+H-11's date parser, H-7's `Alt-Svc` and H-13's digests. Each was correct code
+written for HTTP/2 and left in `HTTP2/Core`, where HTTP/1.x could not reach
+it. So I read the rest of `HTTP2/Core` for more of the same. Fifteen types
+there are about HTTP semantics, not frames. Two of them HTTP/1.x already
+uses: `HTTPAuthentication`, and an `HTTPSemantics` of its own name. The rest
+are used by nothing outside HTTP/2:
+
+| type | what it is | HTTP/1.x |
+|---|---|---|
+| `HTTPAuthority` | is this server authoritative for the origin a request names, `421` if not | **nothing** → H-36 |
+| `HTTPSemantics`, `HTTPResource`, `HTTPValidators`, `HTTPContentRange` | RFC 9110 §12–14 and QUERY as a layer in front of a resource handler | the handler's job, 🔵 → H-37 |
+| `HTTPRedirect`, `HTTPClientAuthenticator`, `HTTPClientCredentials` | the client following redirects and answering challenges | **nothing** → H-38 |
+| `HTTPCache` and five more | RFC 9111 | H-5, already filed |
+
+### H-36 is a MUST, and measured
+
+The demo's `:8443` presents a certificate for `localhost`, `127.0.0.1` and
+`::1`. A request for `https://evil.example/` gets a `200` there, with
+`Host: evil.example` alone and with SNI `evil.example` as well. RFC 9110 §7.4
+says that, unless the connection is from a trusted gateway, a request for an
+`https` resource MUST be rejected "unless it has been received over a
+connection that has been secured via a certificate valid for that target
+URI's origin". The rejection is `421`. `HTTP2Server` makes it, and by
+default: its predicate comes from the Origin Set, or failing that from the
+certificate.
+
+The matrix had this row as 🟢, "SNI/`Host` cross-check not enforced". That
+wording describes a MUST that is not met as a nicety that is missing, and 🟢
+claims it is implemented. It is ❌ now. I read the RFC text for this one
+first, after the `Vary` entry above, and quote it here.
+
+### H-37 is a question, not a defect
+
+`HTTPSemantics.Wrap` is a 1 285-line layer for HTTP/2. In front of a handler
+that only says what a resource currently is, it does:
+
+- `GET`, `HEAD` and `OPTIONS`;
+- negotiation, with `Vary`;
+- all five preconditions, answered with `304` or `412`;
+- ranges, as `206`, `multipart/byteranges` and `416`;
+- QUERY.
+
+On HTTP/1.x every handler that wants any of this writes it itself. The demo's
+`ServeResource` does. `HTTPStandardHandlers` serves files with no `ETag` and no
+`Last-Modified` at all. `SinglePageAppHandler` has its own `If-None-Match`,
+which is a third implementation of part of the same rules.
+
+The matrix calls §13 and §14 🔵, the handler's job, and that is a design
+decision. But the stack made it twice, in opposite directions. H-37 asks
+which way HTTP/1.x should go. It does not claim the current one is wrong.
+
+### H-38 is not a conformance defect
+
+The HTTP/2 client follows redirects by §15.4's rewriting rules, answers
+challenges and resumes downloads. The HTTP/1.x client does none of these.
+§15.4 permits a client to follow a redirect automatically but does not
+require it, so this one conforms. It is filed for completeness, so that H-5
+is not the only listed piece of what the HTTP/2 client has and this one does
+not.

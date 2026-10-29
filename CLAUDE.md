@@ -201,7 +201,7 @@ a test written by their author.
 
 ### What the state analysis found
 
-Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-35 in
+Documented per-RFC in [`README.md`](README.md), tracked as H-1…H-38 in
 [`PLAN.md`](PLAN.md). The four that mattered most are the four that are done —
 kept here struck through rather than deleted, because what each one turned out to
 be is more useful than what it was reported as:

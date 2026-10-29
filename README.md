@@ -278,8 +278,8 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 
 | Spec | Title | Hermod HTTP/1.x |
 |---|---|---|
-| RFC 9110 §8.8 + §13 | Validators (`ETag`, `Last-Modified`), preconditions (`If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`, `If-Range`) | 🟡 all fields typed and exposed; **no automatic `304`/`412` evaluation** — 🔵 handler's job |
-| RFC 9110 §14 | Range requests, `206`, `Accept-Ranges`, `Content-Range`, `multipart/byteranges` | 🟡 fields typed; **no automatic `206` generation** — 🔵 |
+| RFC 9110 §8.8 + §13 | Validators (`ETag`, `Last-Modified`), preconditions (`If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`, `If-Range`) | 🟡 all fields typed and exposed; **no automatic `304`/`412` evaluation** — 🔵 handler's job. HTTP/2 has it as an opt-in library layer, `HTTPSemantics` in `HTTP2/Core`, and whether 🔵 is the right answer for HTTP/1.x is H-37 |
+| RFC 9110 §14 | Range requests, `206`, `Accept-Ranges`, `Content-Range`, `multipart/byteranges` | 🟡 fields typed; **no automatic `206` generation** — 🔵. HTTP/2 has it in the same layer, `multipart/byteranges` included — H-37 |
 | [RFC 8673](https://www.rfc-editor.org/rfc/rfc8673) | Range requests for unknown-length content | ⬜ |
 | RFC 9111 | Caching | ❌ no cache, client- or server-side |
 | [RFC 5861](https://www.rfc-editor.org/rfc/rfc5861) | `stale-while-revalidate`, `stale-if-error` | ❌ |
@@ -337,7 +337,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | [RFC 9525](https://www.rfc-editor.org/rfc/rfc9525) | Service identity in TLS (obsoletes 6125) | 🟢 delegated to `SslStream` + configurable validators |
 | [RFC 2818](https://www.rfc-editor.org/rfc/rfc2818) | HTTP over TLS | 🟢 superseded by RFC 9110 §4.2.2 |
 | [RFC 6797](https://www.rfc-editor.org/rfc/rfc6797) | HSTS | 🟡 `StrictTransportSecurity` parsed strictly where §6.1 is strict, with a typed response field — H-12, 2026-10-04. `SecurityHeaderOptions` had carried the field all along; whether to send it is the application's, and the default is nothing |
-| RFC 9110 §7.2 | `Host` vs. TLS SNI consistency | 🟢 `Host` validated; SNI/`Host` cross-check not enforced |
+| RFC 9110 §7.4 | Rejecting a request for an origin the TLS certificate is not valid for | ❌ answered like any other: on the demo's `:8443`, whose certificate names `localhost`, `GET https://evil.example/` is a `200`, by `Host` alone and with SNI as well, where §7.4 requires a rejection and §15.5.20 names it `421`. HTTP/2 rejects it, through `HTTPAuthority` in `HTTP2/Core` — H-36, 2026-10-29. This row read 🟢 "SNI/`Host` cross-check not enforced" until then, a MUST described as a missing nicety |
 
 ## Browser-facing (non-IETF)
 
