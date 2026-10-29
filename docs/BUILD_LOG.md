@@ -4361,3 +4361,100 @@ digest on the wire. The comments now say the order does not matter.
 
 Nothing here has looked at a digest on the wire yet. The demo sends none, and
 none of the checks would notice a false one. That is the next commit.
+
+## 2026-10-29 — Digests on the wire: `/digest`, checked by coreutils
+
+The pin entry above ended with nothing here having looked at a digest on the
+wire. `/digest` is the demo's twenty-first route. Its handler digests the
+representation it built, in the algorithm the `Want-` fields prefer, and puts
+`Content-Digest` and `Repr-Digest` on the response. Then the compression
+filter takes over. The route is the handler's half, because
+`AutomaticContentDigests` would digest every response this host sends, and
+the benchmarks measure this host.
+
+### The checks
+
+Six, in `tests/curl-matrix.sh`. Five compare a digest field with `sha256sum`
+or `sha512sum` of the octets curl received in the same response, and assert
+that response's `Content-Encoding` too. A digest that matches an identity body
+says nothing about compressing, so the coding is part of the check:
+
+- identity: `Content-Digest` is the digest of what arrived;
+- gzip: so is `Content-Digest`, now over the gzip octets;
+- gzip: and so is `Repr-Digest`, because the coding is part of the
+  representation;
+- `Want-Content-Digest: sha-512=10, sha-256=3` gets sha-512, under gzip;
+- a bare `Want-Content-Digest: sha-512` is a Boolean, which makes the field
+  invalid. It is ignored whole, and the answer is sha-256.
+
+The sixth asks for `sha-256=0, sha-512=0` and gets no `Content-Digest`.
+
+Falsified with both H-13 fixes reverted together: **81/85**. The three
+under gzip each got the identity digest, `lbyVuSuh…` where the gzip body's is
+`fsHkW+Qj…`, which is the defect as it was. The bare key got sha-512 back.
+Against a dead port all six are red, the `hasnt` among them, which refuses an
+empty response as evidence.
+
+### Two things that cost a run
+
+The script computes digests with coreutils and nothing else, because neither
+`openssl` nor `xxd` is on every machine this runs on. Turning hex into base64
+with `sed 's/../\x&/g'` came out differently in Git Bash and in GNU sed.
+Git Bash's dropped the backslash and printed `x00x25`. A bash loop does the
+same job in both.
+
+The `--wsl` leg then failed 80/85: all five digest checks, with the digests
+correct. The two fields had been separated by `\n` in `--write-out`, and the
+backslash did not survive the way into WSL, so the Debian curl wrote
+`gzipnsha-256=:…:`. They are separated by `/` now, which is not a `tchar`
+and so cannot occur in a content coding. The body crosses `wsl.exe` on
+stdout, and the gzip digest matching on that leg shows that its octets
+arrive unchanged.
+
+### Through the proxies
+
+`tests/proxy.sh` ran the six checks through all five chains. nginx, HAProxy,
+httpd and Envoy pass both fields through, with bodies that match them. **Caddy
+fails the two that request identity.** Caddy 2.11.4 sends the demo an
+`Accept-Encoding: gzip` the client never sent, decodes the answer and sends
+the 10 290 identity octets on, chunked. It removes `Content-Encoding` and
+`Content-Length` and keeps everything else the gzip variant came with: a
+`Content-Digest` and a `Repr-Digest` over 579 gzip octets, and on `/prose`
+`ETag: "prose-1-gzip"`. That `ETag` is the reason for a row
+`tests/proxy-known.txt` has carried since 2026-09-27, `the identity one keeps
+the plain ETag`, which nobody had explained.
+
+RFC 9110 §7.7 lets a proxy transform content, and RFC 9530 says nothing about
+what an intermediary owes the digest fields when it does. It lists
+"transforming proxies" among what they exist to detect, and this one is
+detected. Recorded as Caddy's, two rows, and written up in
+`docs/TestingAgainst_Proxies.md`. Recorded differences: 63, 25 of them curl.
+
+### `Vary` on an identity response: not a finding
+
+`/digest` and `/prose` answer a request without `Accept-Encoding` with no
+`Vary` at all. The filter adds `Accept-Encoding` only to what it compresses. I
+had this down as a SHOULD violation, quoting §12.5.5 from memory, but the text
+I remembered was RFC 7231's: a server SHOULD send `Vary` whenever its
+selection depends on the request. RFC 9110 rewrote it. The SHOULD now covers
+a response the server wants "selectively reused", and an identity body suits
+every client. A cache that stores it without `Vary` loses the compression for
+as long as the copy is fresh, and serves nobody anything wrong. So this is not
+H-36. Read the RFC before filing.
+
+### Measured
+
+| | before | now |
+|---|---:|---:|
+| curl matrix, cleartext / TLS | 79 / 81 | **85 / 87** |
+| gate, cleartext | 314/314 | **320/320** |
+| gate, `--tls` | 316/316 | **322/322** |
+| gate, `--wsl` | 489/489 | **501/501** |
+| proxies | 32/32 | **32/32**, Caddy's two new differences recorded |
+
+The CI Debian container should read 86 and 321. That is a prediction until
+the push runs.
+
+`tests/README.md` had `h1semantics` at 65 checks in its table. The harness
+reports 75, and 32 + 51 + 20 + 75 + 16 + 17 = 211, the raw-wire figure every
+other table here uses. It is 75 now.

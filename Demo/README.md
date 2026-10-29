@@ -24,6 +24,7 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/echo` | POST PUT PATCH | request-body round-trip |
 | `/large` | GET | 128 KiB fixed-length body — `application/octet-stream`, so it stays identity however hard a client asks |
 | `/prose` | GET | ~2.5 KiB of `text/plain` — the server-side content coding (`br`/`gzip`), `Vary`, and a coding-specific `ETag` |
+| `/digest` | GET | RFC 9530 `Content-Digest` and `Repr-Digest`, computed by the handler in the algorithm `Want-Content-Digest` and `Want-Repr-Digest` prefer, and computed again by the compression filter over the octets it sends |
 | `/slow` | GET | 2 s handler — client patience, reuse afterwards |
 | `/chunked` | GET | `Transfer-Encoding: chunked` + chunk extensions (token, valueless) |
 | `/trailers` | GET | chunked + trailer fields after the terminal chunk |

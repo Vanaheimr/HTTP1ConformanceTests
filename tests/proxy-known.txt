@@ -7,7 +7,8 @@
 #   via      an intermediary behaviour that is allowed but worth knowing
 #
 # A row not listed here fails the run. Written by tests/proxy.sh --update on 2026-09-27;
-# three framing rows pruned by hand on 2026-10-02 after the image bump below.
+# three framing rows pruned by hand on 2026-10-02 after the image bump below, and two
+# caddy rows for /digest added by hand on 2026-10-29 (docs/TestingAgainst_Proxies.md).
 #
 # Measured against these images. They matter: when a row disappears, this file
 # alone cannot say whether we got stricter or the proxy did, and the version is
@@ -22,7 +23,9 @@
 #   nginx:1.31-alpine
 
 curl	caddy	Alt-Svc arrives percent-encoded (RFC 7838 §3)	
+curl	caddy	Content-Digest names the octets that arrived	
 curl	caddy	HTTP/1.0 response closes	
+curl	caddy	a bare key is no preference	
 curl	caddy	server-wide OPTIONS *	
 curl	caddy	the identity one keeps the plain ETag	
 curl	envoy	--http1.0 downgrades the exchange	

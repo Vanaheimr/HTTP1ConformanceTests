@@ -25,15 +25,15 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 314 checks, ~135 s
+tests/run-tests.sh        # 320 checks, ~135 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **211/211** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **79/79** (80 on the CI Debian leg, 81 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **314** cleartext and **316** over TLS, the extra two being the ALPN check that only a TLS handshake can carry and curl's alt-svc cache, which curl fills only over TLS — and **489/489** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
-| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 20 routes |
+| `tests/curl-matrix.sh` | **85/85** (86 on the CI Debian leg, 87 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **320** cleartext and **322** over TLS, the extra two being the ALPN check that only a TLS handshake can carry and curl's alt-svc cache, which curl fills only over TLS — and **501/501** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
+| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 21 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
 | `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
@@ -42,7 +42,7 @@ tests/run-tests.sh        # 314 checks, ~135 s
 | `tests/smuggle.sh` | **38/38** over Hermod, Go `net/http` and Node `node:http`. 28 rows agree; the 10 that do not are [written up](docs/TestingAgainst_Smuggling.md) and pinned in `tests/smuggle-known.txt` |
 | `tests/smuggler.sh` | **134/134** Transfer-Encoding obfuscations from [smuggler](https://github.com/defparam/smuggler), nothing found; [h2csmuggler](https://github.com/BishopFox/h2csmuggler) finds no h2c surface, which is now a pinned regression |
 | `tests/http-garden/` | Hermod as a target in [the HTTP Garden](https://github.com/narfindustries/http-garden), which compares parse trees across 45 implementations. Contract-verified on every run; the full sweep is compiler-hours and is run by hand |
-| `tests/proxy.sh` | **32/32** — the demo behind nginx, HAProxy, Caddy, Apache and Envoy. 61 differences from the direct run, each recorded by name; no chain poisons a connection, though [the detector is calibrated-unfired](docs/TestingAgainst_Proxies.md) |
+| `tests/proxy.sh` | **32/32** — the demo behind nginx, HAProxy, Caddy, Apache and Envoy. 63 differences from the direct run, each recorded by name; no chain poisons a connection, though [the detector is calibrated-unfired](docs/TestingAgainst_Proxies.md) |
 | `tests/browser.sh` | **27/27** — Chromium, Firefox and WebKit through Playwright. The three failures are one finding, [H-10](docs/TestingAgainst_Browsers.md), on each engine |
 
 On top of that, the coverage inside Hermod itself:
@@ -263,7 +263,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | [RFC 7616](https://www.rfc-editor.org/rfc/rfc7616) | Digest (SHA-256) | ✅ `DigestAuthenticationScheme`, RFC 7616 with SHA-256, reachable from HTTP/1.x since the RFC 9110 §11 framework moved out of `HTTP2/` (H-3, 2026-09-24); `HTTPDigestAuthentication` parses and reserializes the credentials. curl 8.14 authenticates with SHA-256. The old custom `Digest base64(user):base64(secret)` scheme was dead code |
 | [RFC 2617](https://www.rfc-editor.org/rfc/rfc2617) | Basic + Digest (obsolete) | ⬜ superseded |
 | [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421) | HTTP Message Signatures | ❌ (`Argus` has its own non-RFC signature verification) |
-| [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530) | Digest Fields (`Content-Digest`, `Repr-Digest`) | ✅ `Content-Digest`, `Repr-Digest` and both `Want-` fields typed in both directions, sha-256 and sha-512, with the grammar HTTP/2 uses — strict now, a field that does not parse being ignored whole as RFC 9651 §4.2 requires (H-13, 2026-10-29). Opt-in on both ends: the server digests the octets it sends (`AutomaticContentDigests`), the client asks for a digest and checks it before decoding (`VerifyDigests`). The compression filter computes a handler's digests again over what it compresses. `Repr-Digest` is the handler's to compute 🔵. The obsolete `Content-MD5` ([RFC 1864](https://www.rfc-editor.org/rfc/rfc1864)) stays typed, documented as removed by RFC 7231 |
+| [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530) | Digest Fields (`Content-Digest`, `Repr-Digest`) | ✅ `Content-Digest`, `Repr-Digest` and both `Want-` fields typed in both directions, sha-256 and sha-512, with the grammar HTTP/2 uses — strict now, a field that does not parse being ignored whole as RFC 9651 §4.2 requires (H-13, 2026-10-29). Opt-in on both ends: the server digests the octets it sends (`AutomaticContentDigests`), the client asks for a digest and checks it before decoding (`VerifyDigests`). The compression filter computes a handler's digests again over what it compresses, which the curl matrix checks against coreutils' digest of the octets that arrived. `Repr-Digest` is the handler's to compute 🔵. The obsolete `Content-MD5` ([RFC 1864](https://www.rfc-editor.org/rfc/rfc1864)) stays typed, documented as removed by RFC 7231 |
 | [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188) | Encrypted Content-Encoding (`aes128gcm`) | ❌ |
 | — | Hermod extensions: `Token`, `TOTP`, `API-Key` | ✅ non-standard, documented as such |
 

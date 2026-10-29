@@ -25,15 +25,15 @@ scrapes output for a marker character.
 
 ## Status
 
-**314 checks pass over cleartext and 316 over TLS** — 211 raw-wire + 79 curl
-(81 over TLS, the ALPN check and curl's alt-svc cache having no cleartext
+**320 checks pass over cleartext and 322 over TLS** — 211 raw-wire + 85 curl
+(87 over TLS, the ALPN check and curl's alt-svc cache having no cleartext
 equivalent) + 24 desync —
 across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
-**489/489** over 12/12.
+**501/501** over 12/12.
 
-The curl figure is 79 **here** and 80 on the CI Debian leg, and that is not a
+The curl figure is 85 **here** and 86 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional on the
 build or the filesystem, two more on the transport, and a fifth is always
 present but expects a different answer per build:
@@ -46,17 +46,17 @@ present but expects a different answer per build:
 | `curl records no http%2F1.1 alternative` | the base is `https://` *and* the target is local: curl ignores `Alt-Svc` on a cleartext connection, and its cache file has to be readable from here. A **known curl deviation**, pinned rather than passed — see below |
 | `--digest SHA-256` | *always runs*, but expects 200 from a build that implements RFC 7616 with SHA-256 and 401 from one that does not. curl 8.14 (OpenSSL) does; curl 8.21 (Schannel) sends no `Authorization` at all. Predicted from the TLS backend in the version banner and then asserted, so a build that breaks the pattern fails rather than being quietly accommodated |
 
-So 78 checks always run, and over cleartext the two counting flags give three
+So 84 checks always run, and over cleartext the two counting flags give three
 real combinations. CI runs the cleartext gate only:
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the CI Windows leg | no | yes | 79 | **314** |
-| the Debian curl reached through WSL (`--wsl`) | yes | no | 79 | — |
-| the CI `debian:13` container | yes | yes | 80 | **315** |
+| Windows / Git Bash, and the CI Windows leg | no | yes | 85 | **320** |
+| the Debian curl reached through WSL (`--wsl`) | yes | no | 85 | — |
+| the CI `debian:13` container | yes | yes | 86 | **321** |
 
-The first two agree at 79 for opposite reasons, which is worth knowing before
-someone reconciles them into one number. Over TLS the Windows curl runs 81.
+The first two agree at 85 for opposite reasons, which is worth knowing before
+someone reconciles them into one number. Over TLS the Windows curl runs 87.
 
 #### `Alt-Svc`, and what curl does with it
 
@@ -89,13 +89,38 @@ requires curl's cache file to exist with curl's own header in it, because
 "nothing recorded" equally describes a build without alt-svc support or a
 cache curl never wrote.
 
+#### Digest fields, computed by coreutils
+
+`/digest`'s handler puts a `Content-Digest` and a `Repr-Digest` on its
+response, in the algorithm the request's `Want-` fields prefer. Then the
+compression filter takes over. Five checks compare a digest field with
+`sha256sum` or `sha512sum` of the octets curl received in the same response,
+and assert that response's `Content-Encoding` as well. One more asserts that a
+request ruling out every algorithm gets no digest at all. Nothing Hermod wrote
+computes the expected value. A digest that matches an identity body proves
+nothing about compressing, which is why the content coding is part of each
+check.
+
+Until H-13 the filter copied the handler's digests onto the gzipped body, and
+the `Want-` grammar was lenient. I reverted both fixes together, and four
+checks went red. The three under gzip each got the digest of the identity
+body. The fourth sent a bare `sha-512`, which is a Boolean and not a
+preference, and got sha-512 back, because the old grammar read it as
+sha-512=1. Against a dead port all six are red.
+
+The fields reach the script through `--write-out` on stderr, separated by
+`/`, which is not a `tchar`. The first version used `\n`. The backslash did
+not survive the way into WSL, and the Debian curl wrote `gzipnsha-256=:…:`.
+The body comes back through stdout, and the gzip digest matching on that leg
+shows that the octets cross `wsl.exe` unchanged.
+
 | Harness | Checks | Covers |
 |---|---:|---|
-| `curl-matrix.sh` | 79–81 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
+| `curl-matrix.sh` | 85–87 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, RFC 9530 digests checked against the octets that arrived, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |
-| `h1semantics` | 65 | RFC 9110 + RFC 10008 — methods, `Allow`, conditionals, ranges, negotiation, auth, QUERY, `Expect: 100-continue`, redirects |
+| `h1semantics` | 75 | RFC 9110 + RFC 10008 — methods, `Allow`, conditionals, ranges, negotiation, auth, QUERY, `Expect: 100-continue`, redirects |
 | `h1sse` | 16 | WHATWG SSE — stream head, framing, `Last-Event-ID` replay, mid-stream abort, concurrent subscribers |
 | `h1attack` | 17 | RFC 9112 §11.2 + hardening — CL.TE / TE.CL desync, response splitting, slowloris, oversized bodies, chunk-metadata and trailer floods |
 | `h1raw` | — | diagnostic: send an arbitrary request, dump the reply with control characters made visible. Not in the gate |
@@ -138,7 +163,7 @@ interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
 ```bash
-tests/run-tests.sh --wsl        # 489/489 — both curl builds
+tests/run-tests.sh --wsl        # 501/501 — both curl builds
 ```
 
 `--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the
@@ -441,8 +466,8 @@ Every image is pulled rather than built, so this costs a minute of docker pull
 rather than the compiler-hours the HTTP Garden does. It still takes about ten
 minutes to run, which is why it is a nightly.
 
-Four measurements. **curl** runs the whole 79-check matrix through each chain
-against 79/79 direct; **framing** runs `h1desync --observe` through each chain
+Four measurements. **curl** runs the whole 85-check matrix through each chain
+against 85/85 direct; **framing** runs `h1desync --observe` through each chain
 against the same run made directly; **poison** sends an ambiguous message and
 then asks innocent questions on fresh connections; **via** checks the
 intermediary-facing things visible from outside — a chunked body arriving

@@ -48,13 +48,13 @@ as an environment variable so that nothing else has to know.
 
 ### curl, through each proxy
 
-The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 79 checks —
+The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 85 checks —
 run directly and then through each chain. Differences are expected: a proxy is
 an HTTP endpoint on both sides and rewrites a great deal. Each one is recorded
 by name in [`tests/proxy-known.txt`](../tests/proxy-known.txt), and a *new*
 one fails the run.
 
-Direct is 79/79, which is what makes the rest of the column meaningful: a
+Direct is 85/85, which is what makes the rest of the column meaningful: a
 difference below is the proxy's doing and not a pre-existing failure.
 
 The differences cluster into recognisable behaviours, and none of them is
@@ -68,6 +68,7 @@ a Hermod defect:
 | keeps the client connection for an HTTP/1.0 request | | ✔ | ✔ | | |
 | refuses an unregistered method (`QUERY`, RFC 10008) | | | | | ✔ |
 | removes the upstream's `Alt-Svc` | | | ✔ | | |
+| asks the upstream for gzip on its own, decodes it, and keeps the gzip variant's `ETag` and digests | | | ✔ | | |
 
 **The last row, since 2026-10-28**, is the one where the odd proxy out is the
 one that is right. The demo's `/alt-svc` announces `http%2F1.1=":8443"`, and an
@@ -80,6 +81,34 @@ RFC 9110 §7.6.1 does not make it hop-by-hop, so this is Caddy's judgement rathe
 than a requirement — but it is the judgement that keeps the client's view
 consistent, and the four that pass it through are relaying an origin's
 statement about itself as though it were their own.
+
+**The row below it, since 2026-10-29**, is Caddy again, and this time it is
+the odd one out for the wrong reason. A client that sends no `Accept-Encoding`
+gets identity directly and through four of the proxies. Caddy 2.11.4 asks the
+demo for gzip itself, decodes the answer and sends the identity octets on,
+chunked. It removes `Content-Encoding` and `Content-Length`, and leaves
+everything else the gzip variant came with:
+
+| through Caddy, no `Accept-Encoding` | what it names |
+|---|---|
+| `ETag: "prose-1-gzip"` on `/prose` | the gzip representation; the identity one is `"prose-1"` |
+| `Content-Digest: sha-256=:fsHkW+Qj…:` on `/digest` | the 579 gzip octets, while 10 290 identity ones arrive |
+| `Repr-Digest`, the same | the same |
+
+Hermod computes all three over the gzip octets, as RFC 9530 asks of it. They
+become false at the hop. RFC 9110 §7.7 lets a proxy transform content, and
+RFC 9530 says nothing about what an intermediary owes the digest fields
+when it does. It names "transforming proxies" among what the fields exist
+to detect, and this one is detected. That has a concrete consequence for
+Hermod's own client. With `VerifyDigests` on and `AutomaticDecompression`
+left off, which is the default, it sends no `Accept-Encoding`. Behind Caddy,
+every digested response the origin would have compressed then reaches it
+as a `ClientError`. That follows from the bytes above and the mismatch path
+`DigestFieldsTests` pins, and it has not been run. And a strong `ETag` that belongs to one representation
+is attached to another. Recorded as Caddy's in `tests/proxy-known.txt`: the identity
+digest check and the bare-key one, both of which request identity. The ETag
+row, `the identity one keeps the plain ETag`, has been there since
+2026-09-27 without its reason. This is the reason.
 
 ### framing, direct against each chain
 

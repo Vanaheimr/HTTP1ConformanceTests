@@ -481,6 +481,52 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
+            #region GET /digest  — RFC 9530: the handler's digests, and what compressing does to them
+
+            // The handler digests the representation it built, in the algorithm
+            // Want-Content-Digest and Want-Repr-Digest prefer (RFC 9530 §4):
+            // sha-256 when a field expresses nothing usable, and no field at all
+            // when it rules out both algorithms Hermod computes.
+            //
+            // Then the compression filter takes the response over, and a digest
+            // of the identity octets on a gzipped body names octets that are not
+            // on the wire. Until H-13 the filter copied both fields verbatim; it
+            // computes them again now, in the algorithm the handler chose. The
+            // curl matrix computes the digest of what arrived itself and
+            // compares.
+            //
+            // AutomaticContentDigests would do the handler's half for every
+            // response this host sends. It stays off: the benchmarks measure this
+            // host, and none of its other routes is about digests.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "digest",
+                HTTPDelegate: request => {
+
+                    var text = new StringBuilder();
+
+                    for (var i = 0; i < 200; i++)
+                        text.AppendLine($"line {i}: digested, compressed, and digested again");
+
+                    var content           = text.ToString().ToUTF8Bytes();
+                    var contentAlgorithm  = HTTPDigest.SelectAlgorithm(request.WantContentDigest);
+                    var reprAlgorithm     = HTTPDigest.SelectAlgorithm(request.WantReprDigest);
+
+                    return Task.FromResult(
+                        new HTTPResponse.Builder(request) {
+                            HTTPStatusCode  = HTTPStatusCode.OK,
+                            ContentType     = HTTPContentType.Text.PLAIN,
+                            ContentDigest   = contentAlgorithm is not null ? HTTPDigest.FieldValue(content, contentAlgorithm) : null,
+                            ReprDigest      = reprAlgorithm    is not null ? HTTPDigest.FieldValue(content, reprAlgorithm)    : null,
+                            Content         = content
+                        }.AsImmutable
+                    );
+
+                }
+            );
+
+            #endregion
+
             #region GET /large  — 128 KiB, fixed-length
 
             API.AddHandler(

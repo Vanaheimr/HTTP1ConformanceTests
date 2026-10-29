@@ -184,6 +184,53 @@ trace() {
     fi
 }
 
+# Hex digits to base64, with nothing but bash and coreutils: neither openssl
+# nor xxd is on every machine this runs on. A loop rather than sed, because
+# Git Bash's sed and GNU sed disagree about how many backslashes '\\x' is.
+hex2b64() {
+    local hex="$1" escaped="" i
+    for ((i = 0; i < ${#hex}; i += 2)); do escaped+="\\x${hex:i:2}"; done
+    printf '%b' "$escaped" | base64 | tr -d '\n'
+}
+
+# Assert that a digest field is the digest of the octets that arrived with it.
+#   digest <label> <content-coding> <field> <algorithm> <curl args...>
+#
+# Field and octets come from one response, or the comparison would mean
+# nothing. The body goes to stdout and the fields to stderr through
+# --write-out, and both are redirected here rather than by curl, so no path
+# has to cross into WSL. curl decodes nothing it was not told to with
+# --compressed, so a gzipped body arrives as its gzip octets.
+#
+# The digest is computed here, by coreutils, and by nothing Hermod wrote. The
+# content coding is asserted from the same response: a digest that matches an
+# identity body says nothing about what compressing did to it.
+#
+# The two fields are separated by "/", which is not a tchar and so never part
+# of a content coding. Not by "\n": the backslash does not survive the way
+# into WSL, and the Debian curl wrote "gzipnsha-256=:…:".
+digest() {
+    local label="$1" coding="$2" field="$3" algorithm="$4"; shift 4
+    local meta got_coding got_field sum expect
+    $CURL -s $INSECURE "${TIMEOUTS[@]}" -w "%{stderr}%header{content-encoding}/%header{$field}" "$@" \
+        >"$TMP/digest.body" 2>"$TMP/digest.meta"
+    meta="$(tr -d '\r' < "$TMP/digest.meta")"
+    got_coding="${meta%%/*}"
+    got_field="${meta#*/}"
+    case "$algorithm" in
+        sha-256) sum="$(sha256sum < "$TMP/digest.body")" ;;
+        sha-512) sum="$(sha512sum < "$TMP/digest.body")" ;;
+    esac
+    expect="$algorithm=:$(hex2b64 "${sum%% *}"):"
+    if [ "$got_coding" != "$coding" ]; then
+        fail "$label" "expected Content-Encoding '${coding:-none}', got '${got_coding:-none}'"
+    elif [ "$got_field" = "$expect" ]; then
+        pass "$label"
+    else
+        fail "$label" "expected $field '$expect', got '${got_field:-none}'"
+    fi
+}
+
 echo
 echo "=== curl matrix — $LABEL → $BASE ==="
 echo "    $CURL_VERSION"
@@ -498,6 +545,36 @@ has   "the identity one keeps the plain ETag" 'ETag: "prose-1"' \
 # left alone anyway, because the decision is made on the media type.
 hasnt "an octet-stream body is left alone" "Content-Encoding:" \
       -H "Accept-Encoding: br, gzip" -D- -o /dev/null "$BASE/large"
+
+# ---------------------------------------------------------------------------
+# Digest fields
+# ---------------------------------------------------------------------------
+echo "  -- digest fields --"
+# RFC 9530. /digest's handler digests what it built, and the compression
+# filter then has to compute those digests again over what it sends: a
+# Content-Digest names the content's octets as they travel, after the content
+# coding (Section 2), and a Repr-Digest the selected representation, which
+# the coding is part of (Section 3). Until H-13 the filter copied both, and a
+# client asking for gzip was handed digests of a body it never received.
+digest "Content-Digest names the octets that arrived" "" content-digest sha-256 "$BASE/digest"
+digest "under gzip, the gzip octets" gzip content-digest sha-256 \
+       -H "Accept-Encoding: gzip" "$BASE/digest"
+digest "and so does Repr-Digest: the coding is part of the representation" gzip repr-digest sha-256 \
+       -H "Accept-Encoding: gzip" "$BASE/digest"
+
+# Section 4: a preference is an Integer from 0 to 10, and the higher one wins.
+digest "Want-Content-Digest chooses the algorithm" gzip content-digest sha-512 \
+       -H "Accept-Encoding: gzip" -H "Want-Content-Digest: sha-512=10, sha-256=3" "$BASE/digest"
+
+# A bare key is a Boolean and not a preference, so the field breaks its own
+# definition and is ignored whole (RFC 9651, Section 2.2): no opinion, and the
+# server's default. Until H-13 it was read as sha-512=1, and sha-512 came back.
+digest "a bare key is no preference" "" content-digest sha-256 \
+       -H "Want-Content-Digest: sha-512" "$BASE/digest"
+
+# 0 rules an algorithm out, and with both ruled out there is nothing to send.
+hasnt "ruling out every algorithm gets no digest" "Content-Digest:" \
+      -H "Want-Content-Digest: sha-256=0, sha-512=0" -D- -o /dev/null "$BASE/digest"
 
 # ---------------------------------------------------------------------------
 # Redirects
