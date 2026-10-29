@@ -4569,3 +4569,42 @@ challenges and resumes downloads. The HTTP/1.x client does none of these.
 require it, so this one conforms. It is filed for completeness, so that H-5
 is not the only listed piece of what the HTTP/2 client has and this one does
 not.
+
+## 2026-10-29 — H-36 upstream as Hermod#167, and H-39 on the way
+
+H-36 is [Hermod#167](https://github.com/Vanaheimr/Hermod/pull/167).
+`HTTPAuthority` moves to `Hermod/HTTP/`. `AHTTPServer` asks it about the
+certificate each TLS connection presented, and refuses a `Host` that
+certificate does not cover with `421`, closing the connection. It is on by
+default, which the user decided. `IsAuthorityServed` is the way out for a
+server behind a trusted gateway.
+
+Before any new test was written, the existing suites were run with the check
+on. One test went red. `HTTPSClientTests`' server certificate had no
+subjectAltName and was reached at `127.0.0.1`. It now carries the names its
+client uses. Of the 17 new tests, 9 go red with the check disabled.
+
+Measured against the branch:
+
+| | |
+|---|---|
+| the CI filter | 1150/1150 |
+| the neighbours | 2324/2324 |
+| the gate, cleartext / TLS | 320/320, 322/322 |
+
+On the demo's `:8443`, `Host: evil.example` now gets `421`, with SNI and
+without. It got `200` before. `localhost` and `127.0.0.1` still get `200`,
+and cleartext is unchanged. None of the gate's checks sends a `Host` the
+demo's certificate does not cover, so nothing here measures the `421` yet.
+After the pin moves, a check on the TLS leg will.
+
+**H-39** turned up while writing one of those tests. The test gave each
+connection a different certificate by counting selector calls, and every
+handshake got the first one, because three connections made six calls. The
+`TCPConnection` constructor asks the selector for the handshake's
+certificate. Then `HTTPConnection`, which wraps that connection and has the
+same constructor as its base, asks again. The two answers sit in
+`TCPConnection.ServerCertificate` and `HTTPConnection.ServerCertificate`, and
+a selector that does not always return the same certificate can make them
+disagree. The handshake and H-36's check use the first. P3, filed rather
+than folded into #167.
