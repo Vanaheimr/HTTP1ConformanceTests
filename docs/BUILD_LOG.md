@@ -4291,3 +4291,73 @@ pruned on 2026-10-02 without the count following.
 | proxies | 32/32 | **32/32**, Caddy's one new difference recorded |
 
 Demo routes: 20.
+
+## 2026-10-29 — Hermod to `32e34504`: H-13 pinned
+
+Five commits past `e128267d`: [Hermod#164](https://github.com/Vanaheimr/Hermod/pull/164)
+(H-13) and four of Hermod's own. Two of those reach the filters below:
+`0fff6c9c` keeps API keys and session tokens as their SHA-256 alone, with three
+new tests under `Tests.HTTP.`, and `ca91a551` gives `ATCPClient` a
+`RemoteNetworkAcl`, null by default and so not consulted by anything here. The
+other two are DNS and SSH. [Hermod#163](https://github.com/Vanaheimr/Hermod/pull/163)
+(H-34) is still open and not in the pin. Styx stays at `1262aa28`: two
+commits arrived there, both about the command line's history, and nothing
+here needs them.
+
+### Measured against `32e34504` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1085 | **1114** |
+| `Tests.HTTP.` | 1084 | **1113** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2321 | **2324** |
+| gate, cleartext | 9/9, 314/314 | 9/9, **314/314** |
+| gate, `--tls` | 9/9, 316/316 | 9/9, **316/316** |
+| gate, `--wsl` | 12/12, 489/489 | 12/12, **489/489** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 29 are H-13's 26 and `0fff6c9c`'s three, one in `HTTPExtAPIAPIKeyTests`
+and two in `SessionStoreTests`. Of H-13's, 25 are the new `DigestFieldsTests`
+and one is in `StructuredFieldsTests`, and none is in a file the regression
+filter names. The neighbours' three are `925c80d5`'s `RootZoneNSEC3_Tests`. I
+expected four there, and the fourth was the `[TestFixture]` line my count of
+attributes had matched. The two `HTTP2/DigestFieldTests` H-13 changed assert
+the strict reading now, and the HTTP/2 suite passes with them at the same
+count.
+
+### H-13 closed
+
+H-13 is ✅. It is the fourth finding of H-7's shape: `HTTPDigest` had been
+written for HTTP/2, in `HTTP2/Core`, where HTTP/1.x could not reach it, and
+it moved to `Hermod/HTTP/`. `Content-Digest`, `Repr-Digest` and the two `Want-`
+fields are now typed on both requests and responses. Producing and checking
+them is opt-in on each end, `AutomaticContentDigests` on the server and
+`VerifyDigests` on the client.
+
+The move found three defects:
+
+- **The compression filter, from H-2.** It copied a handler's `Content-Digest`
+  and `Repr-Digest` verbatim onto the gzipped response, so they described
+  octets it no longer carried. Both are now computed again over the octets it
+  sends. A digest that cannot be computed again, an `md5` one or a field that
+  does not parse, keeps the response uncompressed.
+- **The grammar.** It kept whatever it could read, so
+  `md5=:junk!:, sha-256=:…:` was verified against its second half. RFC 9651
+  §4.2 has a field that fails to parse ignored whole, and it does not let a
+  specification loosen that. The fields are read with H-6's parser now, its
+  first user, and HTTP/2 gets the strict reading too.
+- **H-6's parser itself.** It failed a Byte Sequence without its `=` padding,
+  where §4.2.7 says it SHOULD NOT.
+
+Reverting each fix on its own turns five of the six red. The sixth computes
+the server's digest before its compression instead of after, and stays green.
+The compression computes a digest it finds again, so either order puts a true
+digest on the wire. The comments now say the order does not matter.
+
+Nothing here has looked at a digest on the wire yet. The demo sends none, and
+none of the checks would notice a false one. That is the next commit.
