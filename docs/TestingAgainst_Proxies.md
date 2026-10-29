@@ -48,13 +48,13 @@ as an environment variable so that nothing else has to know.
 
 ### curl, through each proxy
 
-The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 89 checks —
+The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 92 checks —
 run directly and then through each chain. Differences are expected: a proxy is
 an HTTP endpoint on both sides and rewrites a great deal. Each one is recorded
 by name in [`tests/proxy-known.txt`](../tests/proxy-known.txt), and a *new*
 one fails the run.
 
-Direct is 89/89, which is what makes the rest of the column meaningful: a
+Direct is 92/92, which is what makes the rest of the column meaningful: a
 difference below is the proxy's doing and not a pre-existing failure.
 
 The differences cluster into recognisable behaviours, and none of them is

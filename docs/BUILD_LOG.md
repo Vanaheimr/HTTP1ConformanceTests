@@ -4922,3 +4922,73 @@ The worktree was a second checkout of the submodule, `libs/Hermod-h14`, on
 `7946ad01`, while the pin bump to that same commit was measured in
 `libs/Hermod`. The gate ran against the branch by detaching `libs/Hermod` at
 `b39135b4` and putting it back afterwards.
+
+## 2026-10-29 — Hermod to `2b6eecc2`: H-39 and H-14 pinned
+
+Three merges past `7946ad01`: [Hermod#179](https://github.com/Vanaheimr/Hermod/pull/179)
+(H-39), [Hermod#182](https://github.com/Vanaheimr/Hermod/pull/182) (H-14),
+and [Hermod#171](https://github.com/Vanaheimr/Hermod/pull/171), HyStart++
+for QUIC's slow start, which nothing here reaches. Styx stays at `1262aa28`.
+
+### Measured against `2b6eecc2` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1213 | **1268** |
+| `Tests.HTTP.` | 1212 | **1267** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2337 | **2337** |
+| curl matrix, cleartext / TLS | 89 / 95 | **92 / 98** |
+| gate, cleartext | 9/9, 324/324 | 9/9, **327/327** |
+| gate, `--tls` | 9/9, 330/330 | 9/9, **333/333** |
+| gate, `--tls`, Debian 13 in a Linux-built clone | 9/9, 331/331 | 9/9, **334/334** |
+| gate, `--wsl` | 12/12, 509/509 | 12/12, **515/515** |
+| proxies | 32/32 | **32/32** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 55 are `LinkFieldTests`' 50 and `AcceptedConnectionTests`' 5, both under
+`Tests.HTTP.` and outside the regression filter. #171's tests are under
+`Tests.QUIC`, so the neighbours stay at 2337.
+
+### Links on the wire
+
+The demo has a 22nd route, `/pages/{n}`: three pages, each linking to its
+neighbours with `prev` and `next` and to both ends with `first` and `last`.
+The first page's title is "Übersicht". It is not ASCII, so it can only travel
+as `title*` in UTF-8, which puts RFC 8187 on the wire as well.
+
+The curl matrix has a `links` section with three checks. Each compares
+`%header{link}`, the field value exactly as curl received it, with the whole
+expected string:
+
+- page 2: `prev`, `next`, `first` with its `title*`, and `last`;
+- `HEAD` on page 2 gets the same field (RFC 9110 §9.3.2), because the server
+  derives `HEAD` from `GET` (H-23);
+- page 3 links back and not on.
+
+They could not run against `7946ad01`, because the route needs the API that
+H-14 adds and the demo does not build without it. They were checked against
+two broken routes instead:
+
+| the route | red |
+|---|---:|
+| sends no `Link` | 3 of 3 |
+| also sends `next` on the last page | 1, the last-page check |
+
+The third check was first written as `hasnt 'rel="next"'` on page 3. That
+would have stayed green with no `Link` field at all, so it became an exact
+comparison before anything was measured.
+
+Through the proxies, each chain's figure moved by exactly three: nginx 86/92,
+HAProxy 91/92, Caddy 86/92, httpd 87/92, Envoy 85/92. All five forward the
+field untouched, on `HEAD` too, and `proxy-known.txt` needed no new line.
+
+### What is left of Track B
+
+Four findings are open: H-5, H-19, H-37 and H-38. H-19 is half done, since
+`HTTPExtendedValue` came with H-14, and what remains is `Content-Disposition`
+(RFC 6266).

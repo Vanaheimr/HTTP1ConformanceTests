@@ -1009,6 +1009,59 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
+            #region GET /pages/{n}  — RFC 8288: a list of three pages, linked
+
+            // Each page links to its neighbours and to both ends, which is how
+            // a paginated API tells a client where to go next without the
+            // client building URLs. The first page's title is "Übersicht": it
+            // is not ASCII, so it can only travel as title* in UTF-8
+            // (RFC 8187 §3.2.1), which is the half of H-14 a curl check can see
+            // on the wire.
+            const Int32 lastPage = 3;
+
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "pages" + "{n}",
+                HTTPDelegate: request => {
+
+                    if (!request.ParsedURLParametersX.TryGetValue("n", out var n) ||
+                        !Int32.TryParse(n, out var page) ||
+                        page is < 1 or > lastPage)
+                    {
+                        return Task.FromResult(
+                            new HTTPResponse.Builder(request) {
+                                HTTPStatusCode  = HTTPStatusCode.NotFound,
+                                ContentType     = HTTPContentType.Text.PLAIN,
+                                Content         = $"pages run from 1 to {lastPage}\n".ToUTF8Bytes()
+                            }.AsImmutable
+                        );
+                    }
+
+                    var links = new List<HTTPLink>();
+
+                    if (page > 1)
+                        links.Add(new HTTPLink($"/pages/{page - 1}", "prev"));
+
+                    if (page < lastPage)
+                        links.Add(new HTTPLink($"/pages/{page + 1}", "next"));
+
+                    links.Add(new HTTPLink("/pages/1",          "first", Title: "Übersicht", TitleLanguage: "de"));
+                    links.Add(new HTTPLink($"/pages/{lastPage}", "last"));
+
+                    return Task.FromResult(
+                        new HTTPResponse.Builder(request) {
+                            HTTPStatusCode  = HTTPStatusCode.OK,
+                            ContentType     = HTTPContentType.Text.PLAIN,
+                            Link            = new HTTPLinks(links),
+                            Content         = $"page {page} of {lastPage}\n".ToUTF8Bytes()
+                        }.AsImmutable
+                    );
+
+                }
+            );
+
+            #endregion
+
             #region GET /events  — Server-Sent Events
 
             var eventSource = API.AddEventSource<String>(

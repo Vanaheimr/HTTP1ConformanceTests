@@ -357,6 +357,24 @@ wo  "so does RFC 9457's own Accept, beside application/json"            '%{conte
 has "the problem names the status code it is sent with (§3.1.2)"        '"status":404' -H "Accept: application/problem+json" "$BASE/nowhere"
 
 # ---------------------------------------------------------------------------
+# Links — RFC 8288
+# ---------------------------------------------------------------------------
+# /pages/{n} is a list of three pages, each linking to its neighbours and to
+# both ends (H-14). %header{link} is the field value exactly as curl received
+# it, so these see the serialisation and not a parse of it: the quoting
+# Section 3 calls the most interoperable, the comma between link-values, and
+# the first page's title "Übersicht", which is not ASCII and can only travel as
+# title* in UTF-8 (RFC 8187 §3.2.1). The HEAD check is RFC 9110 §9.3.2: the
+# server derives HEAD from GET (H-23), and sends the fields the GET would.
+# Each is an exact comparison: an absent field fails all three.
+PAGE2_LINKS='</pages/1>; rel="prev", </pages/3>; rel="next", </pages/1>; rel="first"; title*=UTF-8'"'"'de'"'"'%C3%9Cbersicht, </pages/3>; rel="last"'
+PAGE3_LINKS='</pages/2>; rel="prev", </pages/1>; rel="first"; title*=UTF-8'"'"'de'"'"'%C3%9Cbersicht, </pages/3>; rel="last"'
+echo "  -- links --"
+wo    "page 2 links to its neighbours and both ends (RFC 8288)"     '%header{link}' "$PAGE2_LINKS" "$BASE/pages/2"
+wo    "HEAD sends the Link the GET does (RFC 9110 §9.3.2)"          '%header{link}' "$PAGE2_LINKS" -I "$BASE/pages/2"
+wo    "the last page links back, and not on (RFC 8288)"             '%header{link}' "$PAGE3_LINKS" "$BASE/pages/3"
+
+# ---------------------------------------------------------------------------
 # Methods
 # ---------------------------------------------------------------------------
 echo "  -- methods --"

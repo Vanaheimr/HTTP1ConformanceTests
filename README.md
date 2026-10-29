@@ -25,15 +25,15 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 324 checks, ~135 s
+tests/run-tests.sh        # 327 checks, ~135 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **211/211** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **89/89** (90 on the CI Debian leg, 95 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **324** cleartext and **330** over TLS, the extra six being the ALPN check that only a TLS handshake can carry, curl's alt-svc cache, which curl fills only over TLS, and four misdirected requests, which only a certificate can make misdirected — and **509/509** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
-| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 21 routes |
+| `tests/curl-matrix.sh` | **92/92** (93 on the CI Debian leg, 98 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **327** cleartext and **333** over TLS, the extra six being the ALPN check that only a TLS handshake can carry, curl's alt-svc cache, which curl fills only over TLS, and four misdirected requests, which only a certificate can make misdirected — and **515/515** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
+| `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 22 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
 | `tests/h1bench` | not a gate — throughput, latency percentiles and allocation, with Kestrel as a control on the same loopback |
@@ -49,15 +49,15 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Measured by | Count | What |
 |---|---|---:|---|
-| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **1212** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **1267** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
 | ↳ the protocol regression selection | the eleven-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **381** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings in both roles, .NET interop. Unchanged by the five findings of 2026-09-26, because their four fixtures are not in the filter — adding them made it **431** when measured against `5ab74d7f`. Whether they belong is a one-line change to that filter upstream, and it has not been made. It moved from 374 to 377 with H-10, whose three socket tests went into a file the filter does name, to 379 with H-28's two, which went into `HTTP11AuditRegressionTests`, and to 381 with the pin of 2026-10-28, one each in `HTTPClientTests` and that file; H-27's five, H-23's six and H-11's fourteen went into new files, and so are in the row above and not in this one — which is the same gap seen from the other side, three times in one week |
 | ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **161** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **1213** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 1212 and 1213, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
+| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **1268** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 1267 and 1268, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
 | Autobahn vs. the **server** (demo host `:8081`) | `tests/autobahn.sh` | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
 Every count above is a **run** count, re-measured on 2026-10-29 against Hermod
-`7946ad01` and Styx `1262aa28` by running the filter in its own row — which is now printed, because
+`2b6eecc2` and Styx `1262aa28` by running the filter in its own row — which is now printed, because
 every time a figure here drifted it was a figure whose filter nobody could check.
 
 `--list-tests` and `dotnet test` disagree on this checkout, and by a stable
@@ -221,9 +221,9 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | [RFC 3629](https://www.rfc-editor.org/rfc/rfc3629) | UTF-8 (STD 63) | ✅ incl. the incremental validator in the WebSocket path |
 | RFC 9110 §5.6.7 + [RFC 1123](https://www.rfc-editor.org/rfc/rfc1123) | HTTP-date (IMF-fixdate) | ✅ `HTTPDate`: IMF-fixdate produced, all three formats parsed as recipients MUST, the RFC 850 two-digit year by §5.6.7's sliding window — H-11, 2026-10-03 |
 | [RFC 9651](https://www.rfc-editor.org/rfc/rfc9651) | Structured Field Values (obsoletes 8941) | ✅ Lists, Dictionaries and Items over all eight bare types, §4.2 parsing and §4.1 serialization, strict rather than repairing — H-6, 2026-09-26. Its first users are RFC 9530's digest fields (H-13, 2026-10-29), which is how a Byte Sequence without its `=` padding was found to fail, where §4.2.7 says a parser SHOULD NOT; fixed with them |
-| [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187) | Charset/language in field parameters (`filename*`) | ❌ |
+| [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187) | Charset/language in field parameters (`filename*`) | ✅ `HTTPExtendedValue`, since H-14: encodes in UTF-8, as a producer MUST, and decodes UTF-8 and ISO-8859-1, refusing any other charset rather than guessing at it, and a malformed escape or a character outside `attr-char`. `Link`'s `title*` uses it; `Content-Disposition`'s `filename*` does not yet, which is what is left of H-19 |
 | [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) | `Content-Disposition` in HTTP | 🟡 typed field, no parameter-encoding logic |
-| [RFC 8288](https://www.rfc-editor.org/rfc/rfc8288) | Web Linking (`Link`) | ❌ |
+| [RFC 8288](https://www.rfc-editor.org/rfc/rfc8288) | Web Linking (`Link`) | ✅ typed on responses, `HTTPLinks` of `HTTPLink`, in `Hermod/HTTP/`. A link is built under Section 3's grammar and parsed by Appendix B, with one deviation written down: the comma between two link-values is consumed, as Section 3.5 needs and B.3 read literally does not do. Repeated field lines are one value. Which links to send is the handler's. H-14, [Hermod#182](https://github.com/Vanaheimr/Hermod/pull/182), verified 2026-10-29 by three checks in the curl matrix against the demo's `/pages/{n}`, which compare the field as curl received it, `HEAD` included, and pass unchanged through all five proxies |
 | [RFC 6570](https://www.rfc-editor.org/rfc/rfc6570) | URI Templates | ⬜ routing uses its own path-parameter syntax |
 
 ## Methods
