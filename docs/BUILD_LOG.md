@@ -4719,3 +4719,48 @@ self-signed certificate the demo makes at startup all work there.
 
 The job's first run is the first time CI has driven this repository's TLS
 listener. PLAN's row stays 🔶 until that run is green.
+
+## 2026-10-29 — H-15 upstream as Hermod#173
+
+H-15 is [Hermod#173](https://github.com/Vanaheimr/Hermod/pull/173). Hermod
+had nothing for RFC 9457. Every error the server makes itself went out as
+`application/json` with a `description`, and `Accept: application/problem+json`
+changed nothing. Measured on the demo before the change: 404, 405, 417 and the
+TLS listener's 421 all looked like that.
+
+RFC 9457 does not ask a server to format its own errors this way. Section 4
+calls generic problems better expressed as plain status codes, and names
+content negotiation as the way to add problem details to an API that already
+has a format. So two decisions were the user's, and both went to the
+recommendation:
+
+- **The server's errors are negotiated.** They stay as they were unless
+  `Accept` names `application/problem+json` itself, with a quality above 0 and
+  no lower than the one the most specific matching range gives
+  `application/json`. A wildcard alone does not ask.
+- **JSON only.** Appendix B's XML is optional.
+
+Reading `Accept` on an error path found a bug that had never shown.
+`AcceptType.TryParse` threw on `q=abc` and on an empty element, and
+`GetHeaderField` does not catch, so `Request.Accept` threw. With the
+negotiation in place and the old parser, `GET /nowhere` with
+`Accept: application/json;q=abc` got nothing back at all. With the
+negotiation disabled the 404 came back. The new code exposed the bug; master
+was not broken. Fixed in the same PR.
+
+Measured against the branch, `d1effa2a`:
+
+| | |
+|---|---|
+| `ProblemDetailsTests` | 63/63; with the negotiation disabled 7 red, with the old `AcceptType` 4 red |
+| all of `HermodTests`, as Hermod's `ci.yml` runs it | 4893/4894, the one skip CI has too |
+| the gate, cleartext / TLS | 320/320, 326/326, unchanged |
+
+This time the whole suite ran before the push, not after. That is the lesson
+from #167, which went to CI having run 3474 of 4826.
+
+On the demo, curl sends `*/*` and gets the old form. With
+`Accept: application/problem+json` it gets
+`{"title":"Not Found","status":404,"detail":"Unknown path segment!","request":"GET /nowhere HTTP/1.1"}`
+as `application/problem+json`. Once the pin moves, the curl matrix can check
+both forms.
