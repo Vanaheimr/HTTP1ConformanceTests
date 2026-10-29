@@ -4870,3 +4870,55 @@ line, and each chain's figure moved by exactly four: nginx 83/89, HAProxy
 The Debian row is the nightly `tls` job's leg, measured ahead of its first
 run as before: a fresh clone inside WSL, its Hermod checked out at
 `7946ad01`, built by Debian 13's .NET and driven by its own curl 8.14.
+
+## 2026-10-29 — H-14 upstream as Hermod#182
+
+H-14 was one line in PLAN: no `Link` header. Hermod had nothing for RFC 8288,
+and nothing in it sent or read the field.
+
+[Hermod#182](https://github.com/Vanaheimr/Hermod/pull/182) adds `HTTPLink`
+and `HTTPLinks` in `Hermod/HTTP/`, the typed response field, and
+`HTTPResponse.Builder.Link` and `HTTPResponse.Link`. The getter joins repeated
+field lines, which Section 3.5 calls equivalent to one line with commas.
+Constructing a link checks what a sender must get right: URI references for
+the target and the anchor, and registered or absolute-URI relation types.
+Parsing follows Appendix B.
+
+Appendix B has a flaw when read literally. B.3 stops at the comma between two
+link-values and does not consume it. B.2 then looks for `<`, finds `,`, and
+returns. So every field would end after its first link-value, and Section
+3.5's own comma-separated example would parse as one link. The appendix is
+advisory, so the comma is consumed, and the deviation is written down in the
+doc comment and the README.
+
+`title*` is an RFC 8187 value, so the PR needed RFC 8187. `HTTPExtendedValue`
+encodes UTF-8 and decodes UTF-8 and ISO-8859-1, and refuses everything else.
+That is the half of H-19 that is not `Content-Disposition`.
+
+The 50 tests were written before the code was compiled, and all 50 passed on
+the first run. That made the mutations matter more. Each was applied on its
+own, rebuilt and run:
+
+| mutation | red |
+|---|---:|
+| the comma between link-values not consumed | 7 |
+| the getter reads one field line | 1 |
+| `title*` ignored | 5 |
+| any charset read as Latin-1 | 2 |
+| relation types not checked | 3 |
+| quoted-pairs not unescaped | 1 |
+| a `name*` does not replace its `name` | 2 |
+
+The one red under "one field line" is the test that sends two `Link` lines
+from a raw socket. No `HTTPServer` test could catch it, because the builder
+writes one line.
+
+Against the branch, `b39135b4`: the whole suite as Hermod's `ci.yml` runs it,
+4982/4983, the TOTP skip CI has too; the gate 324/324 and 330/330. The gate
+does not change, because the demo sends no `Link` yet. A demo route and a curl
+check come with the pin.
+
+The worktree was a second checkout of the submodule, `libs/Hermod-h14`, on
+`7946ad01`, while the pin bump to that same commit was measured in
+`libs/Hermod`. The gate ran against the branch by detaching `libs/Hermod` at
+`b39135b4` and putting it back afterwards.
