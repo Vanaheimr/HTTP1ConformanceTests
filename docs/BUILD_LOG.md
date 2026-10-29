@@ -4458,3 +4458,51 @@ the push runs.
 `tests/README.md` had `h1semantics` at 65 checks in its table. The harness
 reports 75, and 32 + 51 + 20 + 75 + 16 + 17 = 211, the raw-wire figure every
 other table here uses. It is 75 now.
+
+## 2026-10-29 — Hermod to `35b6b88e`: H-34 pinned
+
+One merge past `32e34504`: [Hermod#163](https://github.com/Vanaheimr/Hermod/pull/163)
+(H-34), and nothing else. Styx stays at `1262aa28`.
+
+### Measured against `35b6b88e` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1114 | **1133** |
+| `Tests.HTTP.` | 1113 | **1132** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2324 | **2324** |
+| gate, cleartext | 9/9, 320/320 | 9/9, **320/320** |
+| gate, `--tls` | 9/9, 322/322 | 9/9, **322/322** |
+| gate, `--wsl` | 12/12, 501/501 | 12/12, **501/501** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 19 are `RegisterFileSystemFileTests`' 12 and `ResourceAssemblyHandlersTests`'
+7. One of them, the file another process holds open, is `[Platform("Win")]`,
+because `FileShare.None` keeps a reader out only there. The Debian leg of CI
+already skipped two tests for the same reason, both H-33's, and this makes
+three. PLAN's CI row says so now instead of "both legs" alone.
+
+### H-34 closed
+
+All eleven `HTTPStandardHandlers` entry points have a caller now. Before any
+test was written, each of the five that had none was sent raw requests.
+`RegisterFileSystemFile` had four defects:
+
+- a directory was a `500` whose body was the access-denied message, path
+  included. That is the leak H-33 closed in `MapFileSystemFolder`, still open
+  in this method;
+- `nul` on Windows was a `200` with an empty body;
+- every file went out as `application/octet-stream`;
+- a file another process held was a `500` carrying the exception's message.
+
+The four embedded-resource overloads had nothing wrong. Two things about them
+are written down now, because a caller would not guess either:
+
+- a manifest name is flat, so `assets/app.js` and `assets.app.js` are one
+  resource;
+- six overloads take a `Hostname` they never use.
