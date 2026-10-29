@@ -4608,3 +4608,84 @@ same constructor as its base, asks again. The two answers sit in
 a selector that does not always return the same certificate can make them
 disagree. The handshake and H-36's check use the first. P3, filed rather
 than folded into #167.
+
+## 2026-10-29 — Hermod to `de9b5652`: H-36 pinned
+
+Two merges past `35b6b88e`: [Hermod#167](https://github.com/Vanaheimr/Hermod/pull/167)
+(H-36), and [Hermod#166](https://github.com/Vanaheimr/Hermod/pull/166), in
+which QUIC's congestion window stops growing while the application leaves it
+unused (RFC 9002 §7.8). Nothing here reaches the second. Styx stays at
+`1262aa28`.
+
+### The first push was red, and the entry above is wrong about it
+
+The entry above says one test went red when the existing suites ran with the
+check on. It was seven. What ran was `Tests.HTTP.`, `Tests.HTTPS.` and the
+eight neighbouring namespaces: 3474 of the 4826 tests Hermod's own CI runs.
+Hermod's CI runs all of them. Six tests in `Tests.PKI.Mutual_TLS_Tests` were
+red on both legs. Their server certificates name `server.example.org` and
+`127.0.0.1`, their clients dial `https://localhost`, and their validators
+check the chain but not the name. That is `HTTPSClientTests`' shape again, in
+a namespace not run here.
+
+`c0a09305` gave the six certificates `localhost` as well. Then the whole suite
+ran the way `ci.yml` runs it, Release and `TestCategory!=LiveDNS`: 4825/4826
+on Windows. The one skip is a TOTP vector that C#'s types cannot express, and
+CI skips it too. After that, both CI legs passed.
+
+The filter this repository gates on is not the one Hermod gates on. A changed
+default inside the stack can break a test in any namespace that uses it, and
+only the whole suite shows it did not. Measuring the neighbours was meant to
+cover that, but it covered a list, and `Tests.PKI` was not on it.
+
+### Measured against `de9b5652` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1133 | **1150** |
+| `Tests.HTTP.` | 1132 | **1149** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2324 | **2324** |
+| curl matrix, cleartext / TLS | 85 / 87 | **85 / 91** |
+| gate, cleartext | 9/9, 320/320 | 9/9, **320/320** |
+| gate, `--tls` | 9/9, 322/322 | 9/9, **326/326** |
+| gate, `--wsl` | 12/12, 501/501 | 12/12, **501/501** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 17 are `MisdirectedRequestTests`. They sit under `Tests.HTTP.`, in a file
+the regression filter does not name, so that row stays at 381. #166's tests
+are under `Tests.QUIC`, outside the neighbours' filter.
+
+### The `421` on the wire
+
+The curl matrix has a new section, `misdirected requests`, and only the TLS
+leg runs it. A cleartext connection presents no certificate, so there is
+nothing for a `Host` to be valid for. There are four checks:
+
+- `Host: evil.example` gets `421`;
+- so does `https://evil.example/` through `--connect-to`, where the SNI names
+  that origin as well;
+- the `421` carries `Connection: close`, because its body was never read;
+- `Host: localhost` gets `200`.
+
+The last one is green either way. Every other TLS check dials `127.0.0.1`, so
+without it the three `421`s could mean "any `Host` but the address dialled".
+`localhost` is a second name the certificate carries.
+
+They were written before the pin moved, and run against `35b6b88e` first:
+88/91, with the three `421` checks red and `localhost` green. Against
+`de9b5652` they pass, 91/91.
+
+No CI leg and no nightly job runs `run-tests.sh --tls`. These four checks,
+like the TLS leg's other 322, are evidence from this machine only.
+
+`Demo/README.md` now says what the certificate names, and that any other
+`Host` gets `421` over TLS. With `--bind-any` that includes the host address
+WSL dials. Measured from the Debian side: `https://172.23.32.1:8443/` is a
+`421`, and `http://172.23.32.1:8080/` a `200`. The same should hold for a LAN
+address. The one tried here, `10.5.0.2`, did not answer from Windows at all
+(curl `000`), so it tells us nothing either way.

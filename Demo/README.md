@@ -9,7 +9,7 @@ dotnet run --project Demo/HTTP1.Demo.csproj
 | Listener | Port | |
 |---|---|---|
 | cleartext HTTP | `:8080` | the main conformance target |
-| TLS | `:8443` | self-signed cert generated at startup — use `curl -k` |
+| TLS | `:8443` | self-signed cert generated at startup for `localhost`, `127.0.0.1` and `::1` — use `curl -k`. Any other `Host` gets `421 Misdirected Request` (RFC 9110 §7.4, H-36). Under `--bind-any` that includes the host address WSL dials (`ip route show default`): over TLS it gets `421`, while `:8080` answers it |
 | WebSocket | `:8081` | echo server, the Autobahn `fuzzingclient` target |
 
 The WebSocket server is a **separate listener** rather than a route on `:8080`,

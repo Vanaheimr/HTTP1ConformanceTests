@@ -254,9 +254,10 @@ if [ "$HAS_H2" = "yes" ]; then
     wo "--http1.1 honoured by an HTTP/2-capable curl" '%{http_version}' "1.1" --http1.1 "$BASE/"
 fi
 
-# ALPN exists only inside a TLS handshake, so this is the one check here that is
-# conditional on the *transport* rather than on the build, with curl's alt-svc
-# cache below — the TLS leg runs 81 and the cleartext one 79.
+# ALPN exists only inside a TLS handshake, so this is one of the checks here that
+# are conditional on the *transport* rather than on the build, with curl's alt-svc
+# cache and the misdirected requests below — the TLS leg runs six more than the
+# cleartext one.
 #
 # The needle is "accepted", because curl prints its own offer on the line above
 # ("ALPN: curl offers http/1.1") and a matrix that passed on that would be
@@ -308,6 +309,32 @@ case "$BASE" in
                 pass "curl records no http%2F1.1 alternative (known curl deviation)"
             fi
         fi
+        ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Misdirected requests — RFC 9110 §7.4
+# ---------------------------------------------------------------------------
+# "a request for an "https" resource MUST be rejected unless it has been
+# received over a connection that has been secured via a certificate valid for
+# that target URI's origin", and the rejection is 421 (§15.5.20). The demo's
+# certificate names localhost, 127.0.0.1 and ::1. Until Hermod#167 (H-36) it
+# served any Host over TLS with a 200, whether the SNI named it too or not.
+#
+# Over TLS only: a cleartext connection presents no certificate, so there is
+# nothing for a Host to be valid for, and the server does not check it.
+#
+# The 200 for localhost is what keeps the 421s from meaning "any Host but the
+# one curl dialled": every other TLS check here dials 127.0.0.1, and localhost
+# is a different name the certificate also carries.
+case "$BASE" in
+    https://*)
+        echo "  -- misdirected requests --"
+        HOSTPORT="${BASE#https://}"; HOSTPORT="${HOSTPORT%%/*}"
+        wo  "a Host the certificate does not name gets 421 (RFC 9110 §7.4)"  '%{http_code}' "421" -H "Host: evil.example" "$BASE/"
+        wo  "SNI naming that origin as well changes nothing"                  '%{http_code}' "421" --connect-to "evil.example:443:$HOSTPORT" "https://evil.example/"
+        has "the 421 closes the connection, since its body was not read"     "Connection: close" -D- -H "Host: evil.example" "$BASE/"
+        wo  "a name the certificate carries is served: localhost"             '%{http_code}' "200" -H "Host: localhost" "$BASE/"
         ;;
 esac
 

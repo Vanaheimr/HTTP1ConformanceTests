@@ -25,9 +25,9 @@ scrapes output for a marker character.
 
 ## Status
 
-**320 checks pass over cleartext and 322 over TLS** — 211 raw-wire + 85 curl
-(87 over TLS, the ALPN check and curl's alt-svc cache having no cleartext
-equivalent) + 24 desync —
+**320 checks pass over cleartext and 326 over TLS** — 211 raw-wire + 85 curl
+(91 over TLS: the ALPN check, curl's alt-svc cache and the four misdirected
+requests have no cleartext equivalent) + 24 desync —
 across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
@@ -35,7 +35,7 @@ curl build, the foreign peers and the smuggling differential join in:
 
 The curl figure is 85 **here** and 86 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional on the
-build or the filesystem, two more on the transport, and a fifth is always
+build or the filesystem, six more on the transport, and one more is always
 present but expects a different answer per build:
 
 | Check | Runs when |
@@ -44,6 +44,7 @@ present but expects a different answer per build:
 | `curl stored the ETag` | the target is local, so `--etag-save` writes somewhere this script can read |
 | `the server selects http/1.1 over ALPN` | the base is `https://` — ALPN exists only inside a TLS handshake |
 | `curl records no http%2F1.1 alternative` | the base is `https://` *and* the target is local: curl ignores `Alt-Svc` on a cleartext connection, and its cache file has to be readable from here. A **known curl deviation**, pinned rather than passed — see below |
+| the four under `misdirected requests` | the base is `https://`. RFC 9110 §7.4 rejects a request whose origin the connection's certificate is not valid for, and a cleartext connection has no certificate. A `Host` the certificate does not name gets `421`, with SNI naming it too as well as without, and the `421` carries `Connection: close`. `localhost`, a name the certificate carries but not the address curl dialled, gets `200`. Three of the four were red against Hermod `35b6b88e`, before H-36 |
 | `--digest SHA-256` | *always runs*, but expects 200 from a build that implements RFC 7616 with SHA-256 and 401 from one that does not. curl 8.14 (OpenSSL) does; curl 8.21 (Schannel) sends no `Authorization` at all. Predicted from the TLS backend in the version banner and then asserted, so a build that breaks the pattern fails rather than being quietly accommodated |
 
 So 84 checks always run, and over cleartext the two counting flags give three
@@ -56,7 +57,7 @@ real combinations. CI runs the cleartext gate only:
 | the CI `debian:13` container | yes | yes | 86 | **321** |
 
 The first two agree at 85 for opposite reasons, which is worth knowing before
-someone reconciles them into one number. Over TLS the Windows curl runs 87.
+someone reconciles them into one number. Over TLS the Windows curl runs 91.
 
 #### `Alt-Svc`, and what curl does with it
 
@@ -116,7 +117,7 @@ shows that the octets cross `wsl.exe` unchanged.
 
 | Harness | Checks | Covers |
 |---|---:|---|
-| `curl-matrix.sh` | 85–87 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, RFC 9530 digests checked against the octets that arrived, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
+| `curl-matrix.sh` | 85–91 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, misdirected requests over TLS, RFC 9530 digests checked against the octets that arrived, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |

@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **1132 NUnit tests** live with the stack in Hermod
+suite drivers; the **1149 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **1132 NUnit tests** in `libs/Hermod/HermodTests/`
+**Tests:** most coverage is the **1149 NUnit tests** in `libs/Hermod/HermodTests/`
 under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **381** are the HTTP/1.x
 protocol regression selection and **161** cover RFC 6455/7692 WebSockets. CI gates
-on those 1132 plus the single test in `Tests.HTTPS.` = **1133** — a filter that
+on those 1149 plus the single test in `Tests.HTTPS.` = **1150** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
 through `ATCPClient`. The regression selection did not move
@@ -148,8 +148,8 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
 **A3 done** — the curl matrix (85 checks, 86 where curl has HTTP/2 *and* the
-target is local, 87 over TLS — see [`tests/README.md`](tests/README.md)). The gate is **320 cleartext and
-322 over TLS** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
+target is local, 91 over TLS — see [`tests/README.md`](tests/README.md)). The gate is **320 cleartext and
+326 over TLS** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
 rather than on perfection.
@@ -182,8 +182,8 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 1132 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1133 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2324** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2084 two pins ago, 2321 at the last. All 2324 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
-| this repo's gate | **320** cleartext, **322** over TLS (211 raw-wire + 85 curl + 24 desync; the TLS leg's two more are the ALPN check and curl's alt-svc cache, neither of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28, 314/316 before the six RFC 9530 digest checks on 2026-10-29 |
+| Hermod's own NUnit suites | 1149 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1150 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2324** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2084 two pins ago, 2321 at the last. All 2324 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
+| this repo's gate | **320** cleartext, **326** over TLS (211 raw-wire + 85 curl + 24 desync; the TLS leg's six more are the ALPN check, curl's alt-svc cache and H-36's four misdirected requests, none of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28, 314/316 before the six RFC 9530 digest checks on 2026-10-29, 320/322 before H-36's four the same day |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **501/501** |
 | reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
 | benchmarks (A9) | `tests/h1bench`, not a gate — 0.240 ms p50 against Kestrel's 0.252 ms on the same loopback |
