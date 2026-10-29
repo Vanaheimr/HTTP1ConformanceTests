@@ -4764,3 +4764,42 @@ On the demo, curl sends `*/*` and gets the old form. With
 `{"title":"Not Found","status":404,"detail":"Unknown path segment!","request":"GET /nowhere HTTP/1.1"}`
 as `application/problem+json`. Once the pin moves, the curl matrix can check
 both forms.
+
+## 2026-10-29 — H-39 upstream as Hermod#179
+
+H-39 was filed as one selector call too many. Reading the code turned it into
+the general case: `HTTPConnection(TCPConnection)` called the full
+`TCPConnection` constructor, so it built a second connection object for the
+same socket. That object:
+
+- asked the `ServerCertificateSelector`, the `ServerCertificateChainSelector`
+  and the `ConnectionIdBuilder` a second time;
+- started its own `Created` and `Runtime`;
+- never learned the client certificate, because `ATCPServer` runs the
+  handshake on the accepted connection before `HandleConnection` wraps it.
+
+So on a mutual-TLS connection a handler reading
+`request.TCPConnection.ClientCertificate` got `null`, while
+`request.ClientCertificate` had it. Nothing in Hermod's tests had looked at the
+connection's own field.
+
+[Hermod#179](https://github.com/Vanaheimr/Hermod/pull/179) gives
+`TCPConnection` a protected constructor that takes an accepted connection
+over, and `HTTPConnection` uses it. Before any of this went into a doc
+comment, `AcceptedConnectionTests` measured each claim against the old
+constructor. All 5 were red:
+
+- 6 selector calls and 6 chain selector calls for 3 connections;
+- the second certificate where the handshake presented the first;
+- `none` beside `request.ClientCertificate`'s thumbprint;
+- `connection 2` where the server accepted `connection 1`.
+
+`MisdirectedRequestTests` dropped its per-connection workaround, and counts
+calls now.
+
+Against the branch, `171c15a6`: the whole suite as Hermod's `ci.yml` runs it,
+4835/4836, the TOTP skip CI has too; the gate 320/320 and 326/326.
+
+On the way, a one-line `sed -i` in Git Bash rewrote Hermod's CRLF
+`HTTP1/README.md` to LF, all 812 lines. Caught by counting line endings before
+the commit, and recorded where the BOM rule already was.
