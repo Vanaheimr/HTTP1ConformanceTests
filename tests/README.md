@@ -25,15 +25,15 @@ scrapes output for a marker character.
 
 ## Status
 
-**320 checks pass over cleartext and 326 over TLS** — 211 raw-wire + 85 curl
-(91 over TLS: the ALPN check, curl's alt-svc cache and the four misdirected
+**324 checks pass over cleartext and 330 over TLS** — 211 raw-wire + 89 curl
+(95 over TLS: the ALPN check, curl's alt-svc cache and the four misdirected
 requests have no cleartext equivalent) + 24 desync —
 across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
-**501/501** over 12/12.
+**509/509** over 12/12.
 
-The curl figure is 85 **here** and 86 on the CI Debian leg, and that is not a
+The curl figure is 89 **here** and 90 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional on the
 build or the filesystem, six more on the transport, and one more is always
 present but expects a different answer per build:
@@ -47,16 +47,16 @@ present but expects a different answer per build:
 | the four under `misdirected requests` | the base is `https://`. RFC 9110 §7.4 rejects a request whose origin the connection's certificate is not valid for, and a cleartext connection has no certificate. A `Host` the certificate does not name gets `421`, with SNI naming it too as well as without, and the `421` carries `Connection: close`. `localhost`, a name the certificate carries but not the address curl dialled, gets `200`. Three of the four were red against Hermod `35b6b88e`, before H-36 |
 | `--digest SHA-256` | *always runs*, but expects 200 from a build that implements RFC 7616 with SHA-256 and 401 from one that does not. curl 8.14 (OpenSSL) does; curl 8.21 (Schannel) sends no `Authorization` at all. Predicted from the TLS backend in the version banner and then asserted, so a build that breaks the pattern fails rather than being quietly accommodated |
 
-So 84 checks always run, and over cleartext the two counting flags give three
+So 88 checks always run, and over cleartext the two counting flags give three
 real combinations. CI runs the cleartext gate per push:
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the CI Windows leg | no | yes | 85 | **320** |
-| the Debian curl reached through WSL (`--wsl`) | yes | no | 85 | — |
-| the CI `debian:13` container | yes | yes | 86 | **321** |
+| Windows / Git Bash, and the CI Windows leg | no | yes | 89 | **324** |
+| the Debian curl reached through WSL (`--wsl`) | yes | no | 89 | — |
+| the CI `debian:13` container | yes | yes | 90 | **325** |
 
-The first two agree at 85 for opposite reasons, which is worth knowing before
+The first two agree at 89 for opposite reasons, which is worth knowing before
 someone reconciles them into one number.
 
 Over TLS the six transport-conditional checks join in, and the nightly's
@@ -64,10 +64,10 @@ Over TLS the six transport-conditional checks join in, and the nightly's
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the nightly's Windows leg | no | yes | 91 | **326** |
-| Debian 13, and the nightly's `debian:13` leg | yes | yes | 92 | **327** |
+| Windows / Git Bash, and the nightly's Windows leg | no | yes | 95 | **330** |
+| Debian 13, and the nightly's `debian:13` leg | yes | yes | 96 | **331** |
 
-Both were measured on 2026-10-29 before the job existed. The Debian figure
+Both were measured on 2026-10-29 before the job existed, as 326 and 327, and again at Hermod `7946ad01`. The Debian figure
 comes from a fresh clone built and run inside WSL, a Linux-built tree, and
 not from the Windows tree driven from WSL, which is not a configuration CI
 runs.
@@ -130,7 +130,7 @@ shows that the octets cross `wsl.exe` unchanged.
 
 | Harness | Checks | Covers |
 |---|---:|---|
-| `curl-matrix.sh` | 85–91 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, misdirected requests over TLS, RFC 9530 digests checked against the octets that arrived, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
+| `curl-matrix.sh` | 89–95 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, misdirected requests over TLS, RFC 9457 problem details negotiated on `Accept`, RFC 9530 digests checked against the octets that arrived, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 32 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms, version syntax, field syntax, `obs-fold`, `Host`, limits, fragmented delivery |
 | `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |
@@ -177,7 +177,7 @@ interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
 ```bash
-tests/run-tests.sh --wsl        # 501/501 — both curl builds
+tests/run-tests.sh --wsl        # 509/509 — both curl builds
 ```
 
 `--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the
@@ -480,8 +480,8 @@ Every image is pulled rather than built, so this costs a minute of docker pull
 rather than the compiler-hours the HTTP Garden does. It still takes about ten
 minutes to run, which is why it is a nightly.
 
-Four measurements. **curl** runs the whole 85-check matrix through each chain
-against 85/85 direct; **framing** runs `h1desync --observe` through each chain
+Four measurements. **curl** runs the whole 89-check matrix through each chain
+against 89/89 direct; **framing** runs `h1desync --observe` through each chain
 against the same run made directly; **poison** sends an ambiguous message and
 then asks innocent questions on fresh connections; **via** checks the
 intermediary-facing things visible from outside — a chunked body arriving

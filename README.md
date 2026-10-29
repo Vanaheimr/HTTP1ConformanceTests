@@ -25,14 +25,14 @@ on Windows and Debian 13, and the first third-party conformance suite — Autoba
 runs nightly and gates on its result (see [`PLAN.md`](PLAN.md) for the rest).
 
 ```bash
-tests/run-tests.sh        # 320 checks, ~135 s
+tests/run-tests.sh        # 324 checks, ~135 s
 ```
 
 | | |
 |---|---|
 | `tests/` raw-wire harnesses | **211/211** — syntax, framing, connection management, RFC 9110 semantics, SSE, smuggling/hardening |
-| `tests/curl-matrix.sh` | **85/85** (86 on the CI Debian leg, 91 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
-| both, over cleartext *and* TLS | **320** cleartext and **326** over TLS, the extra six being the ALPN check that only a TLS handshake can carry, curl's alt-svc cache, which curl fills only over TLS, and four misdirected requests, which only a certificate can make misdirected — and **501/501** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
+| `tests/curl-matrix.sh` | **89/89** (90 on the CI Debian leg, 95 over TLS — see the conditional checks) — the first checks here made by a client nobody in this repository wrote |
+| both, over cleartext *and* TLS | **324** cleartext and **330** over TLS, the extra six being the ALPN check that only a TLS handshake can carry, curl's alt-svc cache, which curl fills only over TLS, and four misdirected requests, which only a certificate can make misdirected — and **509/509** with `--wsl`, which adds a second curl build, the foreign peers and the smuggling differential |
 | `Demo/` host | `:8080` cleartext, `:8443` TLS, `:8081` WebSocket — 21 routes |
 | `tests/autobahn.sh` (nightly, gated) | **481/517** Autobahn cases — the canonical RFC 6455 suite against `:8081`; the 36 open ones are `server_max_window_bits=9`, which RFC 7692 says to decline |
 | `tests/interop.sh` | **58/58** + 3 skips — Go, Java, Node, Python and wget against our server, and our client against Go's and Node's servers. The client direction had no independent witness before this |
@@ -49,15 +49,15 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Measured by | Count | What |
 |---|---|---:|---|
-| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **1149** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **1212** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
 | ↳ the protocol regression selection | the eleven-file filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **381** | client/server end-to-end, framing regressions, HTTP/1.0 behaviour, pipelining, chunked + trailers, limits/timeouts, status codes, content codings in both roles, .NET interop. Unchanged by the five findings of 2026-09-26, because their four fixtures are not in the filter — adding them made it **431** when measured against `5ab74d7f`. Whether they belong is a one-line change to that filter upstream, and it has not been made. It moved from 374 to 377 with H-10, whose three socket tests went into a file the filter does name, to 379 with H-28's two, which went into `HTTP11AuditRegressionTests`, and to 381 with the pin of 2026-10-28, one each in `HTTPClientTests` and that file; H-27's five, H-23's six and H-11's fourteen went into new files, and so are in the row above and not in this one — which is the same gap seen from the other side, three times in one week |
 | ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **161** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **1150** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 1149 and 1150, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
+| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **1213** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 1212 and 1213, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
 | Autobahn vs. the **server** (demo host `:8081`) | `tests/autobahn.sh` | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
 Every count above is a **run** count, re-measured on 2026-10-29 against Hermod
-`de9b5652` and Styx `1262aa28` by running the filter in its own row — which is now printed, because
+`7946ad01` and Styx `1262aa28` by running the filter in its own row — which is now printed, because
 every time a figure here drifted it was a figure whose filter nobody could check.
 
 `--list-tests` and `dotnet test` disagree on this checkout, and by a stable
@@ -298,7 +298,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 | [RFC 2295](https://www.rfc-editor.org/rfc/rfc2295) / [2296](https://www.rfc-editor.org/rfc/rfc2296) | Transparent content negotiation | ⬜ |
 | [RFC 6838](https://www.rfc-editor.org/rfc/rfc6838) / [6839](https://www.rfc-editor.org/rfc/rfc6839) | Media types, `+json`/`+xml` suffixes | 🟢 `HTTPContentType` |
 | [RFC 7578](https://www.rfc-editor.org/rfc/rfc7578) | `multipart/form-data` | 🟡 content type modeled, no multipart parser |
-| [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) | Problem Details (`application/problem+json`) | ❌ |
+| [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) | Problem Details (`application/problem+json`) | ✅ `HTTPProblemDetails`, in `Hermod/HTTP/` where HTTP/2 and HTTP/3 can use it too. A handler sends one with `SetProblemDetails`, which sets the status code from the problem's, and a client reads one with `TryParseProblemDetails`, which ignores a member of the wrong type (§3.1). The server's own errors are problem details when `Accept` prefers `application/problem+json` (§4), and stay `application/json` otherwise, so a client that never asked sees no change. JSON only: the XML form of Appendix B is not offered. H-15, [Hermod#173](https://github.com/Vanaheimr/Hermod/pull/173), verified 2026-10-29 by four checks in the curl matrix, three of them red against `de9b5652` |
 
 ## Upgrade & protocol switching
 

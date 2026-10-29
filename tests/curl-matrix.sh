@@ -339,6 +339,24 @@ case "$BASE" in
 esac
 
 # ---------------------------------------------------------------------------
+# Problem details — RFC 9457
+# ---------------------------------------------------------------------------
+# The server's own errors are application/json with a "description", as they
+# always were, unless the request's Accept prefers application/problem+json
+# (Hermod#173, H-15). curl sends Accept: */*, which does not ask, so every
+# other check here sees the old form, and the first check below says so.
+# Until Hermod#173 the second and third got application/json as well.
+#
+# The third is the Accept of RFC 9457's own first example, both types at equal
+# quality. The last is Section 3.1.2: the "status" member is advisory, and a
+# generator MUST send the same code in the response.
+echo "  -- problem details --"
+wo  "an error nobody asked about stays application/json"                '%{content_type}' "application/json; charset=utf-8" "$BASE/nowhere"
+wo  "Accept: application/problem+json gets problem details (RFC 9457)"  '%{content_type}' "application/problem+json"        -H "Accept: application/problem+json" "$BASE/nowhere"
+wo  "so does RFC 9457's own Accept, beside application/json"            '%{content_type}' "application/problem+json"        -H "Accept: application/json, application/problem+json" "$BASE/nowhere"
+has "the problem names the status code it is sent with (§3.1.2)"        '"status":404' -H "Accept: application/problem+json" "$BASE/nowhere"
+
+# ---------------------------------------------------------------------------
 # Methods
 # ---------------------------------------------------------------------------
 echo "  -- methods --"

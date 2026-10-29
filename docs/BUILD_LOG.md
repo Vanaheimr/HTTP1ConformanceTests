@@ -4803,3 +4803,70 @@ Against the branch, `171c15a6`: the whole suite as Hermod's `ci.yml` runs it,
 On the way, a one-line `sed -i` in Git Bash rewrote Hermod's CRLF
 `HTTP1/README.md` to LF, all 812 lines. Caught by counting line endings before
 the commit, and recorded where the BOM rule already was.
+
+## 2026-10-29 — Hermod to `7946ad01`: H-15 pinned
+
+Nine pull requests past `de9b5652`, and one of them is about HTTP/1.x:
+[Hermod#173](https://github.com/Vanaheimr/Hermod/pull/173), H-15. The rest, and
+the mDNS querier, come with it:
+
+- SSH: #168, #170 and #172, on forwarding, `ssh -R` and the server's limits;
+- SFTP: #178, `SETSTAT`;
+- QUIC: #174, #175 and #176, on header protection keys, ACK ranges and UDP
+  batching on Windows;
+- HTTP/3: #177, where a finished stream gives its send buffer back;
+- DNS: `b4f1e201`, the mDNS querier.
+
+Nothing here reaches any of them. Styx stays at `1262aa28`.
+
+### Measured against `7946ad01` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1150 | **1213** |
+| `Tests.HTTP.` | 1149 | **1212** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2324 | **2337** |
+| curl matrix, cleartext / TLS | 85 / 91 | **89 / 95** |
+| gate, cleartext | 9/9, 320/320 | 9/9, **324/324** |
+| gate, `--tls` | 9/9, 326/326 | 9/9, **330/330** |
+| gate, `--tls`, Debian 13 in a Linux-built clone | 9/9, 327/327 | 9/9, **331/331** |
+| gate, `--wsl` | 12/12, 501/501 | 12/12, **509/509** |
+| proxies | 32/32 | **32/32** |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 63 are `ProblemDetailsTests`. They sit under `Tests.HTTP.`, in a file the
+regression filter does not name, so that row stays at 381. The neighbours'
+13 more are in DNS and HTTP/3, from the mDNS querier and #176 and #177. The
+SSH, SFTP and QUIC tests are outside that filter.
+
+### Problem details on the wire
+
+The curl matrix has a new section, `problem details`, after `misdirected
+requests`. It runs on every leg, because nothing in it depends on the
+transport. Each check asks the demo for `/nowhere`, a path with no route:
+
+- with curl's own `Accept: */*`, the `404` stays `application/json`;
+- with `Accept: application/problem+json` it is `application/problem+json`;
+- so it is with `Accept: application/json, application/problem+json`, the
+  header RFC 9457 §4 shows a client sending;
+- the problem's `status` member is `404`, the status it is sent with, which
+  §3.1.2 requires.
+
+They were written before the pin moved, and run against `de9b5652` first:
+86/89, with the first green and the other three red. The first is meant to be
+green either way. A client that never asked for problem details must see the
+same error it always did, and if that check went red, the fix would have
+broken the other three's premise. Against `7946ad01` they pass, 89/89.
+
+All five proxies pass the four checks through. `proxy-known.txt` needed no new
+line, and each chain's figure moved by exactly four: nginx 83/89, HAProxy
+88/89, Caddy 83/89, httpd 84/89, Envoy 82/89.
+
+The Debian row is the nightly `tls` job's leg, measured ahead of its first
+run as before: a fresh clone inside WSL, its Hermod checked out at
+`7946ad01`, built by Debian 13's .NET and driven by its own curl 8.14.

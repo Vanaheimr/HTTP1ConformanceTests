@@ -13,8 +13,8 @@ tracks:
 current as work proceeds.
 
 **Current state (2026-10-29):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-21 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **320 checks green over
-cleartext and 326 over TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
+21 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **324 checks green over
+cleartext and 330 over TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
 foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
 control. **A10 ✅** — `tests/h1fuzz`, deterministic in the gate and exploring
@@ -23,7 +23,7 @@ differential: `tests/h1desync` in the gate, three implementations compared
 nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
 found **H-29** and **H-30**, and a MUST violation in Go's `net/http` that is
 not ours to fix. **A11 ✅** — CI per push
-on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **39 findings, 32 fixed upstream**
+on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **39 findings, 33 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -31,12 +31,12 @@ citation sweep last so that it covered what the other four added.
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 errors. 286 warnings, every one of them in the submodules' own projects (`Hermod`, `HermodTests`, `Styx`, `StyxTests`) and none in this repository's — this row claimed 0 warnings until 2026-10-03, which an incremental build will tell you, because one that compiles nothing reports nothing. Measured with `-t:Rebuild` |
-| `tests/run-tests.sh` | ✅ 320/320 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
-| `tests/run-tests.sh --tls` | ✅ 326/326, 9/9, ~270 s — six more than the cleartext leg: the ALPN check, curl's alt-svc cache and H-36's four misdirected requests have no cleartext equivalent. `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice |
-| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ **1150**, both legs, of which the Debian leg skips three marked `[Platform("Win")]`: two of H-33's in `MapFileSystemFolderTests`, a drive-relative path and an alternate data stream, and H-34's held file — this row said 832 for three pins, which is what a count nobody re-measures does. 537 before H-1, 657 at the pin before H-10, 896 before H-27's five and H-23's six, 976 before H-18's five, 981 before the 82 of 2026-10-28, 67 of them in six new fixtures, 1063 before H-35's 5 and H-7's 17 the same day, 1085 before H-13's 26 and the three of `0fff6c9c` on 2026-10-29, and 1114 before H-34's 19 and 1133 before H-36's 17, both the same day. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so H-26's ten tests run in Hermod's CI and not in ours, and H-27's fix lives in `ATCPClient` — which is why its regression test was written through `HTTPClient` |
-| ↳ `Tests.HTTP.` alone | ✅ **1149** — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ **501/501** over 12/12 harnesses — adds the Debian curl (85), the foreign peers (A7, 58), the smuggling differential (A6, 38) and the fuzzer (A10) |
-| third-party: curl | ✅ 85/85 per build over cleartext, 91/91 over TLS, two builds — 86 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
+| `tests/run-tests.sh` | ✅ 324/324 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
+| `tests/run-tests.sh --tls` | ✅ 330/330, 9/9, ~270 s — six more than the cleartext leg: the ALPN check, curl's alt-svc cache and H-36's four misdirected requests have no cleartext equivalent. `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice |
+| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ **1213**, both legs, of which the Debian leg skips three marked `[Platform("Win")]`: two of H-33's in `MapFileSystemFolderTests`, a drive-relative path and an alternate data stream, and H-34's held file — this row said 832 for three pins, which is what a count nobody re-measures does. 537 before H-1, 657 at the pin before H-10, 896 before H-27's five and H-23's six, 976 before H-18's five, 981 before the 82 of 2026-10-28, 67 of them in six new fixtures, 1063 before H-35's 5 and H-7's 17 the same day, 1085 before H-13's 26 and the three of `0fff6c9c` on 2026-10-29, and 1114 before H-34's 19, 1133 before H-36's 17 and 1150 before H-15's 63, all three the same day. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so H-26's ten tests run in Hermod's CI and not in ours, and H-27's fix lives in `ATCPClient` — which is why its regression test was written through `HTTPClient` |
+| ↳ `Tests.HTTP.` alone | ✅ **1212** — the missing one is all of `Tests.HTTPS.` |
+| `tests/run-tests.sh --wsl` | ✅ **509/509** over 12/12 harnesses — adds the Debian curl (89), the foreign peers (A7, 58), the smuggling differential (A6, 38) and the fuzzer (A10) |
+| third-party: curl | ✅ 89/89 per build over cleartext, 95/95 over TLS, two builds — 90 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
 | third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 58/58 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
@@ -49,7 +49,7 @@ citation sweep last so that it covered what the other four added.
 | third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — **27/27** since H-10 closed on 2026-10-03 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
-| Nightly (the gate's TLS leg, `windows-latest` + `debian:13`) | 🔶 the `tls` job, added 2026-10-29. 326 on Windows and 327 on Debian were measured before it existed, the Debian figure in a Linux-built clone inside WSL. Until then nothing in CI drove the TLS listener. It becomes ✅ when its first run is green |
+| Nightly (the gate's TLS leg, `windows-latest` + `debian:13`) | 🔶 the `tls` job, added 2026-10-29. 326 on Windows and 327 on Debian were measured before it existed, and 330 and 331 since H-15's four checks, the Debian figures in a Linux-built clone inside WSL. Until then nothing in CI drove the TLS listener. It becomes ✅ when its first run is green |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
 
 ## Upstream workflow (Track B)
@@ -190,18 +190,18 @@ library failure.
 
 ## ✅ A3 · curl matrix
 
-**85/85 checks pass over cleartext and 91/91 over TLS**, wired into `tests/run-tests.sh` —
+**89/89 checks pass over cleartext and 95/95 over TLS**, wired into `tests/run-tests.sh` —
 the gate stood at **279/279** (201 raw-wire + 78 curl) when this track closed,
 at **303/303** since A6 added `h1desync`, at **311/311** since H-23 took the
 raw-wire half to 209, at **313** cleartext / **314** over TLS since H-9's
 `TRACE` probe and H-17's ALPN one, at **314** / **316** since H-7's
-`Alt-Svc` on 2026-10-28, at **320** / **322** since RFC 9530's digest fields on 2026-10-29, and at **320** / **326** since H-36's four misdirected requests the same day. It read 257 when A3
+`Alt-Svc` on 2026-10-28, at **320** / **322** since RFC 9530's digest fields on 2026-10-29, at **320** / **326** since H-36's four misdirected requests the same day, and at **324** / **330** since H-15's four on problem details. It read 257 when A3
 closed; the twenty-two since are `308` joining `/redirect/{code}` once H-1
 landed, the five Digest checks that H-3 made possible, four on the `/ws`
 upgrade, and nine on content codings once H-2 was whole. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **501/501**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **509/509**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -287,7 +287,7 @@ Four measurements, and they are not equally strong:
 
 | | what | |
 |---|---|---|
-| `curl` | all 85 curl checks through each chain, against 85/85 direct | every difference recorded by name, a new one fails |
+| `curl` | all 89 curl checks through each chain, against 89/89 direct | every difference recorded by name, a new one fails |
 | `framing` | `h1desync --observe` through each chain, against direct | says what each proxy does with an ambiguous message |
 | `poison` | the attack: send it, then ask innocent questions on fresh connections | **see the calibration below** |
 | `via` | chunked bodies intact, trailers through a re-framing hop, `Connection: close` | |
@@ -621,7 +621,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ✅ | **H-12** | No HSTS (`Strict-Transport-Security`) | RFC 6797 | P3 | XS | **Half wrong, and fixed 2026-10-04, merged and pinned, [Hermod#132](https://github.com/Vanaheimr/Hermod/pull/132).** `SecurityHeaderOptions` has carried the field with a two-year default for a long time — the same shape of error as H-2's "neither compresses" half. What was missing is the **value**: nothing could read the field, and nothing checked what was written into it. `StrictTransportSecurity` now lives in `Hermod/HTTP/`, version-neutral as `HTTPDate` is, with a typed response field beside it. The parser is strict where §6.1 is strict, because the alternative to refusing a malformed policy is enforcing one nobody stated: `max-age` REQUIRED, every directive only once (a repeat refuses the whole field), names case-insensitive, order irrelevant. Permissive in exactly one place and deliberately — item 5 has an unrecognised directive ignored and the rest processed, so a directive invented in 2030 does not disable today's policy. `max-age=0` is valid and means the opposite of a policy, so refusing zero would leave a host unable to withdraw; `delta-seconds` has no upper bound, so an unrepresentable value is clamped rather than refused. 13 tests — and the one that is not about new code is the one worth having: the years-old default constant parses as two years including subdomains, the two never having been compared. **Whether to send it stays the application's, and the default stays "nothing"** |
 | ✅ | **H-13** | `Content-MD5` typed (obsolete), RFC 9530 digest fields missing | RFC 9530 | P3 | S | **Fixed 2026-10-29, merged and pinned, [Hermod#164](https://github.com/Vanaheimr/Hermod/pull/164), and the fourth of H-7's shape:** `HTTPDigest` had been written for HTTP/2, in `HTTP2/Core`, where HTTP/1.x could not reach it. It moved to `Hermod/HTTP/`. `Content-Digest`, `Repr-Digest` and both `Want-` fields are typed on requests and responses, and their getters join repeated field lines into one Dictionary. `VerifyContentDigest()` checks the header section and the trailer section against the octets as they arrived, and refuses once the content coding has been undone, rather than blame the sender for the decoding. Opt-in on both ends: `AutomaticContentDigests` puts a `Content-Digest` on every response that carries content, and `VerifyDigests` has the client ask for one and check it before it decompresses — a mismatch is a `ClientError`, not a retry, the framing having been sound. **Three defects found on the way.** H-2's compression filter copied a handler's digests verbatim onto the gzipped response, digests of octets no longer sent; they are computed again now, and one that cannot be (`md5`, or a field that does not parse) keeps the response uncompressed. The grammar kept whatever it could read — `md5=:junk!:, sha-256=:…:` verified against its second half — where RFC 9651 §4.2 has a field that fails to parse ignored whole and does not let a specification loosen that; the fields are read with H-6's parser now, its first user, and that is strict for HTTP/2 as well, where two tests had pinned the lenient reading and were changed. And H-6's parser failed a Byte Sequence without its `=` padding, where §4.2.7 says it SHOULD NOT. 26 tests; five of the six fixes go red when reverted, and the sixth, the server's digest computed before its compression rather than after, stays green because the compression computes a digest it finds again — the order is not load-bearing, and the comments now say so. **One limit pinned rather than fixed:** a chunked body the client does not consume on arrival keeps no trailer section, so a digest there is `NotPresent` and a false one goes unnoticed. **Driven with curl 2026-10-29**: the demo's `/digest` puts the handler's digests on the response, and six checks in the curl matrix compare them with coreutils' digest of the octets that arrived, under gzip as well; with the fixes reverted four go red. Through the proxies, **Caddy** asks the upstream for gzip on its own, decodes it, and forwards the gzip variant's digests and `ETag` on the identity body — allowed by RFC 9110 §7.7, detected by the digests as RFC 9530 intends, and recorded as Caddy's; see [`docs/TestingAgainst_Proxies.md`](docs/TestingAgainst_Proxies.md) |
 | ⬜ | **H-14** | No `Link` header | RFC 8288 | P3 | S | |
-| ⬜ | **H-15** | No Problem Details | RFC 9457 | P3 | S | Relevant for the `HTTPAPI` layer. **Upstream as [Hermod#173](https://github.com/Vanaheimr/Hermod/pull/173), 2026-10-29.** It adds `HTTPProblemDetails` in `Hermod/HTTP/`, `SetProblemDetails` for handlers and `TryParseProblemDetails` for clients. The server's own errors become problem details when `Accept` prefers them and stay `application/json` otherwise. Negotiation and JSON only are both the user's decisions. Writing it found `AcceptType.TryParse` throwing on a malformed weight, which would have cost a request its error response once the errors negotiated. Fixed in the same PR |
+| ✅ | **H-15** | No Problem Details | RFC 9457 | P3 | S | **Fixed 2026-10-29, merged and pinned, [Hermod#173](https://github.com/Vanaheimr/Hermod/pull/173).** It adds `HTTPProblemDetails` in `Hermod/HTTP/`, `SetProblemDetails` for handlers and `TryParseProblemDetails` for clients. The server's own errors become problem details when `Accept` prefers them and stay `application/json` otherwise. Negotiation and JSON only are both the user's decisions. Writing it found `AcceptType.TryParse` throwing on a malformed weight, which would have cost a request its error response once the errors negotiated. Fixed in the same PR. Hermod has 63 tests in `ProblemDetailsTests`, 7 of them red with the negotiation disabled. Here there are four checks in the curl matrix, three of them red against `de9b5652`; the fourth, that an error nobody asked about stays `application/json`, is green either way. As filed: relevant for the `HTTPAPI` layer |
 | ✅ | **H-16** | General HTTP server has no `Upgrade` dispatch — WebSocket is a separate listener | RFC 9110 §7.8, 9112 §9.6 | P2 | M | **Was already fixed upstream on 2026-09-16** (Hermod `3bc56fdb`, "A WebSocket can live on an HTTP path"), with its own `WebSocketOnAnHTTPPathTests`. This row described the state of a pin that had not moved since 2026-08-13; the bump of 2026-09-23 brought the fix in and nobody re-read the finding. What was genuinely left — the demo's own `/ws` route — landed 2026-09-24, with 4 curl checks and Autobahn's sections 1, 2 and 7 (64/64) driven through the upgrade |
 | ✅ | **H-17** | Server did not negotiate ALPN `http/1.1` | RFC 7301 | P3 | XS | Client side was configurable; the server never offered it. **Fixed 2026-10-04, merged and pinned, [Hermod#132](https://github.com/Vanaheimr/Hermod/pull/132).** Measured with curl before and after: `ALPN: server did not agree on a protocol. Uses default.` → `ALPN: server accepted http/1.1`. Every browser and every HTTP/2-capable client sends the extension, and what they do with no answer is guess — one guessing wrong sends a connection preface to a server that has never heard of one. The list comes from the server rather than from a constant in `TCPConnection`, because that class carries the Modbus and DNS-over-TLS frontends too: `ITCPServer.TLSApplicationProtocols` defaults to none, and `AHTTPServer` overrides it with `http/1.1` **alone**. 4 tests, 3 red before — one of which measured rather than assumed, a client insisting on `h2` alone being *refused* with RFC 7301 §3.2's `no_application_protocol` rather than served HTTP/1.1 anyway. The fourth is green either way on purpose: a client sending no extension is still served. Probed here too, on the TLS leg only |
 | ✅ | **H-18** | `HTTP1/Server/URLMapping_old/` alongside `URLMapping/` — two routing generations in the tree | — | P3 | S | **Not what the row said.** "~4 000 lines of probable dead code" was 2 228 lines of comment and 867 of live, load-bearing code in a directory whose name said otherwise. `62edf0a3` (2026-04-20, *"Deprecated old HTTP implementation in favour of new one!"*) had moved `URLMapping/` there and commented every file out; one came back as a copy, `HTTPStandardHandlersX`, and **the modernisation then happened to the copy** — 848 live lines of extension methods on today's `HTTPAPI`, `HTTPExtAPI` and `HTTPServer`, called by four tests in Hermod and by eight files in five other repositories, Norn among them — while the deprecated twin kept the plain name. Beside it, `URLReplacement`: the only definition of an enum that the *new* `MethodNode` and `PathNode` read. The first search for callers looked for the class name and found none, which it could not have done otherwise — extension methods are never called by the name of their class; searching for the member names found the eight. **Fixed 2026-10-04, [Hermod#138](https://github.com/Vanaheimr/Hermod/pull/138) and [Hermod#143](https://github.com/Vanaheimr/Hermod/pull/143):** the two live files moved into `URLMapping/`, `HTTPStandardHandlers` under its plain name again, the five comment-only files deleted and with them the seventh RFC 2616 citation H-8 had left. #143 took the last `X` of the rework (`HTTPRequestHandlersX` → `HTTPRequestHandlers`, which no other repository names), put the four sources that were GPL or AGPL and the seven that had no header at all under Apache 2.0, and corrected a count #138 had got wrong — the correction is **H-33**. Six files in `Hermod/IP/` stay headerless on purpose: added in 2011 as *"Some RAW IP stuff..."*, they read like the Windows SDK's raw-socket samples, and whether they are GraphDefined's to license is not something a script can establish. 5 tests, pinning the eleven entry points by name, extended type and parameter count in both directions, that each is still an extension method, and that neither class has an `X` twin; they reach the types by name, so they run against the old source and were red there |
@@ -658,7 +658,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
                 │
                 └──▶ ✅A5, ✅A6, ✅A7, ✅A8  (external suites)
 
-Track B in parallel: twenty-five of thirty-two are in. ✅H-1 and ✅H-2 first
+Track B in parallel: thirty-three of thirty-nine are in. ✅H-1 and ✅H-2 first
 (small, high leverage), then ✅H-3 and ✅H-16, the two Warden findings
 ✅H-25 and ✅H-26, and ✅H-4 ✅H-6 ✅H-8 ✅H-21 ✅H-22 together on
 2026-09-26. ✅H-29 and ✅H-30 came out of A6, ✅H-10 out of A8 and ✅H-27
@@ -670,7 +670,7 @@ A4 turned out to need none of them, so nothing was ever waiting on this track.
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Six of six, finally: H-2 turned out to be
 four fixes rather than one, and the last of them closed on 2026-09-24. The
-number is now **320**, and 85 of those come from a client nobody here wrote
+number is now **324**, and 89 of those come from a client nobody here wrote
 — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ✅ A5 — Autobahn reproducible from a
