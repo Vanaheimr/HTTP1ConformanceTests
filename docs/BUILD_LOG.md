@@ -5032,3 +5032,67 @@ them.
 
 Filed as **H-40**, P3. Track B is at 40 findings, 35 fixed, and five open:
 H-5, H-19, H-37, H-38 and H-40.
+
+## 2026-10-30 — H-40 and H-19 upstream as Hermod#185 and Hermod#187
+
+Two PRs, one after the other, each branched from Hermod's master.
+
+**H-40, [Hermod#185](https://github.com/Vanaheimr/Hermod/pull/185).**
+
+- A handler sends a `103 Early Hints` with `request.SendEarlyHints(links)`, or
+  any other `1xx` with `SendInformationalResponse`.
+- It goes out at once. The server answers a connection's requests one after
+  the other, so while a handler runs the connection is its own.
+- The server closes that way before it writes the final response. A write in
+  progress finishes first and a later one is refused.
+- HTTP/1.0 gets nothing (RFC 9110 §15.2). So do a status that is not `1xx`, a
+  field with a line break in it, and `Content-Length`, which all throw.
+- The client keeps what arrives on `HTTPResponse.InformationalResponses`, up to
+  16.
+
+H-40's row said a handler had no way to send one. That was too strong: it
+could write raw octets on `Request.NetworkStream`, and get the framing and the
+HTTP/1.0 rule right itself.
+
+Seven mutations, each run on its own, each turned some of the 7 tests red. Two
+of them show what the tests are for:
+
+- With the writer never closed, a hint sent after the handler returned landed
+  between two responses on the same connection. That is the hazard RFC 8297's
+  security considerations describe.
+- With hints held back until the final response, only one test noticed: the
+  one whose handler waits until the client has read the `103`. That is the
+  test RFC 8297's purpose needs.
+
+**H-19, [Hermod#187](https://github.com/Vanaheimr/Hermod/pull/187).**
+
+`Content-Disposition` was a string. It is typed now, as
+`HTTPContentDisposition`. That breaks code that set a string, and the user
+chose it over keeping the string beside a typed accessor. A search of
+`D:\Coding` for other callers ran out of time after five minutes, so whether
+any exist outside Hermod and this repository is open. The gate built the demo
+against the branch without a change.
+
+- Parsing follows RFC 6266 §4.1, where a repeated parameter makes the value
+  invalid.
+- Sending follows Appendix D: `filename` alone where ASCII carries it, and
+  otherwise an ASCII fallback first and `filename*` after it. In the fallback
+  `Grüße` becomes `Gruesse`.
+- `SafeFileName` is §4.3 for a recipient. It keeps the last path segment,
+  turns the `:` of `C:name` into `_` (H-33's hole, in another place), and
+  refuses `nul.txt`.
+
+Eight mutations, each run on its own, each turned 1 to 12 of the 54 cases red.
+
+The full suite for H-19 had one red test, `AQueryOverTCP_EndsWithItsClient`.
+It is a DNS test from Hermod#184, which H-19's branch was the first here to include.
+It reported a timeout instead of a failure once under load, and passed 5 of 5
+times on its own. Reading `ATCPClient.Close()` suggests why. The connection is
+closed before the client's cancellation source is cancelled, and a query that
+fails between the two is classified as having timed out. That is not
+confirmed, and not this repository's. It is filed as a task of its own.
+
+Against each branch the gate stayed at 327/327 and 333/333. Each PR's own
+checks come with the pin: a `103` and an HTTP/1.0 request through curl, and
+`curl -OJ`, which saves under the name the field gives, against a download
+route.
