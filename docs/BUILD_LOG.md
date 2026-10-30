@@ -5096,3 +5096,43 @@ Against each branch the gate stayed at 327/327 and 333/333. Each PR's own
 checks come with the pin: a `103` and an HTTP/1.0 request through curl, and
 `curl -OJ`, which saves under the name the field gives, against a download
 route.
+
+## 2026-10-30 — the DNS flake: Hermod#186, and Hermod#190 for what it left
+
+The red `AQueryOverTCP_EndsWithItsClient` from H-19's full suite run was
+already being fixed when it was picked up here. [Hermod#186](https://github.com/Vanaheimr/Hermod/pull/186)
+had come from the DNS side that night, with the same diagnosis this log
+gave and one step further: a reconnect inside the gap between closing the
+connection and cancelling the token put a fresh token source in the field,
+and the query, asking the field, saw nothing cancelled.
+
+So the work here was measuring it. Abandoning queries eight at a time
+instead of one made the race show reliably. Of 800, 22 TCP and 34 DoH
+queries on master came back as a timeout, and every one of them had
+reconnected. With #186 none did.
+
+Two things came out of that which #186 had not covered:
+
+- **#186 changes three things, and any one of them alone prevents the
+  timeouts.** Reverted one or two at a time in `DNSTCPClient`, 800 of 800
+  still came back right. Only with all three reverted did 11 time out.
+- **DoH still reconnected**, in 32 of 800 cases. The query is inside
+  `AHTTPClient.SendRequest`, whose retry loop reconnects by itself. And
+  `AHTTPClient.DisposeAsync` takes the HTTP stream down before the token
+  is cancelled. #186's guard on the IOException catch never sees it.
+
+[Hermod#190](https://github.com/Vanaheimr/Hermod/pull/190) is stacked on
+#186. DoH's `DisposeAsync` now cancels the client's token before anything
+is torn down, and 0 of 2400 reconnected. It also adds two tests that abandon
+400 queries each and ask about the reconnect too.
+
+- **What they catch:** each mutation turns the test for its client red.
+  The single test that started this passed against the clients as they were
+  before #186, every time.
+- **Linux:** run by hand in WSL/Debian, since Hermod's CI only builds pull
+  requests into master. Before #186 there, 391 and 397 of 400 queries
+  reconnected but only one timed out. A test asking about the timeout alone
+  would have rested on that one query.
+- **Something tried and dropped:** cancelling first in `ATCPClient.Close`
+  for every client at once. The DoH reconnects stayed, and one TCP query
+  threw a `NullReferenceException`.
