@@ -34,7 +34,8 @@ const agent = new http.Agent({ keepAlive: true, maxSockets: 4 });
 function request(method, path, headers = {}) {
     return new Promise((resolve, reject) => {
 
-        const url = new URL(base + path);
+        const url     = new URL(base + path);
+        const interim = [];
         const req = http.request({
             agent,
             method,
@@ -51,11 +52,14 @@ function request(method, path, headers = {}) {
                 status:   res.statusCode,
                 headers:  res.headers,
                 trailers: res.trailers,
+                interim,
                 body:     Buffer.concat(chunks)
             }));
 
         });
 
+        // Every 1xx except 101, which node:http reads past on its own.
+        req.on('information', (info) => interim.push(`${info.statusCode} ${info.headers.link ?? ''}`));
         req.on('timeout', () => { req.destroy(new Error('timeout')); });
         req.on('error',   reject);
         req.end();
@@ -151,6 +155,23 @@ try {
     const again2 = await request('GET', '/');
     check('reuse', again1.status === 200 && again2.status === 200,
           `${again1.status} / ${again2.status}`);
+
+    // -------------------------------------------------------- early hints
+    //
+    // /early-hints sends a 103 with a preload Link and then the 200.
+    // node:http emits each 1xx as 'information' and reads on. The request
+    // after it has to get its own response: RFC 8297's security
+    // considerations are about a client that takes the 103 for the final
+    // response and misreads everything after it on the connection.
+
+    const hinted = await request('GET', '/early-hints');
+    const after  = await request('GET', '/');
+    check('early-hints',
+          hinted.status === 200 && hinted.body.toString() === 'a 103 went first\n' &&
+          hinted.interim.length === 1 && hinted.interim[0] === '103 </prose>; rel="preload"; as=fetch' &&
+          after.body.toString() === 'Hermod HTTP/1.1 demo host\n',
+          `status ${hinted.status}, 1xx ${JSON.stringify(hinted.interim)}, ` +
+          `body ${quote(hinted.body.toString())}, then ${quote(after.body.toString())}`);
 
 }
 catch (error) {

@@ -199,6 +199,27 @@ if wants wget && peer "command -v wget > /dev/null 2>&1"; then
         pass "wget/status-404"
     fi
 
+    # Two URLs in one invocation, which wget fetches over one connection: the
+    # 103 from /early-hints is read past, and the request after it gets its
+    # own response (RFC 8297's security considerations).
+    body="$(peer "wget -qO- --timeout=20 '$DEMO_BASE/early-hints' '$DEMO_BASE/'" 2>&1)"
+    if [ "$body" = "$(printf 'a 103 went first\nHermod HTTP/1.1 demo host')" ]; then
+        pass "wget/early-hints"
+    else
+        failure "wget/early-hints" "got: $(printf '%s' "$body" | head -c 120 | tr '\n' ' ')"
+    fi
+
+    # /download names "Grüße.txt" as an ASCII filename first and filename* in
+    # UTF-8 after it (RFC 6266, Appendix D). wget --content-disposition reads
+    # filename* and saves under it, the half curl -J cannot show: curl reads
+    # filename= alone and saves under the fallback (tests/curl-matrix.sh).
+    saved="$(peer "d=\$(mktemp -d) && cd \"\$d\" && wget -q --content-disposition --timeout=20 '$DEMO_BASE/download' && ls -1; rm -rf \"\$d\"" 2>&1 | tr -d '\r')"
+    if [ "$saved" = "Grüße.txt" ]; then
+        pass "wget/content-disposition"
+    else
+        failure "wget/content-disposition" "saved as: $(printf '%s' "$saved" | head -c 120 | tr '\n' ' ')"
+    fi
+
 elif wants wget; then
     skipped "wget" "not installed where the peers run"
 fi

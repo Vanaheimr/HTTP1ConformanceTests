@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **1267 NUnit tests** live with the stack in Hermod
+suite drivers; the **1328 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,10 +32,10 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **1267 NUnit tests** in `libs/Hermod/HermodTests/`
+**Tests:** most coverage is the **1328 NUnit tests** in `libs/Hermod/HermodTests/`
 under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **381** are the HTTP/1.x
 protocol regression selection and **161** cover RFC 6455/7692 WebSockets. CI gates
-on those 1267 plus the single test in `Tests.HTTPS.` = **1268** — a filter that
+on those 1328 plus the single test in `Tests.HTTPS.` = **1329** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
 through `ATCPClient`. The regression selection did not move
@@ -147,9 +147,9 @@ of `Content`. SSE is `httpAPI.AddEventSource<T>(id)` + `MapEventSource(…)`.
 **A0 done** — repository scaffolding, the specification matrix, the work plan.
 **A1 done** — the demo host on `:8080` / `:8443` / `:8081`. See [`Demo/README.md`](Demo/README.md).
 **A2 done** — the raw-wire harnesses (201 checks).
-**A3 done** — the curl matrix (92 checks, 93 where curl has HTTP/2 *and* the
-target is local, 98 over TLS — see [`tests/README.md`](tests/README.md)). The gate is **327 cleartext and
-333 over TLS** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
+**A3 done** — the curl matrix (99 checks, 100 where curl has HTTP/2 *and* the
+target is local, 105 over TLS — see [`tests/README.md`](tests/README.md)). The gate is **334 cleartext and
+340 over TLS** (`tests/run-tests.sh`, ~103 s cleartext / ~270 s TLS). See
 [`tests/README.md`](tests/README.md).
 **A4 done** — Autobahn, **both directions**, both gated nightly on a floor
 rather than on perfection.
@@ -182,14 +182,14 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 1267 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1268 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2337** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2321 four pins ago, 2324 at the two after it, and 2337 since the last, whose 13 more are mDNS and HTTP/3 tests. All 2337 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
-| this repo's gate | **327** cleartext, **333** over TLS (211 raw-wire + 92 curl + 24 desync; the TLS leg's six more are the ALPN check, curl's alt-svc cache and H-36's four misdirected requests, none of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28, 314/316 before the six RFC 9530 digest checks on 2026-10-29, 320/322 before H-36's four the same day, 320/326 before H-15's four problem-details checks later still, 324/330 before H-14's three link checks after that. The TLS leg has been in the nightly since then, on Windows and on `debian:13`, where curl's HTTP/2 makes it 334 |
-| with `--wsl` (second curl build + foreign peers + the smuggling differential) | **515/515** |
-| reference peers (A7) | **58/58** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers |
+| Hermod's own NUnit suites | 1328 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1329 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2392** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2321 five pins ago, 2324 at the two after it, 2337 at the next, and 2392 since the last, whose 55 more are DNS and HTTP/2 tests. All 2392 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
+| this repo's gate | **334** cleartext, **340** over TLS (211 raw-wire + 99 curl + 24 desync; the TLS leg's six more are the ALPN check, curl's alt-svc cache and H-36's four misdirected requests, none of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28, 314/316 before the six RFC 9530 digest checks on 2026-10-29, 320/322 before H-36's four the same day, 320/326 before H-15's four problem-details checks later still, 324/330 before H-14's three link checks after that, 327/333 before H-40's five early-hints checks and H-19's two on `Content-Disposition` on 2026-10-30. The TLS leg has been in the nightly since H-14, on Windows and on `debian:13`, where curl's HTTP/2 makes it 341 |
+| with `--wsl` (second curl build + foreign peers + the smuggling differential) | **536/536** |
+| reference peers (A7) | **65/65** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers. One of the 65 is a known CPython deviation pinned rather than passed: `http.client` takes a `103` for the final response ([python/cpython#72756](https://github.com/python/cpython/issues/72756)) |
 | benchmarks (A9) | `tests/h1bench`, not a gate — 0.240 ms p50 against Kestrel's 0.252 ms on the same loopback |
 | parser fuzzing (A10) | `tests/h1fuzz` — request, response and chunked parsers; deterministic in the gate, ten minutes per target nightly. Found **H-28** on its first run; fixed 2026-10-03, and `known-findings.txt` is empty again |
 | browsers (A8) | `tests/browser.sh` — Chromium, Firefox and WebKit through Playwright, the battery running inside the demo's own document. **27/27**, all three engines agreeing. It read 24/27 until 2026-10-03: the browser's `OPTIONS` preflight was answered 405 while the identical POST from curl got 200 — **H-10**, the finding no other driver here could reach, and the one this track existed to find. See [`docs/TestingAgainst_Browsers.md`](docs/TestingAgainst_Browsers.md) |
-| intermediaries (A5) | `tests/proxy.sh` — the demo behind nginx, HAProxy, Caddy, Apache httpd and Envoy, all pulled rather than built. **32/32**: every curl and framing difference from the direct run recorded by name in `tests/proxy-known.txt`, and no chain leaves a response on a pooled connection. The poison detector is *calibrated-unfired* — all five proxies absorb a synthetic poison — which is written down rather than quoted as a pass. See [`docs/TestingAgainst_Proxies.md`](docs/TestingAgainst_Proxies.md) |
+| intermediaries (A5) | `tests/proxy.sh` — the demo behind nginx, HAProxy, Caddy, Apache httpd and Envoy, all pulled rather than built. **32/32**: every curl and framing difference from the direct run recorded by name in `tests/proxy-known.txt`, and no chain leaves a response on a pooled connection. The poison detector is *calibrated-unfired* — all five proxies absorb a synthetic poison — which is written down rather than quoted as a pass. Since H-40 it also shows Caddy handing a `103` to an HTTP/1.0 client, which RFC 9110 §15.2 forbids: Go's `net/http` writes any `1xx` whatever the request's version, measured on go1.24.4 and unchanged on Go's `master`. Not ours to fix, and not filed. See [`docs/TestingAgainst_Proxies.md`](docs/TestingAgainst_Proxies.md) |
 | smuggling (A6) | `tests/h1desync` **24/24** in the gate — the requirements RFC 9112 actually states, quoted next to each probe. `tests/smuggle.sh` compares Hermod, Go and Node: 31 of 38 rows agree, 7 are pinned in `tests/smuggle-known.txt`. `tests/smuggler.sh` adds two third-party suites, and `tests/http-garden/` puts Hermod in the HTTP Garden. Found **H-29** and **H-30**, both fixed and pinned the same day ([Hermod#54](https://github.com/Vanaheimr/Hermod/pull/54)), and a MUST violation in Go's `net/http` that is not ours to fix. See [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
 | Autobahn (server) | **481/517** + 36 declined, 0 hard failures — nightly, gated on the floor. The intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | Autobahn (client) | **445/517** + 72 declined, 0 hard failures — nightly, gated on the floor |

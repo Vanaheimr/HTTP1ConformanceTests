@@ -158,6 +158,35 @@ def main():
 
     conn.close()
 
+    # ------------------------------------------------------ early hints
+    #
+    # A known CPython deviation, pinned rather than passed, and on a
+    # connection of its own because it leaves that one out of step.
+    # HTTPResponse.begin() reads past 100 Continue and no other 1xx, so the
+    # 103 from /early-hints is taken for the final response: status 103, no
+    # body, and the 200 that follows it is still in the buffer. The next
+    # request on the connection is answered with it. That is the misreading
+    # RFC 8297's security considerations warn about, and what RFC 9110
+    # Section 15.2 rules out: a client MUST be able to parse one or more 1xx
+    # before the final response. Reported in 2016 as python/cpython#72756,
+    # open, and measured with Python 3.13.5 on 2026-10-30. When this goes red
+    # with a 200, http.client has learned to skip it, and this becomes a pass.
+
+    hinted = http.client.HTTPConnection(url.hostname, url.port, timeout=20)
+    hinted.request("GET", "/early-hints")
+    first = hinted.getresponse()
+    first_body = first.read()
+    hinted.request("GET", "/")
+    second = hinted.getresponse()
+    second_body = second.read()
+    hinted.close()
+
+    check("early-hints-misread (known CPython deviation)",
+          first.status == 103 and first_body == b""
+          and second.status == 200 and second_body == b"a 103 went first\n",
+          f"status {first.status}, body {quote(first_body)}, "
+          f"then status {second.status}, body {quote(second_body)}")
+
     return 1 if failed else 0
 
 

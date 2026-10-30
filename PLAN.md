@@ -12,18 +12,18 @@ tracks:
 **Status legend:** ✅ done · 🔶 partial · ⬜ open · ❌ broken — markers are kept
 current as work proceeds.
 
-**Current state (2026-10-29):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
-22 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **327 checks green over
-cleartext and 333 over TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
+**Current state (2026-10-30):** **A0 ✅**, **A1 ✅** (demo host, 3 listeners,
+24 routes), **A2 ✅** (6 harnesses), **A3 ✅** (curl) — **334 checks green over
+cleartext and 340 over TLS**. **A4 ✅** — both directions driven and gated nightly: server 481/517, client
 445/517, zero hard failures either way. **A7 ✅** — five foreign clients and two
-foreign servers, 58/58, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
+foreign servers, 65/65, nightly. **A9 ✅** — `tests/h1bench`, with Kestrel as the
 control. **A10 ✅** — `tests/h1fuzz`, deterministic in the gate and exploring
 nightly; it found **H-28** on its first run, ✅ fixed 2026-10-03. **A6 ✅** — the smuggling
 differential: `tests/h1desync` in the gate, three implementations compared
 nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
 found **H-29** and **H-30**, and a MUST violation in Go's `net/http` that is
 not ours to fix. **A11 ✅** — CI per push
-on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **40 findings, 35 fixed upstream**
+on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **40 findings, 37 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
 citation sweep last so that it covered what the other four added.
@@ -31,25 +31,25 @@ citation sweep last so that it covered what the other four added.
 | Gate | State |
 |---|---|
 | `dotnet build HTTP1.slnx` | ✅ 0 errors. 286 warnings, every one of them in the submodules' own projects (`Hermod`, `HermodTests`, `Styx`, `StyxTests`) and none in this repository's — this row claimed 0 warnings until 2026-10-03, which an incremental build will tell you, because one that compiles nothing reports nothing. Measured with `-t:Rebuild` |
-| `tests/run-tests.sh` | ✅ 327/327 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
-| `tests/run-tests.sh --tls` | ✅ 333/333, 9/9, ~270 s — six more than the cleartext leg: the ALPN check, curl's alt-svc cache and H-36's four misdirected requests have no cleartext equivalent. `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice |
-| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ **1268**, both legs, of which the Debian leg skips three marked `[Platform("Win")]`: two of H-33's in `MapFileSystemFolderTests`, a drive-relative path and an alternate data stream, and H-34's held file — this row said 832 for three pins, which is what a count nobody re-measures does. 537 before H-1, 657 at the pin before H-10, 896 before H-27's five and H-23's six, 976 before H-18's five, 981 before the 82 of 2026-10-28, 67 of them in six new fixtures, 1063 before H-35's 5 and H-7's 17 the same day, 1085 before H-13's 26 and the three of `0fff6c9c` on 2026-10-29, and 1114 before H-34's 19, 1133 before H-36's 17, 1150 before H-15's 63 and 1213 before H-14's 50 and H-39's 5, all four the same day. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so H-26's ten tests run in Hermod's CI and not in ours, and H-27's fix lives in `ATCPClient` — which is why its regression test was written through `HTTPClient` |
-| ↳ `Tests.HTTP.` alone | ✅ **1267** — the missing one is all of `Tests.HTTPS.` |
-| `tests/run-tests.sh --wsl` | ✅ **515/515** over 12/12 harnesses — adds the Debian curl (92), the foreign peers (A7, 58), the smuggling differential (A6, 38) and the fuzzer (A10) |
-| third-party: curl | ✅ 92/92 per build over cleartext, 98/98 over TLS, two builds — 93 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
+| `tests/run-tests.sh` | ✅ 334/334 + the fuzzer's fixed-seed pass, 9/9 harnesses, ~135 s |
+| `tests/run-tests.sh --tls` | ✅ 340/340, 9/9, ~270 s — six more than the cleartext leg: the ALPN check, curl's alt-svc cache and H-36's four misdirected requests have no cleartext equivalent. `h1desync` drives the cleartext listener in either leg, so its 24 are the same 24 twice |
+| Hermod, the filter CI gates on (`Tests.HTTP.` + `Tests.HTTPS.`) | ✅ **1329**, both legs, of which the Debian leg skips three marked `[Platform("Win")]`: two of H-33's in `MapFileSystemFolderTests`, a drive-relative path and an alternate data stream, and H-34's held file — this row said 832 for three pins, which is what a count nobody re-measures does. 537 before H-1, 657 at the pin before H-10, 896 before H-27's five and H-23's six, 976 before H-18's five, 981 before the 82 of 2026-10-28, 67 of them in six new fixtures, 1063 before H-35's 5 and H-7's 17 the same day, 1085 before H-13's 26 and the three of `0fff6c9c` on 2026-10-29, and 1114 before H-34's 19, 1133 before H-36's 17, 1150 before H-15's 63 and 1213 before H-14's 50 and H-39's 5, all four the same day, and 1268 before H-40's 7 and H-19's 54 on 2026-10-30. **The filter reaches neither `Tests.TCP` nor `Tests.Warden`**, so H-26's ten tests run in Hermod's CI and not in ours, and H-27's fix lives in `ATCPClient` — which is why its regression test was written through `HTTPClient` |
+| ↳ `Tests.HTTP.` alone | ✅ **1328** — the missing one is all of `Tests.HTTPS.` |
+| `tests/run-tests.sh --wsl` | ✅ **536/536** over 12/12 harnesses — adds the Debian curl (99), the foreign peers (A7, 65), the smuggling differential (A6, 38) and the fuzzer (A10) |
+| third-party: curl | ✅ 99/99 per build over cleartext, 105/105 over TLS, two builds — 100 in the CI Debian container, see [`tests/README.md`](tests/README.md) for the conditional checks |
 | third-party: Autobahn (server) | ✅ 481/517 + 36 declined, nightly, gated — the intermittent mid-case drop was **H-25**, fixed 2026-09-24 |
 | third-party: Autobahn (client) | ✅ 445/517 + 72 declined, nightly, gated |
-| third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 58/58 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
+| third-party: reference peers (Go, Java, Node, Python, wget) | ✅ 65/65 + 3 skips, both directions — nightly on `ubuntu-latest`, and locally with `--wsl` |
 | benchmarks | ✅ `tests/h1bench`, not a gate — see A9 for the figures and the three findings |
 | parser fuzzing | ✅ `tests/h1fuzz` — fixed seed in the gate, ten minutes per target nightly; **no known findings**, ✅H-28 having been fixed and its line deleted on 2026-10-03 |
 | smuggling: our differential | ✅ `tests/h1desync` 24/24 in the gate; `tests/smuggle.sh` 38/38 over 3 implementations, 10 known disagreements, nightly |
 | smuggling: third-party | ✅ `tests/smuggler.sh` — smuggler 134/134 mutations, nothing found; h2csmuggler finds no h2c surface, pinned as a regression |
 | smuggling: http-garden | ✅ target built and contract-verified; the full 45-server differential is compiler-hours, run by hand — see [`docs/TestingAgainst_Smuggling.md`](docs/TestingAgainst_Smuggling.md) |
-| third-party: proxies (A5) | ✅ five reverse proxies, 63 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
+| third-party: proxies (A5) | ✅ five reverse proxies, 73 recorded differences, no chain poisons — and the detector is calibrated-unfired, see the write-up |
 | third-party: browsers (A8) | ✅ Chromium, Firefox and WebKit — **27/27** since H-10 closed on 2026-10-03 |
 | CI per push (`windows-latest` + `debian:13`) | ✅ build + Hermod tests + 9 harnesses |
 | Nightly (Autobahn, both directions) | ✅ gated on floors 481 / 445 |
-| Nightly (the gate's TLS leg, `windows-latest` + `debian:13`) | 🔶 the `tls` job, added 2026-10-29. 326 on Windows and 327 on Debian were measured before it existed, 330 and 331 since H-15's four checks, and 333 and 334 since H-14's three, the Debian figures in a Linux-built clone inside WSL. Until then nothing in CI drove the TLS listener. It becomes ✅ when its first run is green |
+| Nightly (the gate's TLS leg, `windows-latest` + `debian:13`) | ✅ the `tls` job, added 2026-10-29 and green on its first run, the nightly of 2026-10-30 at `e7593f41`: 333 on Windows and 334 on Debian, the figures measured here beforehand. 326 and 327 before it existed, 330 and 331 since H-15's four checks, 333 and 334 since H-14's three, and 340 and 341 since H-40's five and H-19's two, the Debian figures in a Linux-built clone inside WSL. Until then nothing in CI drove the TLS listener |
 | demo reachable from WSL containers | ✅ `--bind-any`, no firewall rule needed — unblocked A6, and A5 next |
 
 ## Upstream workflow (Track B)
@@ -190,18 +190,18 @@ library failure.
 
 ## ✅ A3 · curl matrix
 
-**92/92 checks pass over cleartext and 98/98 over TLS**, wired into `tests/run-tests.sh` —
+**99/99 checks pass over cleartext and 105/105 over TLS**, wired into `tests/run-tests.sh` —
 the gate stood at **279/279** (201 raw-wire + 78 curl) when this track closed,
 at **303/303** since A6 added `h1desync`, at **311/311** since H-23 took the
 raw-wire half to 209, at **313** cleartext / **314** over TLS since H-9's
 `TRACE` probe and H-17's ALPN one, at **314** / **316** since H-7's
-`Alt-Svc` on 2026-10-28, at **320** / **322** since RFC 9530's digest fields on 2026-10-29, at **320** / **326** since H-36's four misdirected requests the same day, at **324** / **330** since H-15's four on problem details, and at **327** / **333** since H-14's three on links. It read 257 when A3
+`Alt-Svc` on 2026-10-28, at **320** / **322** since RFC 9530's digest fields on 2026-10-29, at **320** / **326** since H-36's four misdirected requests the same day, at **324** / **330** since H-15's four on problem details, at **327** / **333** since H-14's three on links, and at **334** / **340** since H-40's five on early hints and H-19's two on `Content-Disposition`. It read 257 when A3
 closed; the twenty-two since are `308` joining `/redirect/{code}` once H-1
 landed, the five Digest checks that H-3 made possible, four on the `/ws`
 upgrade, and nine on content codings once H-2 was whole. See
 [`tests/README.md`](tests/README.md#the-curl-leg).
 
-✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **515/515**.
+✅ **The Debian curl leg runs too**, via `tests/run-tests.sh --wsl` → **536/536**.
 That build has nghttp2 and is the more interesting witness: a client that *could*
 speak HTTP/2 and does not proves ALPN negotiation in a way the Windows build
 cannot. It needs the demo on `--bind-any`, which the flag does; **no firewall
@@ -287,7 +287,7 @@ Four measurements, and they are not equally strong:
 
 | | what | |
 |---|---|---|
-| `curl` | all 92 curl checks through each chain, against 92/92 direct | every difference recorded by name, a new one fails |
+| `curl` | all 99 curl checks through each chain, against 99/99 direct | every difference recorded by name, a new one fails |
 | `framing` | `h1desync --observe` through each chain, against direct | says what each proxy does with an ambiguous message |
 | `poison` | the attack: send it, then ask innocent questions on fresh connections | **see the calibration below** |
 | `via` | chunked bodies intact, trailers through a re-framing hop, `Connection: close` | |
@@ -299,6 +299,15 @@ alone answers 400; Caddy splits `cl-te` and `te-cl` into two requests, which
 is Go's `net/http` underneath it and the same behaviour A6 measured directly;
 and Apache turns Hermod's 400-and-close for the chunked-twice spellings into a
 500 of its own, which is only visible because **H-29** was fixed that morning.
+
+**Since H-40 (2026-10-30)** the matrix also carries a `103` through each
+chain, and RFC 9110 §15.2 asks two things of a proxy: forward it, and give
+none to an HTTP/1.0 client. HAProxy and httpd do both. nginx and Envoy drop
+it, each for want of one configuration line (`early_hints`,
+`proxy_100_continue`). Caddy hands it to an HTTP/1.0 client. That is Go's
+`net/http` again, which writes any `1xx` whatever the request's version:
+measured on go1.24.4, unchanged on Go's `master`, and the second MUST of Go's
+that this repository has met. Ten rows in `tests/proxy-known.txt`, not filed.
 
 **The calibration, which matters more than the result.** A back end was built
 that answers one request with two responses — the state a successful desync
@@ -383,14 +392,14 @@ nothing else — no package fetch, no lockfile, no build step.
 
 | Peer | As client | As server |
 |---|---|---|
-| Go `net/http` | ✅ 10 checks | ✅ `server.go`, 7 checks via `tests/h1peer` |
-| Node `node:http` | ✅ 11 checks | ✅ `server.mjs`, 7 checks via `tests/h1peer` |
-| Java `java.net.http` | ✅ 10 checks (+1 skip) | — the JDK ships no HTTP server worth pointing at |
-| Python `http.client` | ✅ 10 checks (+1 skip) | — the stdlib cannot frame chunked itself, so a Python server would be testing our framing rather than Python's |
-| `wget` | ✅ 3 checks | — |
+| Go `net/http` | ✅ 12 checks | ✅ `server.go`, 7 checks via `tests/h1peer` |
+| Node `node:http` | ✅ 12 checks | ✅ `server.mjs`, 7 checks via `tests/h1peer` |
+| Java `java.net.http` | ✅ 11 checks (+1 skip) | — the JDK ships no HTTP server worth pointing at |
+| Python `http.client` | ✅ 11 checks (+1 skip), one of them a known CPython deviation pinned rather than passed | — the stdlib cannot frame chunked itself, so a Python server would be testing our framing rather than Python's |
+| `wget` | ✅ 5 checks | — |
 | Rust `hyper` | ⬜ needs crates.io, which breaks "clean checkout, nothing fetched" | ⬜ same |
 
-**58/58 checks, 3 skips**, each with its reason on the line. The skips are the
+**65/65 checks, 3 skips**, each with its reason on the line. The skips are the
 honest part: `java.net.http` and `http.client` do not expose the trailer
 section, and `node:http` follows no redirects, so those say SKIP instead of
 passing on something else.
@@ -402,6 +411,16 @@ decodes by hand in every language rather than letting the transport do it — Go
 switches off its own transparent decompression when the header is set by hand,
 so leaving it to the transport would have the four peers measuring four
 different things.
+
+Since H-40 each also reads `/early-hints` — a `103` and then the `200` — and
+asks for `/` on the same connection afterwards, because a client that took the
+`103` for the answer only shows it on the next request. Go, Node and Java pass;
+Python's `http.client` skips `100` and no other `1xx`, so its check is pinned
+as a **known CPython deviation** that expects the misreading and goes red when
+it stops ([python/cpython#72756](https://github.com/python/cpython/issues/72756),
+open since 2016, unchanged in 3.14 and on `main`). Go additionally parses H-19's
+`Content-Disposition` with `mime.ParseMediaType`, and `wget` adds both: it skips
+the `103`, and `--content-disposition` saves under the `filename*` name.
 
 The other direction is `tests/h1peer`: our `HTTPClient` against `server.go` and
 `server.mjs` — their Content-Length framing, their chunked framing, their
@@ -632,8 +651,8 @@ still builds against the pin, so nothing is verified from a clean checkout.
 | ⬜ | **H-37** | RFC 9110's core mechanics — negotiation, preconditions, ranges, QUERY — are a library layer on HTTP/2 and the handler's job on HTTP/1.x | RFC 9110 §12–14, RFC 10008 | P2 | L | Found 2026-10-29 reading `HTTP2/Core`. `HTTPSemantics.Wrap` (1 285 lines) turns an `HTTPResourceHandler` or `HTTPVariantHandler` into an HTTP/2 request handler that answers `GET`, `HEAD` and `OPTIONS`; negotiates on `Accept`, `Accept-Encoding` and `Accept-Language`, with `Vary`; evaluates all five preconditions to `304` and `412`; serves one range as `206` and several as `multipart/byteranges`; and runs a QUERY result through the same pipeline. `HTTPResource` says of itself that it "could sit in front of any of them without modification". **HTTP/1.x has none of it.** The matrix rows for §13 and §14 are 🔵, and the demo implements `304`, `206` and `416` in its own `ServeResource`. `HTTPStandardHandlers`' file and resource serving sends neither `ETag` nor `Last-Modified` and answers no conditional and no range request. `SinglePageAppHandler` meanwhile has its own `If-None-Match` → `304`, through `ContentNegotiation.IfNoneMatchMatches`, a third implementation of part of the rules beside `HTTPSemantics` and `HTTPValidators`. Whether 🔵 is still the right marker is the question this row asks. It is a design decision, but the stack has made it twice, in opposite directions: the logic in the library and opt-in on HTTP/2, in every handler on HTTP/1.x. The work is an adapter from `HTTPRequest` and `HTTPResponse` rather than a rewrite, with `HTTPValidators` and `HTTPContentRange` moving beside it. Verifiable with `h1semantics` against a demo route that uses it in place of `ServeResource` |
 | ⬜ | **H-38** | The HTTP/1.x client follows no redirect, answers no authentication challenge and resumes no download | RFC 9110 §15.4, §11, §14 | P3 | M | Found 2026-10-29 reading `HTTP2/Core`. The HTTP/2 client has all three. `HTTPRedirect` applies §15.4's rewriting rules: a `POST` becomes a `GET` after `301`, `302` and `303`, and `307` and `308` keep the method and the body. `HTTPClientAuthenticator` turns a `WWW-Authenticate` challenge into credentials, Digest, Bearer, Token and Basic in that order, with RFC 7616's nonce count kept per connection. `HTTPContentRange` and `HTTPValidators` let it resume with `Range` and `If-Range`. `AHTTPClient` handles neither `Location` nor a challenge anywhere, so every caller does both by hand. **Not a conformance defect**: §15.4 lets a user agent redirect automatically and does not require it, and a client that hands a `3xx` or a `401` back is conformant. It is the same stranding as H-7 and H-13 on the client's side, and with H-5's cache it is the whole of what the HTTP/2 client has and this one lacks |
 | ✅ | **H-39** | A `ServerCertificateSelector` is asked twice for one connection, and the two answers need not agree | — | P3 | XS | Found 2026-10-29 writing H-36's tests: three connections made six calls. `TCPConnection`'s constructor asks the selector for the certificate the handshake presents. `AHTTPServer.HandleConnection` then wraps that connection in an `HTTPConnection`, whose base constructor is the same `TCPConnection` constructor, given the same selector, and asks again. The handshake and H-36's check use the first answer, `TCPConnection.ServerCertificate`. `HTTPConnection.ServerCertificate`, which a handler reaches as `request.TCPConnection`, holds the second. For a selector that always returns the same certificate that is a wasted call; for one that does not, during a certificate rotation say, it names a certificate the handshake never presented. `ServerCertificateChainSelector` is asked twice the same way. The fix is for `HTTPConnection` to take the first connection's certificate rather than ask for another. **Fixed 2026-10-29, merged and pinned, [Hermod#179](https://github.com/Vanaheimr/Hermod/pull/179), and larger than filed.** `HTTPConnection` was a second connection object built by the full `TCPConnection` constructor, so it also asked the `ServerCertificateChainSelector` and the `ConnectionIdBuilder` again. And it never learned the client certificate, because the handshake runs before the wrap: on a mutual-TLS connection, `request.TCPConnection.ClientCertificate` was `null`. A protected `TCPConnection(TCPConnection)` takes the accepted connection over, and five tests, each red against the old constructor, pin it |
-| ⬜ | **H-40** | The HTTP/1.x server cannot send `103 Early Hints`, and the client drops the one it receives | RFC 8297, RFC 9110 §15.2 | P3 | S | Found 2026-10-29 writing H-14. Preload hints ahead of the final response are what `Link` is for besides pagination, and this stack can send them over HTTP/2 and HTTP/3 only. **The server:** `AHTTPServer.SendContinueResponse` writes one fixed `100 Continue`, the only interim response the HTTP/1.x server ever sends. A handler has no way to write a `1xx` before its final response. HTTP/2 has `IHTTP2ResponseStream.WriteInterimResponseAsync`, and HTTP/3 has `Http3Response.InterimResponses`. **The client:** measured against `2b6eecc2` with two temporary cases beside `GET_Skips_Headerless_InformationalResponses_And_Returns_Final_Response`. The server sent a `103` carrying `Link: </style.css>; rel=preload; as=style`, once in the same segment as the final response and once in its own. `AHTTPClient` skipped it and returned the `200`, as §15.2 requires. It also dropped the `103`'s fields, and nothing on `HTTPResponse` keeps them. HTTP/2's client keeps them on `HTTP2Response.InformationalResponses`. The existing test sends a `103` with no fields at all, which is why this had not shown. **Not a conformance defect** on either side. RFC 8297 lets a server send hints and does not require it, and a client that skips them is conformant. Sending has to stay opt-in, per response. RFC 8297's security considerations warn that an HTTP/1.1 client which takes a `1xx` for the final response will misread everything after it on the connection, and suggest not sending hints over HTTP/1.1 unless the client is known to handle them. The shape of H-7, H-13 and H-38: there on HTTP/2, missing on HTTP/1.x. **Upstream as [Hermod#185](https://github.com/Vanaheimr/Hermod/pull/185), 2026-10-30.** `request.SendEarlyHints(links)` and `SendInformationalResponse` write a `1xx` at once, while the handler works. The server closes that way before the final response, so nothing can follow it on the connection. HTTP/1.0 gets none, as §15.2 requires. `HTTPResponse.InformationalResponses` keeps what arrives, the first 16. Measuring this row overstated one thing: a handler could have written raw octets on `Request.NetworkStream`, so "no way" was "no way short of doing the framing itself". 7 tests, and seven mutations, each turning 1 to 3 of them red |
-| ⬜ | **H-19** | No RFC 8187 parameter encoding / RFC 6266 `filename*` | RFC 8187, 6266 | P3 | S | The RFC 8187 half is in **H-14**'s [Hermod#182](https://github.com/Vanaheimr/Hermod/pull/182): `HTTPExtendedValue` encodes UTF-8 and decodes UTF-8 and ISO-8859-1. What remains is `Content-Disposition` itself (RFC 6266), with `filename` and `filename*`. **Upstream as [Hermod#187](https://github.com/Vanaheimr/Hermod/pull/187), 2026-10-30.** `HTTPContentDisposition` in `Hermod/HTTP/`, and the field typed with it, which breaks code that set a string. The user chose that over keeping the string beside a typed accessor. Nothing in Hermod or here set one. Parsing follows Section 4.1, where a repeated parameter is invalid. Sending follows Appendix D: `filename` alone where ASCII is enough, otherwise an ASCII fallback first and `filename*` after it. `SafeFileName` is Section 4.3 for a recipient, and refuses the `C:name` that was H-33's hole. 54 tests, and eight mutations, each turning 1 to 12 of them red |
+| ✅ | **H-40** | The HTTP/1.x server cannot send `103 Early Hints`, and the client drops the one it receives | RFC 8297, RFC 9110 §15.2 | P3 | S | **Fixed 2026-10-30, merged and pinned, [Hermod#185](https://github.com/Vanaheimr/Hermod/pull/185).** Found 2026-10-29 writing H-14. Preload hints ahead of the final response are what `Link` is for besides pagination, and this stack can send them over HTTP/2 and HTTP/3 only. **The server:** `AHTTPServer.SendContinueResponse` writes one fixed `100 Continue`, the only interim response the HTTP/1.x server ever sends. A handler has no way to write a `1xx` before its final response. HTTP/2 has `IHTTP2ResponseStream.WriteInterimResponseAsync`, and HTTP/3 has `Http3Response.InterimResponses`. **The client:** measured against `2b6eecc2` with two temporary cases beside `GET_Skips_Headerless_InformationalResponses_And_Returns_Final_Response`. The server sent a `103` carrying `Link: </style.css>; rel=preload; as=style`, once in the same segment as the final response and once in its own. `AHTTPClient` skipped it and returned the `200`, as §15.2 requires. It also dropped the `103`'s fields, and nothing on `HTTPResponse` keeps them. HTTP/2's client keeps them on `HTTP2Response.InformationalResponses`. The existing test sends a `103` with no fields at all, which is why this had not shown. **Not a conformance defect** on either side. RFC 8297 lets a server send hints and does not require it, and a client that skips them is conformant. Sending has to stay opt-in, per response. RFC 8297's security considerations warn that an HTTP/1.1 client which takes a `1xx` for the final response will misread everything after it on the connection, and suggest not sending hints over HTTP/1.1 unless the client is known to handle them. The shape of H-7, H-13 and H-38: there on HTTP/2, missing on HTTP/1.x. **The fix:** `request.SendEarlyHints(links)` and `SendInformationalResponse` write a `1xx` at once, while the handler works. The server closes that way before the final response, so nothing can follow it on the connection. HTTP/1.0 gets none, as §15.2 requires. `HTTPResponse.InformationalResponses` keeps what arrives, the first 16. Measuring this row overstated one thing: a handler could have written raw octets on `Request.NetworkStream`, so "no way" was "no way short of doing the framing itself". 7 tests, and seven mutations, each turning 1 to 3 of them red. **Here:** the demo's `/early-hints` sends a `103` with a preload `Link`, works for 100 ms, and answers with a body that says whether the `103` went out. Five checks in the curl matrix: one `103` and then the `200`, the `103`'s own field, none to HTTP/1.0 and the handler told so, and the next request on the connection answered whole. Five Hermod and demo mutations turn them red, each the checks it should. Four of the five foreign clients of A7 read past the `103`. Python's `http.client` takes it for the final response, and the next request on that connection gets the `200` meant for this one: the misreading RFC 8297's security considerations warn about, open since 2016 as python/cpython#72756, and pinned in `tests/peers/client.py` as a known deviation |
+| ✅ | **H-19** | No RFC 8187 parameter encoding / RFC 6266 `filename*` | RFC 8187, 6266 | P3 | S | **Fixed 2026-10-30, merged and pinned, [Hermod#187](https://github.com/Vanaheimr/Hermod/pull/187).** The RFC 8187 half came first, with **H-14**'s [Hermod#182](https://github.com/Vanaheimr/Hermod/pull/182): `HTTPExtendedValue` encodes UTF-8 and decodes UTF-8 and ISO-8859-1. The rest was `Content-Disposition` itself (RFC 6266), with `filename` and `filename*`. `HTTPContentDisposition` in `Hermod/HTTP/`, and the field typed with it, which breaks code that set a string. The user chose that over keeping the string beside a typed accessor. Nothing in Hermod or here set one. Parsing follows Section 4.1, where a repeated parameter is invalid. Sending follows Appendix D: `filename` alone where ASCII is enough, otherwise an ASCII fallback first and `filename*` after it. `SafeFileName` is Section 4.3 for a recipient, and refuses the `C:name` that was H-33's hole. 54 tests, and eight mutations, each turning 1 to 12 of them red. **Here:** the demo's `/download` is an attachment named `Grüße.txt`. Each half of Appendix D has a foreign client as its witness. curl `-J` reads `filename=` alone and saves under the fallback, `Gruesse.txt`, beside an exact check of the field. wget `--content-disposition` and Go's `mime.ParseMediaType` read `filename*` and get `Grüße.txt`. Without the fallback, curl saves under `download`; with the fallback alone, wget and Go get `Gruesse.txt`. Raw UTF-8 in `filename=` is something wget and Go both take as it is, so only the exact field check sees it |
 | ✅ | **H-20** | IPv6 zone identifiers in URIs | RFC 6874 | P3 | XS | **Fixed 2026-10-04, merged and pinned, [Hermod#132](https://github.com/Vanaheimr/Hermod/pull/132), and it was worse than "not supported".** §2 percent-encodes the `%` in a URI, so `fe80::a%en1` is written `http://[fe80::a%25en1]` — and `IPv6Address.TryParse` split at the first `%` and read that zone as **`25en1`**. Not a refusal: a success with the wrong answer, a link-local address dialled through an interface that does not exist. `TryParseURIHost` is a separate method and not a flag, because the forms collide: bare, `fe80::1%25` is how Windows names interface index 25, and the same text in a URI is an address whose `ZoneID` is empty — malformed, `ZoneID` being `1*( unreserved / pct-encoded )`. A test pins that the plain parser still reads the Windows form as 25. `URL.HostHeader` drops the zone, which §3 calls "highly desirable" rather than required — that section says of itself that it makes no normative statements, and I had first taken it for a MUST. 11 tests |
 | ✅ | **H-32** | `AllowedTLSProtocols` was accepted by `HTTPServer`, kept, passed down — and never reached the handshake, so a server configured for TLS 1.3 alone went on accepting 1.2 | — | P2 | XS | Found 2026-10-04 while doing **H-17**: both settings end up in the same `SslServerAuthenticationOptions`, and only one was being filled in. `TCPConnection` read a property of its own name that nothing anywhere assigned, so `EnabledSslProtocols` fell back to "TLS 1.2 and 1.3" whatever the server had been told. The doc comments admitted it — *"kept in AllowedTLSProtocols, but not read yet"* — which is the honest version of a setting that does nothing, and still a setting that does nothing. Reported in #132's description rather than slipped into it, and **fixed upstream by someone else within the hour**, in `7dc1d593`, with the same design down to the default interface member "as TLSApplicationProtocols is". My implementation went in the bin; its tests did not, because that commit says of itself *"built, not tested here"* and names a downstream OCPI test as its evidence — a finding closed by a test in another repository is closed on somebody else's schedule. **Tested 2026-10-04, [Hermod#133](https://github.com/Vanaheimr/Hermod/pull/133):** 3 tests, the two configured directions red without the fix, each asserting first that the version it does want still works so that "refused" is a refusal of one version and not of everything. The third passes either way and is the compatibility guarantee: null still means 1.2 **and** 1.3 |
 | ✅ | **H-21** | `Accept-Ranges` is modeled as a **request** field, but RFC 9110 §14.3 defines it as a *response* field — `HTTPResponse.Builder` has no property for it | RFC 9110 §14.3 | P2 | XS | Found while building A1: the demo has to fall back to the generic `SetHeaderField("Accept-Ranges", …)`. Wrong side of the request/response split. **Fixed 2026-09-26, merged and pinned, [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43).** The response side has the field now, and the three request-side members are `[Obsolete]` rather than removed — deleting or renaming them would break every downstream Vanaheimr project, and a warning says the same thing without doing that. Found next door while reading the field beside it and fixed with it: the builder's `AcceptPatch` setter wrote `Allow`, so a handler advertising patch formats silently replaced the set of methods it claims to support with media types. `SetHeaderField` takes an `Object`, so neither the compiler nor the wire objected. 3 tests |
@@ -659,7 +678,7 @@ still builds against the pin, so nothing is verified from a clean checkout.
                 │
                 └──▶ ✅A5, ✅A6, ✅A7, ✅A8  (external suites)
 
-Track B in parallel: thirty-five of forty are in. ✅H-1 and ✅H-2 first
+Track B in parallel: thirty-seven of forty are in. ✅H-1 and ✅H-2 first
 (small, high leverage), then ✅H-3 and ✅H-16, the two Warden findings
 ✅H-25 and ✅H-26, and ✅H-4 ✅H-6 ✅H-8 ✅H-21 ✅H-22 together on
 2026-09-26. ✅H-29 and ✅H-30 came out of A6, ✅H-10 out of A8 and ✅H-27
@@ -671,7 +690,7 @@ A4 turned out to need none of them, so nothing was ever waiting on this track.
 runnable demo host, the raw-wire gate, the curl matrix, and the two Hermod fixes
 that are cheap and obviously right. Six of six, finally: H-2 turned out to be
 four fixes rather than one, and the last of them closed on 2026-09-24. The
-number is now **327**, and 92 of those come from a client nobody here wrote
+number is now **334**, and 99 of those come from a client nobody here wrote
 — the first part of it that is not self-assessment.
 
 **Second milestone:** ✅ A4 + ✅ A11 + ✅ A5 — Autobahn reproducible from a

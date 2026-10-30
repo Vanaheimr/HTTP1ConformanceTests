@@ -5136,3 +5136,174 @@ is torn down, and 0 of 2400 reconnected. It also adds two tests that abandon
 - **Something tried and dropped:** cancelling first in `ATCPClient.Close`
   for every client at once. The DoH reconnects stayed, and one TCP query
   threw a `NullReferenceException`.
+
+## 2026-10-30 — Hermod to `b27d6483`: H-40 and H-19 pinned
+
+Twelve merges past `2b6eecc2`. Two of them are this repository's:
+[Hermod#185](https://github.com/Vanaheimr/Hermod/pull/185) (H-40) and
+[Hermod#187](https://github.com/Vanaheimr/Hermod/pull/187) (H-19).
+[#184](https://github.com/Vanaheimr/Hermod/pull/184),
+[#186](https://github.com/Vanaheimr/Hermod/pull/186) and
+[#190](https://github.com/Vanaheimr/Hermod/pull/190) are the DNS flake from
+the entry before. The rest is Hermod's own work, which the gate does not
+reach: DNS (#180, #191, #192), HTTP/2's writer (#189), QUIC flow control
+(#188) and SSH (#181, #183). Styx stays at `1262aa28`.
+
+### Measured against `b27d6483` and `1262aa28`
+
+Each row on its own, one after the other.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1268 | **1329** |
+| `Tests.HTTP.` | 1267 | **1328** |
+| the protocol regression selection | 381 | **381** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2337 | **2392** |
+| curl matrix, cleartext / TLS | 92 / 98 | **99 / 105** |
+| gate, cleartext | 9/9, 327/327 | 9/9, **334/334** |
+| gate, `--tls` | 9/9, 333/333 | 9/9, **340/340** |
+| gate, `--tls`, Debian 13 in a Linux-built clone | 9/9, 334/334 | 9/9, **341/341** |
+| gate, `--wsl` | 12/12, 515/515 | 12/12, **536/536** |
+| reference peers, inside `--wsl` | 58/58 | **65/65** |
+| proxies | 32/32 | 28/32, and **32/32** with ten rows recorded |
+| Autobahn, server | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+The 61 are `EarlyHintsTests`' 7 and `ContentDispositionTests`' 54, both under
+`Tests.HTTP.` and outside the regression filter. The neighbours' 55 come
+from the DNS and HTTP/2 merges. The QUIC and SSH tests are outside that
+filter.
+
+The nightly's `tls` job ran for the first time that morning, at `e7593f41`.
+Both legs were green, with 333 and 334, the figures measured here before
+the job existed. PLAN.md's row for it is ✅ now.
+
+### Early hints and a download, on the wire
+
+The demo has a 23rd and a 24th route:
+
+- **`/early-hints`** sends a `103` with
+  `Link: </prose>; rel="preload"; as=fetch`, works for 100 ms, and then
+  sends the `200` with the same `Link`. The body says whether the `103` went
+  out, which is what `SendEarlyHints` returned. It returns false for
+  HTTP/1.0.
+- **`/download`** is an attachment named `Grüße.txt`.
+  `HTTPContentDisposition.Attachment` sends it as `filename="Gruesse.txt"`,
+  followed by `filename*=UTF-8''Gr%C3%BC%C3%9Fe.txt`.
+
+The curl matrix has seven new checks:
+
+| check | how |
+|---|---|
+| a `103` goes first, once, then the `200` | every status line curl writes to `-D`, in order: `103,200` |
+| the `103` carries the hint | the status and the `Link` of the first header block, so that the final response's `Link` cannot satisfy it |
+| HTTP/1.0 gets no `103` | the same status list over `--http1.0`: `200` |
+| and the handler is told it was not sent | the body, over `--http1.0` |
+| the connection stays in step after a `103` | `/early-hints` and then `/` in one curl: two `200`s on one connection, 17 and 26 octets |
+| an attachment, named in ASCII and in UTF-8 | `%header{content-disposition}`, compared exactly |
+| `curl -J` saves under the fallback | `-OJ`, and the name it saved under. curl reads `filename=` and never `filename*` |
+
+The fifth check's label said RFC 8297 §4 when it was written. Section 4 is
+the IANA considerations, and the security considerations are §3. It was
+corrected before the commit.
+
+Six mutations, each run on its own against a rebuilt demo:
+
+| mutation | red |
+|---|---|
+| X1: Hermod sends a `1xx` to HTTP/1.0 as well | both HTTP/1.0 checks: `103,200`, and a body saying it went |
+| X2: the `103` goes out without its empty line | the status list (`103` alone) and the connection check (`103/1/0,200/1/26`) |
+| X3: `filename*` alone, with no fallback | both `Content-Disposition` checks. `curl -J` saves as `download` |
+| X4: the raw name in `filename=`, with no `filename*` | both. `curl -J` saves as `Grüße.txt` |
+| X5: a request has no way to send a `1xx` | the three `103` checks over HTTP/1.1 |
+| X6: the demo's handler sends no `103` | the same three |
+
+X1 came back in the proxy run below, from Caddy.
+
+### The peers
+
+Each client reads `/early-hints` and then `/` on the same connection. A
+client that took the `103` for the answer only shows it on the next
+request. Go also parses `/download`'s field with `mime.ParseMediaType`, and
+wget does both, the second with `--content-disposition`. That is seven
+checks, and 58 became 65.
+
+| peer | the `103` | `Content-Disposition` |
+|---|---|---|
+| Go 1.24.4 | skipped, and `httptrace.Got1xxResponse` sees it with its `Link` | `Grüße.txt`, from `filename*` |
+| Node | skipped, and the `'information'` event has it | — |
+| Java | skipped. `HttpClient` exposes no `1xx` | — |
+| wget 1.25 | skipped | saved as `Grüße.txt`, from `filename*` |
+| Python 3.13.5, `http.client` | **taken for the final response** | — |
+
+Python does what RFC 8297 §3 warns about. `HTTPResponse.begin()` skips a
+`100` and nothing else, so `getresponse()` returns status `103` with an
+empty body. The `200` stays in the buffer and answers the next request. It
+is [python/cpython#72756](https://github.com/python/cpython/issues/72756),
+bpo-28570, opened in 2016 and still open, and the loop is the same in 3.14
+and on `main`. The check is pinned as a known CPython deviation: it expects
+the misreading and goes red when that stops. Nothing has been posted
+upstream.
+
+Python's `email` parser was tried on the field as well. `get_filename()`
+returns the first `filename` parameter, which is the fallback. That is not an
+implementation of RFC 6266, so it is not a check.
+
+Mutations against the peers:
+
+| mutation | red |
+|---|---|
+| X2: no empty line after the `103` | Go: `malformed MIME header: missing colon: "HTTP/1.1 200 OK"`. wget stayed green. Java, Node and Python printed no early-hints line at all, and the run counted 63 checks instead of 65. The log kept only the new labels, so what they printed instead is not recorded |
+| X3: `filename*` alone | none. wget and Go read `filename*` and do not need the fallback |
+| X4: raw UTF-8 in `filename=` | none. Both take the raw name as the name, and only the curl matrix's exact comparison catches it |
+| X6: the handler sends no `103` | the early-hints checks of Go, Java, Node, Python and wget |
+| X7: the fallback alone, with no `filename*` | the `Content-Disposition` checks of Go and wget |
+
+The nightly runs these on `ubuntu-latest`, which last night's log shows
+with Go 1.26.10, Java 25.0.5, Python 3.14.4 and wget 1.25.0. wget is the
+same version as here, and Python 3.14's `begin()` is the same loop. That
+was read in the source, not run there, so the next nightly is the first
+run on that image.
+
+### Through the proxies
+
+The first run was 28/32. Four of the five proxies read the new checks
+differently, in ten places, and every one of them is about the `103`:
+
+| | HTTP/1.1 client gets | HTTP/1.0 client gets | the origin, for that 1.0 client |
+|---|---|---|---|
+| HAProxy 3.4.6 | `103`, `200` | `200` | sent no `103`: the request arrived as HTTP/1.0 |
+| httpd 2.4.68 | `103`, `200` | `200` | sent one, and httpd withheld it |
+| nginx 1.31.6 | `200` | `200` | sent one, and nginx dropped it |
+| Envoy 1.39.2 | `200` | `426` | not reached: this chain refuses HTTP/1.0 |
+| Caddy 2.11.4 | `103`, `200` | **`103`, `200`** | sent one, and Caddy passed it on |
+
+RFC 9110 §15.2 requires two things of a proxy here: forward a `1xx` it did
+not ask for, and send none to an HTTP/1.0 client. HAProxy and httpd meet
+both. nginx and Envoy drop the `103` for every client, by configuration.
+nginx needs its `early_hints` directive (1.29.0 and later), and Envoy needs
+`proxy_100_continue`. Neither chain sets it.
+
+Caddy breaks the second rule as it ships, and the fault is in Go. Caddy
+relays a `1xx` through `ResponseWriter.WriteHeader`. Go's `net/http`
+server writes any `1xx` other than `101` without checking the request's
+version, and uses the version only to choose the status line's
+`HTTP/1.0`. On go1.24.4 a five-line handler calling `WriteHeader(103)`
+sends `HTTP/1.0 103 Early Hints` to `curl --http1.0`. The same line is on
+Go's `master`, and the Caddy image is built with go1.26.3. No Go issue
+turned up for it. It is the second MUST that `net/http` misses in this
+repository, after A6's CL.TE connection that stays open, and it has not
+been filed. `docs/TestingAgainst_Proxies.md` has the detail. That
+document's version table still showed the images from before the bump of
+2026-10-02, and it has been corrected.
+
+The ten rows went into `tests/proxy-known.txt` by hand, all with the reason
+above.
+
+### What is left of Track B
+
+37 of the 40 findings are fixed and pinned. Three are open: H-5 (no RFC 9111
+cache), H-37 (RFC 9110's core mechanics are a library layer on HTTP/2 and
+the handler's job on HTTP/1.x) and H-38 (the client follows no redirect,
+answers no challenge and resumes no download).

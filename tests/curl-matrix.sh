@@ -95,11 +95,13 @@ if printf '%s' "$CURL" | grep -q "wsl"; then
     REMOTE="yes"
     STAR='\*'
     ETAG_FILE="${ETAG_FILE:-/tmp/h1-curl-matrix-etag}"
+    DL_DIR="${DL_DIR:-/tmp/h1-curl-matrix-dl}"
     export MSYS2_ARG_CONV_EXCL='*'
 else
     REMOTE="no"
     STAR='*'
     ETAG_FILE="$TMP/etag"
+    DL_DIR="$TMP/dl"
 fi
 
 if [ -t 1 ]; then
@@ -170,6 +172,57 @@ exits() {
     $CURL -s $INSECURE "${TIMEOUTS[@]}" -o /dev/null "$@" 2>/dev/null
     local got=$?
     if [ "$got" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $got"; fi
+}
+
+# Assert the status codes of every response curl received for one request,
+# in order and comma-separated. curl writes the interim (1xx) responses to -D
+# as well, each with its own empty line after it. Codes and not status lines:
+# a client does not act on the reason phrase (RFC 9112 §4), and a proxy
+# writes its own.
+#   statuses <label> <expected> <curl args...>
+statuses() {
+    local label="$1" expect="$2"; shift 2
+    local got
+    got="$($CURL -s $INSECURE "${TIMEOUTS[@]}" -D- -o /dev/null "$@" 2>/dev/null | tr -d '\r' |
+           awk '/^HTTP\// { printf "%s%s", sep, $2; sep = "," }')"
+    if [ "$got" = "$expect" ]; then pass "$label"; else fail "$label" "expected '$expect', got '$got'"; fi
+}
+
+# Assert one field of the FIRST header section curl received, prefixed with
+# that section's status code. %header{} only ever sees the final response, so
+# this is the way to an interim response's fields. The code is part of the
+# comparison because the final response may carry the same field: without it,
+# a server that sent no 1xx at all would pass on the final response's copy.
+#   first_field <label> <field> <expected> <curl args...>
+first_field() {
+    local label="$1" field="$2" expect="$3"; shift 3
+    local got
+    got="$($CURL -s $INSECURE "${TIMEOUTS[@]}" -D- -o /dev/null "$@" 2>/dev/null | tr -d '\r' |
+           awk -v f="$field" '
+               NR == 1                                     { code = $2; next }
+               NF == 0                                     { exit }
+               index(tolower($0), tolower(f) ":") == 1     { sub(/^[^:]*:[ \t]*/, ""); print code " " $0; exit }')"
+    if [ "$got" = "$expect" ]; then pass "$label"; else fail "$label" "expected '$expect', got '$got'"; fi
+}
+
+# Assert the name curl -OJ saves a download under, and that it saved it.
+# --clobber because -J will not overwrite a file of the same name (exit 23),
+# and DL_DIR is a fixed directory when curl runs inside WSL. Only the last
+# path segment is compared: %{filename_effective} carries the directory,
+# spelt the way the curl that wrote it spells paths.
+#   saves <label> <expected file name> <curl args...>
+saves() {
+    local label="$1" expect="$2"; shift 2
+    local got status
+    got="$($CURL -s $INSECURE "${TIMEOUTS[@]}" -OJ --clobber --create-dirs --output-dir "$DL_DIR" \
+                 -w '%{filename_effective}' "$@" 2>/dev/null)"
+    status=$?
+    got="${got##*[/\\]}"
+    if [ "$status" -eq 0 ] && [ "$got" = "$expect" ]; then
+        pass "$label"
+    else
+        fail "$label" "expected '$expect' and exit 0, got '$got' and exit $status"
+    fi
 }
 
 # Assert on curl's verbose wire trace — what actually went over the socket.
@@ -373,6 +426,41 @@ echo "  -- links --"
 wo    "page 2 links to its neighbours and both ends (RFC 8288)"     '%header{link}' "$PAGE2_LINKS" "$BASE/pages/2"
 wo    "HEAD sends the Link the GET does (RFC 9110 §9.3.2)"          '%header{link}' "$PAGE2_LINKS" -I "$BASE/pages/2"
 wo    "the last page links back, and not on (RFC 8288)"             '%header{link}' "$PAGE3_LINKS" "$BASE/pages/3"
+
+# ---------------------------------------------------------------------------
+# Early hints — RFC 8297
+# ---------------------------------------------------------------------------
+# /early-hints sends a 103 with a preload hint, works for 100 ms, and then
+# answers with the same Link and a body that says whether the 103 went out
+# (H-40). The first check is the order and the count: one 103, then the 200.
+# The second reads the 103's own field, which %header{} cannot. HTTP/1.0 gets
+# no 103 at all (RFC 9110 §15.2), and the handler is told so, which only the
+# body can show. The last is RFC 8297 §3's worry: a client that misreads a
+# 1xx misreads everything after it on the connection, so the next request on
+# the same connection has to get its own response, whole.
+HINT_LINK='</prose>; rel="preload"; as=fetch'
+echo "  -- early hints --"
+statuses    "a 103 goes first, once, then the 200 (RFC 8297)"          "103,200"                   "$BASE/early-hints"
+first_field "the 103 carries the hint"                                 link "103 $HINT_LINK"       "$BASE/early-hints"
+statuses    "HTTP/1.0 gets no 103 (RFC 9110 §15.2)"                    "200"            --http1.0  "$BASE/early-hints"
+has         "and the handler is told it was not sent"                  "no 103 was sent" --http1.0 "$BASE/early-hints"
+wo          "the connection stays in step after a 103 (RFC 8297 §3)"   '%{http_code}/%{num_connects}/%{size_download},' "200/1/17,200/0/26," \
+            -o /dev/null "$BASE/early-hints" -o /dev/null "$BASE/"
+
+# ---------------------------------------------------------------------------
+# Content-Disposition — RFC 6266
+# ---------------------------------------------------------------------------
+# /download is an attachment named "Grüße.txt" (H-19). The name is not ASCII,
+# so it goes out as Appendix D advises: an ASCII filename first and filename*
+# in UTF-8 after it. curl -J is a client that reads filename= and nothing
+# else ("encoded filenames (*=) are not supported", tool_cb_hdr.c), which
+# makes it the witness for the fallback. Without one it would save under the
+# URL's last segment, "download"; with raw UTF-8 in filename=, under those
+# octets.
+CD_FIELD='attachment; filename="Gruesse.txt"; filename*=UTF-8'"''"'Gr%C3%BC%C3%9Fe.txt'
+echo "  -- content-disposition --"
+wo    "an attachment, named in ASCII and in UTF-8 (RFC 6266 App. D)"  '%header{content-disposition}' "$CD_FIELD" "$BASE/download"
+saves "curl -J, which reads filename= only, saves under the fallback" "Gruesse.txt" "$BASE/download"
 
 # ---------------------------------------------------------------------------
 # Methods

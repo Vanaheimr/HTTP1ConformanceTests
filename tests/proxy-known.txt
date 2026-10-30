@@ -7,8 +7,9 @@
 #   via      an intermediary behaviour that is allowed but worth knowing
 #
 # A row not listed here fails the run. Written by tests/proxy.sh --update on 2026-09-27;
-# three framing rows pruned by hand on 2026-10-02 after the image bump below, and two
-# caddy rows for /digest added by hand on 2026-10-29 (docs/TestingAgainst_Proxies.md).
+# three framing rows pruned by hand on 2026-10-02 after the image bump below, two
+# caddy rows for /digest added by hand on 2026-10-29, and ten rows for /early-hints
+# on 2026-10-30 (docs/TestingAgainst_Proxies.md has what each proxy does with a 103).
 #
 # Measured against these images. They matter: when a row disappears, this file
 # alone cannot say whether we got stricter or the proxy did, and the version is
@@ -24,27 +25,37 @@
 
 curl	caddy	Alt-Svc arrives percent-encoded (RFC 7838 §3)	
 curl	caddy	Content-Digest names the octets that arrived	
+curl	caddy	HTTP/1.0 gets no 103 (RFC 9110 §15.2)	
 curl	caddy	HTTP/1.0 response closes	
 curl	caddy	a bare key is no preference	
+curl	caddy	and the handler is told it was not sent	
 curl	caddy	server-wide OPTIONS *	
 curl	caddy	the identity one keeps the plain ETag	
 curl	envoy	--http1.0 downgrades the exchange	
+curl	envoy	HTTP/1.0 gets no 103 (RFC 9110 §15.2)	
 curl	envoy	HTTP/1.0 status line echoes the version	
 curl	envoy	QUERY (RFC 10008)	
 curl	envoy	QUERY filters	
 curl	envoy	Upgrade on the HTTP port → 101	
+curl	envoy	a 103 goes first, once, then the 200 (RFC 8297)	
+curl	envoy	and the handler is told it was not sent	
 curl	envoy	server-wide OPTIONS *	
+curl	envoy	the 103 carries the hint	
 curl	envoy	the accept value is RFC 6455's	
 curl	haproxy	HTTP/1.0 response closes	
 curl	httpd	--http1.0 downgrades the exchange	
 curl	httpd	HTTP/1.0 status line echoes the version	
 curl	httpd	Upgrade on the HTTP port → 101	
+curl	httpd	and the handler is told it was not sent	
 curl	httpd	server-wide OPTIONS *	
 curl	httpd	the accept value is RFC 6455's	
 curl	nginx	--http1.0 downgrades the exchange	
 curl	nginx	HTTP/1.0 status line echoes the version	
 curl	nginx	Upgrade on the HTTP port → 101	
+curl	nginx	a 103 goes first, once, then the 200 (RFC 8297)	
+curl	nginx	and the handler is told it was not sent	
 curl	nginx	server-wide OPTIONS *	
+curl	nginx	the 103 carries the hint	
 curl	nginx	the accept value is RFC 6455's	
 curl	nginx	unsupported expectation → 417	
 framing	caddy	chunk-bws	direct=REJECT chain=TWO

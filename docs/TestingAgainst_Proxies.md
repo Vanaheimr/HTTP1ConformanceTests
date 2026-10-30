@@ -12,11 +12,11 @@ is measured in compiler-hours:
 
 | | version | port |
 |---|---|---|
-| nginx | 1.27-alpine | 18101 |
-| HAProxy | 3.0-alpine | 18102 |
+| nginx | 1.31-alpine | 18101 |
+| HAProxy | 3.4-alpine | 18102 |
 | Caddy | 2-alpine | 18103 |
 | Apache httpd | 2.4-alpine | 18104 |
-| Envoy | v1.31 | 18105 |
+| Envoy | v1.39-latest | 18105 |
 
 ```bash
 tests/proxy.sh                     # up, run, down
@@ -48,13 +48,13 @@ as an environment variable so that nothing else has to know.
 
 ### curl, through each proxy
 
-The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 92 checks —
+The whole of [`tests/curl-matrix.sh`](../tests/curl-matrix.sh) — 99 checks —
 run directly and then through each chain. Differences are expected: a proxy is
 an HTTP endpoint on both sides and rewrites a great deal. Each one is recorded
 by name in [`tests/proxy-known.txt`](../tests/proxy-known.txt), and a *new*
 one fails the run.
 
-Direct is 92/92, which is what makes the rest of the column meaningful: a
+Direct is 99/99, which is what makes the rest of the column meaningful: a
 difference below is the proxy's doing and not a pre-existing failure.
 
 The differences cluster into recognisable behaviours, and none of them is
@@ -69,6 +69,9 @@ a Hermod defect:
 | refuses an unregistered method (`QUERY`, RFC 10008) | | | | | ✔ |
 | removes the upstream's `Alt-Svc` | | | ✔ | | |
 | asks the upstream for gzip on its own, decodes it, and keeps the gzip variant's `ETag` and digests | | | ✔ | | |
+| drops a `103` the upstream sent | ✔ | | | | ✔ |
+| sends HTTP/1.1 upstream for an HTTP/1.0 client, so the origin sends a `103` | ✔ | | ✔ | ✔ | |
+| hands that `103` to the HTTP/1.0 client | | | ✔ | | |
 
 **The last row, since 2026-10-28**, is the one where the odd proxy out is the
 one that is right. The demo's `/alt-svc` announces `http%2F1.1=":8443"`, and an
@@ -109,6 +112,55 @@ is attached to another. Recorded as Caddy's in `tests/proxy-known.txt`: the iden
 digest check and the bare-key one, both of which request identity. The ETag
 row, `the identity one keeps the plain ETag`, has been there since
 2026-09-27 without its reason. This is the reason.
+
+**The three rows about `103`, since 2026-10-30**, are what each proxy does
+with an interim response. The demo's `/early-hints` sends a `103` before its
+`200` unless the request is HTTP/1.0, and says in the body whether it did.
+RFC 9110 §15.2 asks two things of a proxy here: it MUST forward a `1xx` it
+did not itself ask for, and, being a server to its client, it MUST NOT send
+one to an HTTP/1.0 client.
+
+| | HTTP/1.1 client gets | HTTP/1.0 client gets | the origin, for that 1.0 client |
+|---|---|---|---|
+| HAProxy 3.4.6 | `103`, `200` | `200` | sent no `103`: the request arrived as HTTP/1.0 |
+| httpd 2.4.68 | `103`, `200` | `200` | sent one, and httpd withheld it |
+| nginx 1.31.6 | `200` | `200` | sent one, and nginx dropped it |
+| Envoy 1.39.2 | `200` | `426` | not reached: this chain refuses HTTP/1.0 |
+| Caddy 2.11.4 | `103`, `200` | **`103`, `200`** | sent one, and Caddy passed it on |
+
+HAProxy and httpd meet both requirements. nginx and Envoy drop the `103` for
+every client, and both do it by configuration. nginx has passed a `103` on
+only under its `early_hints` directive, which arrived in 1.29.0 and which
+this chain does not set; the example in nginx's own documentation enables it
+for HTTP/2 and HTTP/3 alone, which is RFC 8297 §3's caution about HTTP/1.1
+clients taken as policy. Envoy forwards `100`, `102`, `103` and `104` only
+with `proxy_100_continue`, which this chain does not set either
+(`HeaderUtility::isSpecial1xx`, and the assertion in
+`FilterManager::encode1xxHeaders`). As configured here, neither meets the
+MUST to forward, and each is one configuration line away from it.
+
+**Caddy is the only one that breaks a rule as shipped.** It speaks HTTP/1.1
+upstream, as RFC 9112 §2.3 has an intermediary do, so the origin sends the
+`103`, and Caddy writes it to the HTTP/1.0 client as `HTTP/1.0 103 Early
+Hints`. The fault is in Go rather than in Caddy. Caddy's reverse proxy relays
+a `1xx` through `ResponseWriter.WriteHeader`, and Go's `net/http` server
+writes any `1xx` other than `101` without checking the request's version. The
+version only decides whether the status line says `HTTP/1.0` or `HTTP/1.1`:
+`writeStatusLine(w.conn.bufw, w.req.ProtoAtLeast(1, 1), code, …)` in
+`server.go`. Measured against Go directly: on go1.24.4, a handler that calls
+`WriteHeader(103)` sends `HTTP/1.0 103 Early Hints` to `curl --http1.0`. The
+same line is on Go's `master` as of 2026-10-30, and the Caddy image is built
+with go1.26.3. No Go issue about it turned up. It is the second MUST that
+Go's `net/http` misses in this repository, after A6's CL.TE connection that
+is not closed. Like that one, it is not ours to fix, and it has not been
+filed.
+
+The third column is a difference and not a defect. nginx, Caddy and httpd
+send their own version upstream, so behind them the origin sees HTTP/1.1 and
+sends a `103`, and keeping it from the HTTP/1.0 client becomes the proxy's
+job. HAProxy forwards the
+request as the HTTP/1.0 it was, which is the only one of the five where the
+origin's own rule does the protecting.
 
 ### framing, direct against each chain
 

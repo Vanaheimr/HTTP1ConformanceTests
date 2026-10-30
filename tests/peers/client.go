@@ -14,9 +14,13 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/http/httptrace"
+	"net/textproto"
 	"os"
 	"strings"
 	"time"
@@ -193,6 +197,53 @@ func main() {
 	_, _, second := get(client, base+"/", nil)
 	check("reuse", first == nil && second == nil, fmt.Sprintf("%v / %v", first, second))
 
+	// ------------------------------------------------------- early hints
+	//
+	// /early-hints sends a 103 with a preload Link and then the 200. Go's
+	// transport hands each 1xx to Got1xxResponse and reads on. The request
+	// after it has to get its own response: RFC 8297's security
+	// considerations are about a client that takes the 103 for the final
+	// response and misreads everything after it on the connection.
+
+	var interim []string
+	trace := &httptrace.ClientTrace{
+		Got1xxResponse: func(code int, header textproto.MIMEHeader) error {
+			interim = append(interim, fmt.Sprintf("%d %s", code, header.Get("Link")))
+			return nil
+		},
+	}
+
+	hinted, hintedBody, hintedErr := doContext(httptrace.WithClientTrace(context.Background(), trace),
+		client, "GET", base+"/early-hints", nil)
+	after, afterErr := getBody(client, base+"/", nil)
+
+	check("early-hints",
+		hintedErr == nil && afterErr == nil &&
+			hinted.StatusCode == 200 && string(hintedBody) == "a 103 went first\n" &&
+			len(interim) == 1 && interim[0] == `103 </prose>; rel="preload"; as=fetch` &&
+			string(after) == "Hermod HTTP/1.1 demo host\n",
+		fmt.Sprintf("%v / %v, 1xx %q, body %q, then %q", hintedErr, afterErr, interim, hintedBody, after))
+
+	// ----------------------------------------------- content-disposition
+	//
+	// /download names "Grüße.txt" twice: an ASCII filename first, and
+	// filename* in UTF-8 after it (RFC 6266, Appendix D). mime.ParseMediaType
+	// decodes RFC 2231's filename*, which RFC 8187 inherits, and lets it win
+	// over filename whatever the order, as Section 4.3 has a recipient that
+	// understands it do. curl -J, which does not, is the other half: it saves
+	// under the fallback (tests/curl-matrix.sh).
+
+	download, _, downloadErr := get(client, base+"/download", nil)
+	if downloadErr != nil {
+		fail("content-disposition", downloadErr.Error())
+	} else {
+		field := download.Header.Get("Content-Disposition")
+		disposition, parameters, err := mime.ParseMediaType(field)
+		check("content-disposition",
+			err == nil && disposition == "attachment" && parameters["filename"] == "Grüße.txt",
+			fmt.Sprintf("%q: %q %q %v", field, disposition, parameters["filename"], err))
+	}
+
 	_ = skip
 
 	if failed > 0 {
@@ -211,8 +262,12 @@ func getBody(client *http.Client, url string, headers map[string]string) ([]byte
 }
 
 func do(client *http.Client, method, url string, headers map[string]string) (*http.Response, []byte, error) {
+	return doContext(context.Background(), client, method, url, headers)
+}
 
-	request, err := http.NewRequest(method, url, nil)
+func doContext(ctx context.Context, client *http.Client, method, url string, headers map[string]string) (*http.Response, []byte, error) {
+
+	request, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, nil, err
 	}

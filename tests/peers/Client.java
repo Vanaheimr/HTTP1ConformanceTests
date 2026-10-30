@@ -152,6 +152,22 @@ public class Client {
         check("reuse", again1.statusCode() == 200 && again2.statusCode() == 200,
               again1.statusCode() + " / " + again2.statusCode());
 
+        // ---------------------------------------------------- early hints
+        //
+        // /early-hints sends a 103 with a preload Link and then the 200.
+        // java.net.http reads past a 1xx without exposing it, so this checks
+        // the half it can: the final response, and the request after it,
+        // which has to get its own response. RFC 8297's security
+        // considerations are about a client that takes the 103 for the final
+        // response and misreads everything after it on the connection.
+
+        var hinted = get(client, base + "/early-hints", null);
+        var after  = get(client, base + "/", null);
+        check("early-hints",
+              hinted.statusCode() == 200 && hinted.body().equals("a 103 went first\n") &&
+              after.body().equals("Hermod HTTP/1.1 demo host\n"),
+              "status " + hinted.statusCode() + ", body " + quote(hinted.body()) + ", then " + quote(after.body()));
+
         System.exit(failed > 0 ? 1 : 0);
 
     }

@@ -1062,6 +1062,69 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
+            #region GET /early-hints  — RFC 8297: a 103 while the handler is still working
+
+            // The handler sends a 103 Early Hints first, then works for a
+            // moment, and only then answers: the gap is what Early Hints are
+            // for, and it is also what a proxy meets in practice, a 103 that
+            // arrives on its own rather than in one read with the final
+            // response. The hint names /prose, and the final response names it
+            // too, since a 103's fields are hints about the final response and
+            // not a part of it (RFC 8297 §2).
+            //
+            // The body says whether the 103 went out. To an HTTP/1.0 request it
+            // must not (RFC 9110 §15.2), and SendEarlyHints then sends nothing
+            // and returns false. That is the half of H-40 a client cannot see on
+            // the wire: curl sees the 103 missing, and only the body says the
+            // handler was told.
+            var earlyHints = new HTTPLinks(
+                                 new HTTPLink("/prose", "preload", Attributes: [ new ("as", "fetch") ])
+                             );
+
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "early-hints",
+                HTTPDelegate: async request => {
+
+                    var sent = await request.SendEarlyHints(earlyHints);
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+                    return new HTTPResponse.Builder(request) {
+                               HTTPStatusCode  = HTTPStatusCode.OK,
+                               ContentType     = HTTPContentType.Text.PLAIN,
+                               Link            = earlyHints,
+                               Content         = (sent ? "a 103 went first\n" : "no 103 was sent\n").ToUTF8Bytes()
+                           }.AsImmutable;
+
+                }
+            );
+
+            #endregion
+
+            #region GET /download  — RFC 6266: an attachment, under a name that is not ASCII
+
+            // "Grüße.txt" cannot travel in filename=, so it goes out the way
+            // Appendix D advises: an ASCII filename first, "Gruesse.txt", for
+            // the clients that know nothing else, and filename* in UTF-8 after
+            // it, which a client that does know it prefers (Section 4.3). curl
+            // is the first kind: -J reads filename= and nothing else, so it is
+            // the witness for the fallback.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "download",
+                HTTPDelegate: request => Task.FromResult(
+                    new HTTPResponse.Builder(request) {
+                        HTTPStatusCode      = HTTPStatusCode.OK,
+                        ContentType         = HTTPContentType.Text.PLAIN,
+                        ContentDisposition  = HTTPContentDisposition.Attachment("Grüße.txt"),
+                        Content             = "Grüße aus Hermod\n".ToUTF8Bytes()
+                    }.AsImmutable
+                )
+            );
+
+            #endregion
+
             #region GET /events  — Server-Sent Events
 
             var eventSource = API.AddEventSource<String>(
