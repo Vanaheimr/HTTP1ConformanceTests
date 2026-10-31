@@ -5307,3 +5307,34 @@ above.
 cache), H-37 (RFC 9110's core mechanics are a library layer on HTTP/2 and
 the handler's job on HTTP/1.x) and H-38 (the client follows no redirect,
 answers no challenge and resumes no download).
+
+## 2026-10-31 — Go's `1xx` to HTTP/1.0, filed as golang/go#82743
+
+The entry before ends with Caddy handing a `103` to an HTTP/1.0 client,
+traced to Go's `net/http`, and not filed. It is filed now, as
+[golang/go#82743](https://github.com/golang/go/issues/82743).
+
+Before filing, the claim was measured again on the latest release, go1.27.3,
+pulled with `GOTOOLCHAIN` in WSL. The issue's reproduction is one program
+with no external peer. An `httptest` server writes `WriteHeader(103)` and
+then its body, a second one runs `httputil.NewSingleHostReverseProxy` in
+front of it, and a raw `GET / HTTP/1.0` goes to each. On go1.24.4 and on
+go1.27.3, both answer `HTTP/1.0 103 Early Hints` before the `200`. The proxy
+is what turns this into a proxy's problem. `ReverseProxy` relays a backend's
+`1xx` through `rw.WriteHeader(code)` in its `Got1xxResponse` hook, and its
+outbound request is HTTP/1.1. The backend therefore sends a `103` that it
+would have to withhold from the HTTP/1.0 client itself.
+
+The issue quotes two places in `server.go`, by permalink at `67ced031`. The
+first is the `1xx` branch of `(*response).WriteHeader`, where
+`ProtoAtLeast(1, 1)` only picks the status line's version. The second is the
+condition for the automatic `100 Continue`, which does check the version.
+The automatic path keeps the rule and the explicit path does not.
+
+Searched first: #26089 and #26088, which added arbitrary `1xx` to the server
+and to `ReverseProxy`, #80949, the `1xx` race fixed in August, which last
+touched that branch, and #67555 on `100-continue`. None of them mentions
+HTTP/1.0.
+
+A6's CL.TE connection that Go leaves open is still not filed. Neither is a
+comment on python/cpython#72756.

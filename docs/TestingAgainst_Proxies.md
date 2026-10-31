@@ -148,12 +148,14 @@ writes any `1xx` other than `101` without checking the request's version. The
 version only decides whether the status line says `HTTP/1.0` or `HTTP/1.1`:
 `writeStatusLine(w.conn.bufw, w.req.ProtoAtLeast(1, 1), code, …)` in
 `server.go`. Measured against Go directly: on go1.24.4, a handler that calls
-`WriteHeader(103)` sends `HTTP/1.0 103 Early Hints` to `curl --http1.0`. The
-same line is on Go's `master` as of 2026-10-30, and the Caddy image is built
-with go1.26.3. No Go issue about it turned up. It is the second MUST that
-Go's `net/http` misses in this repository, after A6's CL.TE connection that
-is not closed. Like that one, it is not ours to fix, and it has not been
-filed.
+`WriteHeader(103)` sends `HTTP/1.0 103 Early Hints` to `curl --http1.0`. On
+go1.27.3, the latest release on 2026-10-31, it does the same, and so does
+`httputil.ReverseProxy` in front of it. The same line is on Go's `master`, and
+the Caddy image is built with go1.26.3. It is the second MUST that Go's
+`net/http` misses in this repository, after A6's CL.TE connection that is not
+closed. Neither is ours to fix. This one is filed as
+[golang/go#82743](https://github.com/golang/go/issues/82743) (2026-10-31); the
+CL.TE one is not.
 
 The third column is a difference and not a defect. nginx, Caddy and httpd
 send their own version upstream, so behind them the origin sees HTTP/1.1 and

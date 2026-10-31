@@ -306,8 +306,9 @@ none to an HTTP/1.0 client. HAProxy and httpd do both. nginx and Envoy drop
 it, each for want of one configuration line (`early_hints`,
 `proxy_100_continue`). Caddy hands it to an HTTP/1.0 client. That is Go's
 `net/http` again, which writes any `1xx` whatever the request's version:
-measured on go1.24.4, unchanged on Go's `master`, and the second MUST of Go's
-that this repository has met. Ten rows in `tests/proxy-known.txt`, not filed.
+measured on go1.24.4 and go1.27.3, unchanged on Go's `master`, and the second
+MUST of Go's that this repository has met. Ten rows in `tests/proxy-known.txt`,
+and filed as [golang/go#82743](https://github.com/golang/go/issues/82743) on 2026-10-31.
 
 **The calibration, which matters more than the result.** A back end was built
 that answers one request with two responses — the state a successful desync
