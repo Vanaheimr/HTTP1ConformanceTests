@@ -325,6 +325,65 @@ compresses its largest messages, a thousand per case in 13.7, in Python on a two
 runner. That fits a server that falls behind and does not recover, but it is still an inference.
 What is no longer open is that nothing kills it.
 
+### When the kernel does kill it: 2026-11-01, and the suite's own memory
+
+The other side, and this time the line came out the other way. The scheduled nightly of
+**2026-11-01** ([41298989967](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/41298989967))
+failed the server leg in case 13.4.13:
+
+```
+fuzzingclient was killed (SIGKILL, exit 137) before the 1200s cap.
+demo host (pid 2917) was still alive at this point.
+container state: exit=137 oom-killed=true error=""
+```
+
+The first `oom-killed=true` in 37 nights of this leg, on the runner image, the suite image
+(`519915fb…`) and the Hermod pin that had been green the night before. The re-run of the job was
+green, 481/517, and slower than the red run, so a slow runner alone does not explain it.
+
+Where the memory goes, measured locally over a whole run, the container by `docker stats` and the
+demo host by its RSS, every two seconds:
+
+| | fuzzingclient | demo host |
+|---|---|---|
+| up to 9.x | up to 235 MiB | 100–240 MB |
+| after 12.1 | **2.9 GiB** | 120 MB |
+| 13.4 | 3.4 GiB | 125 MB |
+| the end | **3.6 GiB** | 118 MB |
+
+It is the suite's own Python heap, not page cache: capped at 300 MiB, the container's
+`memory.stat` showed 270 MiB anonymous and 4 MiB of file pages, with 2 GiB already in swap by the
+end of 12.3. It grows through the compression sections and gives nothing back. The demo host stays
+flat. But GitHub gives a public repository's `ubuntu-latest` 16 GB, and 3.6 GiB does not reach that.
+What held the rest at 10:55:46 could not be reconstructed, because nothing was recorded at the
+moment of the kill.
+
+So both drivers now ask the kernel. When the container's state says it was OOM-killed, they print
+`free -m` and a digest of the kernel's last OOM report: the task that invoked the killer, the eight
+largest tasks with their resident size, the constraint, and the kill. `dmesg` needs root on
+GitHub's runner, so it falls back to `sudo -n`; where neither works it says so rather than printing
+nothing. Forced locally, with the container capped at 300 MiB:
+
+```
+kernel OOM report, the last one:
+  wstest invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0
+  largest tasks at that moment, resident:
+        333 MiB  pid 5606     wstest
+  oom-kill:constraint=CONSTRAINT_MEMCG,…,task=wstest,pid=5606,uid=0
+  Memory cgroup out of memory: Killed process 5606 (wstest) total-vm:683160kB, anon-rss:304768kB, …
+```
+
+The constraint line is the distinction the nightly lacked. `CONSTRAINT_MEMCG` is a container that
+hit its own limit; `CONSTRAINT_NONE` with `global_oom` is a machine that ran out, and the task
+table then says who else was holding memory.
+
+Forcing it took a detail worth keeping. Docker in WSL cannot limit swap ("Your kernel does not
+support swap limit capabilities"), so `--memory` alone produced a container that swapped and
+crawled rather than one that was killed. Writing `0` to the container's own `memory.swap.max` in
+`/sys/fs/cgroup/docker/<id>/`, as root and for that cgroup only, made the kill land in seconds.
+The client driver was tested the same way: its `fuzzingserver`, capped at 200 MiB, was killed at
+case 275, and the report followed the container line.
+
 ## When *we* are the one that fails: 12.4.18, and a log that said nothing
 
 On 2026-09-23 the nightly's server job went red for the first time, on case **12.4.18** — "send

@@ -151,22 +151,35 @@ run_peer_client() {
 
     echo "    ${DIM}$label${OFF}"
 
-    local output
+    local output status
     output="$(peer "$command '$DEMO_BASE'" 2>&1)"
+    status=$?
 
     if [ -z "$output" ]; then
         failure "$label — produced no output" "the peer program did not run"
         return 0
     fi
 
+    local ran=0 failed_here=0
     while IFS=$'\t' read -r verdict name detail; do
         case "$verdict" in
-            PASS) pass    "$label/$name" ;;
-            FAIL) failure "$label/$name" "$detail" ;;
+            PASS) pass    "$label/$name"; ran=$((ran + 1)) ;;
+            FAIL) failure "$label/$name" "$detail"; ran=$((ran + 1)); failed_here=1 ;;
             SKIP) skipped "$label/$name" "$detail" ;;
             *)    [ -n "$verdict" ] && note "      $verdict $name $detail" ;;
         esac
     done <<< "$output"
+
+    # A program that stops early is a failure, not a shorter list. A peer
+    # exits non-zero after a FAIL by design; one that exits non-zero without
+    # having printed a FAIL died, and every check after the one it died in
+    # never ran. Until 2026-11-01 that went uncounted: Java's HttpClient
+    # threw on /trailers from the nightly of 2026-10-29 on, the program ended
+    # after two of its eleven checks, and the job reported 50/50 and then
+    # 56/56 where a local run read 58/58 and then 65/65.
+    if [ "$status" -ne 0 ] && [ "$failed_here" -eq 0 ]; then
+        failure "$label — the program died after $ran check(s), exit $status: $(printf '%s\n' "$output" | grep -vE '^(PASS|FAIL|SKIP)'$'\t' | grep -v '^[[:space:]]*$' | head -1 | cut -c1-160)"
+    fi
 
 }
 

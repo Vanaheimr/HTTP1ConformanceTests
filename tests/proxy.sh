@@ -201,12 +201,20 @@ stop_demo() {
 }
 
 
+# A run that failed keeps its working files - every chain's full curl-matrix
+# output, the h1desync observations, compose's log - and says where they are.
+# A clean one leaves nothing behind.
 cleanup() {
+    rc=$?
     if [ "$KEEP" -eq 0 ]; then
         compose down --timeout 5 > /dev/null 2>&1
     fi
     stop_demo
-    rm -rf "$WORK"
+    if [ "$rc" -ne 0 ] && [ -d "$WORK" ]; then
+        echo "  this run's working files are kept: $WORK" >&2
+    else
+        rm -rf "$WORK"
+    fi
 }
 trap cleanup EXIT
 
@@ -362,6 +370,17 @@ record() {
     return 1
 }
 
+# detail_of <curl-matrix output> <check>
+#
+# The line tests/curl-matrix.sh prints under a failed check: what it looked
+# for, and the first 160 bytes of what came back instead.
+detail_of() {
+    awk -v c="$2" '
+        hit              { sub(/^[[:space:]]+/, ""); print; exit }
+        /^[[:space:]]+✗/ { l = $0; sub(/^[[:space:]]+✗[[:space:]]+/, "", l); if (l == c) hit = 1 }
+    ' "$1"
+}
+
 # ---------------------------------------------------------------------------
 # curl: the whole matrix, through each proxy
 # ---------------------------------------------------------------------------
@@ -389,16 +408,29 @@ if section curl; then
 
         verdict="$(grep -E 'checks passed' "$WORK/curl-$name.out" | tail -1 | sed 's/^ *//')"
         new_for_this=0
+        new_checks=()
 
         while IFS= read -r check; do
             [ -n "$check" ] || continue
-            record curl "$name" "$check" || new_for_this=$((new_for_this + 1))
+            if ! record curl "$name" "$check"; then
+                new_for_this=$((new_for_this + 1))
+                new_checks+=("$check")
+            fi
         done < <(grep -E '^\s+✗' "$WORK/curl-$name.out" | sed 's/^[[:space:]]*✗[[:space:]]*//')
 
         if [ "$new_for_this" -eq 0 ]; then
             pass "curl/$name — $verdict, every difference already recorded"
         else
             failure "curl/$name — $verdict" "$new_for_this difference(s) not in ${KNOWN#"$ROOT/"}"
+            # What the chain answered, and not only which check it failed. On
+            # 2026-11-01 Envoy failed "the identity one keeps the plain ETag"
+            # once and never again, and the run had printed the check's name
+            # and nothing else. The nightly keeps no files, so this log is the
+            # only place an answer can survive.
+            for check in "${new_checks[@]}"; do
+                printf '        %s✗ %s%s\n' "$DIM" "$check" "$OFF"
+                printf '          %s%s%s\n' "$DIM" "$(detail_of "$WORK/curl-$name.out" "$check")" "$OFF"
+            done
         fi
 
     done

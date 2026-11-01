@@ -398,7 +398,7 @@ nothing else — no package fetch, no lockfile, no build step.
 |---|---|---|
 | Go `net/http` | ✅ 12 checks | ✅ `server.go`, 7 checks via `tests/h1peer` |
 | Node `node:http` | ✅ 12 checks | ✅ `server.mjs`, 7 checks via `tests/h1peer` |
-| Java `java.net.http` | ✅ 11 checks (+1 skip) | — the JDK ships no HTTP server worth pointing at |
+| Java `java.net.http` | ✅ 11 checks (+1 skip), one of them a known JDK deviation pinned on the JDKs that have it | — the JDK ships no HTTP server worth pointing at |
 | Python `http.client` | ✅ 11 checks (+1 skip), one of them a known CPython deviation pinned rather than passed | — the stdlib cannot frame chunked itself, so a Python server would be testing our framing rather than Python's |
 | `wget` | ✅ 5 checks | — |
 | Rust `hyper` | ⬜ needs crates.io, which breaks "clean checkout, nothing fetched" | ⬜ same |
@@ -422,7 +422,15 @@ asks for `/` on the same connection afterwards, because a client that took the
 Python's `http.client` skips `100` and no other `1xx`, so its check is pinned
 as a **known CPython deviation** that expects the misreading and goes red when
 it stops ([python/cpython#72756](https://github.com/python/cpython/issues/72756),
-open since 2016, unchanged in 3.14 and on `main`). Go additionally parses H-19's
+open since 2016, unchanged in 3.14 and on `main`). Java's `trailers-body` is
+pinned too, and only where it has to be: the October 2026 JDK updates carry
+JDK-8383439, after which `java.net.http` fails any chunked response with a
+trailer section with "CR expected", so on 21.0.13 and 25.0.5 the check
+expects exactly that and passes as
+`trailers-body-rejected (known JDK deviation, JDK-8383439)`. The nightly's
+runner took 25.0.5 on 2026-10-29, and for four nights the Java client died
+after two of its checks while the job read 50/50 and then 56/56. Since
+2026-11-01 a peer program that dies is a failure. Go additionally parses H-19's
 `Content-Disposition` with `mime.ParseMediaType`, and `wget` adds both: it skips
 the `103`, and `--content-disposition` saves under the `filename*` name.
 

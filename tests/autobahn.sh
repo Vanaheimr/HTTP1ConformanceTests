@@ -262,6 +262,54 @@ JSON
 CONTAINER="h1-autobahn-wstest-$ws_port"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
+# The kernel's own account of its last OOM kill: the tasks that held the
+# memory, largest first, and the one it killed.
+#
+# `oom-killed=true` says THAT the kernel killed the suite, and nothing about
+# why. The nightly of 2026-11-01 had only that line: the fuzzingclient was
+# killed in 13.4.13, on a runner with far more memory than the 3.6 GiB a whole
+# local run peaks at, and where the rest had gone could not be reconstructed.
+# The report the kernel writes at the moment of the kill names every task and
+# its resident size. dmesg needs root on GitHub's runner, hence sudo -n; where
+# neither works, this says so rather than printing nothing.
+#
+# Every pipeline ends in `|| true`: this runs inside the `|| { ... }` below,
+# where set -e still applies, and a grep that finds nothing must not end the
+# script before the report it is part of has been written.
+kernel_oom_report() {
+    echo "memory after the kill (free -m):" >&2
+    { free -m 2>/dev/null || echo "(free is not available here)"; } | sed 's/^/  /' >&2 || true
+
+    local log report
+    log="$(dmesg 2>/dev/null || sudo -n dmesg 2>/dev/null || true)"
+    if [ -z "$log" ]; then
+        echo "kernel log: not readable here (dmesg needs root, and sudo -n was refused)" >&2
+        return 0
+    fi
+
+    # Only the last report: everything from the last "invoked oom-killer" on.
+    report="$(printf '%s\n' "$log" | awk '/invoked oom-killer/ { found = 1; buf = "" } found { buf = buf $0 "\n" } END { printf "%s", buf }' || true)"
+    if [ -z "$report" ]; then
+        echo "kernel log: no OOM report in it" >&2
+        return 0
+    fi
+
+    echo "kernel OOM report, the last one:" >&2
+    printf '%s\n' "$report" | grep -m1 'invoked oom-killer' | sed 's/^\[[^]]*\] */  /' >&2 || true
+    echo "  largest tasks at that moment, resident:" >&2
+    # A task row is "[ pid ] uid tgid total_vm rss ... name", rss in 4 KiB pages.
+    printf '%s\n' "$report" | awk '
+        { line = $0; sub(/^\[[^]]*\][[:space:]]*/, "", line) }
+        line ~ /^\[ *[0-9]+\]/ {
+            pid = line; sub(/^\[ */, "", pid); sub(/\].*/, "", pid)
+            sub(/^\[ *[0-9]+\][[:space:]]*/, "", line)
+            n = split(line, f, /[[:space:]]+/)
+            printf "%d\t%s\t%s\n", f[4] * 4 / 1024, pid, f[n]
+        }' | sort -t "$(printf '\t')" -k1,1nr | head -8 \
+           | awk -F'\t' '{ printf "    %7d MiB  pid %-8s %s\n", $1, $2, $3 }' >&2 || true
+    printf '%s\n' "$report" | grep -E 'oom-kill:constraint=|Killed process' | tail -2 | sed 's/^\[[^]]*\] */  /' >&2 || true
+}
+
 runner=""
 if [ "$run_timeout" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
     runner="timeout --signal=TERM --kill-after=30s ${run_timeout}s"
@@ -301,6 +349,7 @@ MSYS_NO_PATHCONV=1 $runner docker run --name "$CONTAINER" -e PYTHONUNBUFFERED=1 
                    "$CONTAINER" 2>/dev/null || true)"
         if [ -n "$state" ]; then
             echo "container state: $state" >&2
+            case "$state" in *oom-killed=true*) kernel_oom_report ;; esac
         else
             echo "container already gone; no state to inspect." >&2
         fi

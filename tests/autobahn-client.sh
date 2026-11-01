@@ -173,6 +173,46 @@ container_state() {
         "$container" 2>&1 || true
 }
 
+# The kernel's own account of its last OOM kill: the tasks that held the
+# memory, largest first, and the one it killed. `oomkilled=true` above says
+# THAT the kernel killed the suite and nothing about why - the server-side
+# driver learnt that on 2026-11-01, and tests/autobahn.sh carries the same
+# function with the story. dmesg needs root on GitHub's runner, hence sudo -n;
+# where neither works, this says so rather than printing nothing.
+kernel_oom_report() {
+    echo "memory after the kill (free -m):" >&2
+    { free -m 2>/dev/null || echo "(free is not available here)"; } | sed 's/^/  /' >&2 || true
+
+    local log report
+    log="$(dmesg 2>/dev/null || sudo -n dmesg 2>/dev/null || true)"
+    if [ -z "$log" ]; then
+        echo "kernel log: not readable here (dmesg needs root, and sudo -n was refused)" >&2
+        return 0
+    fi
+
+    # Only the last report: everything from the last "invoked oom-killer" on.
+    report="$(printf '%s\n' "$log" | awk '/invoked oom-killer/ { found = 1; buf = "" } found { buf = buf $0 "\n" } END { printf "%s", buf }' || true)"
+    if [ -z "$report" ]; then
+        echo "kernel log: no OOM report in it" >&2
+        return 0
+    fi
+
+    echo "kernel OOM report, the last one:" >&2
+    printf '%s\n' "$report" | grep -m1 'invoked oom-killer' | sed 's/^\[[^]]*\] */  /' >&2 || true
+    echo "  largest tasks at that moment, resident:" >&2
+    # A task row is "[ pid ] uid tgid total_vm rss ... name", rss in 4 KiB pages.
+    printf '%s\n' "$report" | awk '
+        { line = $0; sub(/^\[[^]]*\][[:space:]]*/, "", line) }
+        line ~ /^\[ *[0-9]+\]/ {
+            pid = line; sub(/^\[ */, "", pid); sub(/\].*/, "", pid)
+            sub(/^\[ *[0-9]+\][[:space:]]*/, "", line)
+            n = split(line, f, /[[:space:]]+/)
+            printf "%d\t%s\t%s\n", f[4] * 4 / 1024, pid, f[n]
+        }' | sort -t "$(printf '\t')" -k1,1nr | head -8 \
+           | awk -F'\t' '{ printf "    %7d MiB  pid %-8s %s\n", $1, $2, $3 }' >&2 || true
+    printf '%s\n' "$report" | grep -E 'oom-kill:constraint=|Killed process' | tail -2 | sed 's/^\[[^]]*\] */  /' >&2 || true
+}
+
 echo "Starting the Autobahn fuzzingserver (image $image) on :$port..."
 # Deliberately not --rm: an auto-removed container takes its exit status and its
 # logs with it, and those are the only view of the suite's own side of a failure.
@@ -263,7 +303,9 @@ $runner dotnet "$driver" $args || {
 }
 
 echo
-echo "fuzzingserver container: $(container_state)"
+state="$(container_state)"
+echo "fuzzingserver container: $state"
+case "$state" in *oomkilled=true*) kernel_oom_report ;; esac
 echo "fuzzingserver log (tail):"
 docker logs "$container" 2>&1 | tail -5
 

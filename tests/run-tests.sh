@@ -269,6 +269,10 @@ run_interop() {
     if [ $status -eq 0 ]; then
         PASSED=$((PASSED + 1))
         printf '  %sPASS%s  %-14s %s%s%s\n' "$GREEN" "$OFF" "$label" "$DIM" "$verdict" "$OFF"
+        # What was not measured, with its reason, as for h1fuzz above: the
+        # nightly's log is the only record of a peer run, and a bare count
+        # says nothing about which checks it is short of.
+        printf '%s\n' "$output" | grep -E '^[[:space:]]+~ ' | sed -E 's/^[[:space:]]+~ /      ~ /'
     else
         FAILURES+=("$label")
         printf '  %sFAIL%s  %-14s %s\n' "$RED" "$OFF" "$label" "${verdict:-no verdict line — the driver did not get that far}"

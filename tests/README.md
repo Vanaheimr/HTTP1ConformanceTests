@@ -298,8 +298,10 @@ family of four running about six hours late; see the `cron` comment in
 perfection: passing must not drop below it, and a single hard failure (`FAILED`,
 `WRONG CODE`, `UNCLEAN`) fails the run whatever the count says. Excluding the two
 sections to buy a green badge would have been the alternative, and it is the worse
-one — an exclusion hides the cases, a floor keeps counting them. See
-[`TestingAgainst_Autobahn.md`](TestingAgainst_Autobahn.md) for the full account,
+one — an exclusion hides the cases, a floor keeps counting them. A container the
+kernel killed for memory is followed by the kernel's own account of it: the
+largest tasks at that moment, and whether the container or the machine ran out.
+See [`TestingAgainst_Autobahn.md`](TestingAgainst_Autobahn.md) for the full account,
 including what the first run found and why this suite belongs in this repository
 rather than only in the HTTP/2 sibling.
 
@@ -319,7 +321,11 @@ also reads `/download`'s `Content-Disposition` with `mime.ParseMediaType`.
 `--content-disposition` saves under. Each program prints
 `PASS`/`FAIL`/`SKIP` lines and the driver counts them; a peer that cannot make
 a check says SKIP with the reason, because a silent pass and a silent skip look
-the same in a log a week later.
+the same in a log a week later. A program that exits non-zero without having
+printed a `FAIL` died, and counts as a failure that names the line it died
+with. Until 2026-11-01 it counted as a shorter list. `tests/run-tests.sh`
+prints the skips under the verdict, so the nightly's log says what it did not
+measure.
 
 Three of those skips are real and worth knowing: `java.net.http` and Python's
 `http.client` do not expose the trailer section at all, and `node:http` follows
@@ -332,6 +338,18 @@ next request ([python/cpython#72756](https://github.com/python/cpython/issues/72
 open since 2016, and the same code in 3.14 and on `main`). The check expects
 exactly that, so it goes red the day CPython stops doing it. RFC 8297 §3
 names this failure as the reason a server might hold `103` back over HTTP/1.1.
+
+Java's `trailers-body` is a **known JDK deviation**, pinned only on the JDKs
+that have it. The October 2026 updates, 21.0.13 and 25.0.5 measured here,
+carry JDK-8383439. Since then `java.net.http` wants a CRLF straight after the
+last chunk, and fails any response with a trailer section with
+`ProtocolException: CR expected`. RFC 9112 §7.1 puts the trailer section in
+exactly that place. 25.0.4.1 and older read the body. So the check passes
+under its own name either way, `trailers-body` or
+`trailers-body-rejected (known JDK deviation, JDK-8383439)`, and fails on any
+other exception or a wrong body. JDK-8383439 is not public. Apache Druid ran
+into the same thing ([apache/druid#20717](https://github.com/apache/druid/pull/20717))
+and now sends trailers only after `TE: trailers`.
 
 **Our client against foreign servers.** `tests/peers/server.go` and
 `server.mjs` serve the same five routes framed by Go's and Node's stacks;
@@ -503,7 +521,8 @@ intact, a trailer surviving a re-framing hop, `Connection: close` honoured.
 73 differences are recorded by name in `proxy-known.txt` and a new one fails
 the run. A framing row is recorded with its shape, `direct=REJECT chain=TWO`,
 and a chain whose shape changes fails as well. A row that stops differing is
-reported so the line can be deleted.
+reported so the line can be deleted. A new curl difference is printed with
+what came back, and a run that fails keeps its working files and says where.
 
 The poison column needs reading with its calibration, which is in
 [`../docs/TestingAgainst_Proxies.md`](../docs/TestingAgainst_Proxies.md): all

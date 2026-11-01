@@ -5432,3 +5432,158 @@ right, and so did sixty-three requests timed around the demo's 3 s idle close,
 the one explanation tried. The run's curl output had been deleted with the
 work directory, so what Envoy answered is unknown.
 `docs/TestingAgainst_Proxies.md` records it beside the earlier unexplained run.
+
+## 2026-11-01 — A red Autobahn nightly, and two diagnostics for next time
+
+The nightly of 2026-11-01
+([41298989967](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/41298989967))
+failed one job, the server-side Autobahn leg. The kernel had killed the suite:
+`exit=137 oom-killed=true` in case 13.4.13, with the demo host still alive. It
+was the first such line in 37 nights of that leg. The runner image
+(20261025.179.1), the suite image (`519915fb…`) and the Hermod pin were the
+ones that had been green the night before. The job's re-run was green,
+481/517, 36 declined, 0 hard, and slower than the red run was: 12.x took
+5:08 against 4:17. A slow runner alone does not explain it.
+
+Where the memory goes, measured over a whole local run every two seconds:
+
+| | fuzzingclient | demo host |
+|---|---|---|
+| up to 9.x | up to 235 MiB | 100–240 MB |
+| after 12.1 | 2.9 GiB | 120 MB |
+| the end | 3.6 GiB | 118 MB |
+
+It is the suite's Python heap and not page cache. With the container capped at
+300 MiB its `memory.stat` read 270 MiB anonymous against 4 MiB of file pages,
+and 2 GiB had gone to swap by the end of 12.3. The demo stays flat. But a
+public repository's `ubuntu-latest` has 16 GB by GitHub's own table, and
+3.6 GiB does not reach that. What held the rest at the moment of the kill was
+not recorded anywhere, and that is what changed.
+
+**`tests/autobahn.sh` and `tests/autobahn-client.sh`** print, when the
+container's state says OOM-killed, `free -m` and a digest of the kernel's last
+OOM report. The digest has the invoking task, the eight largest tasks by
+resident size, the constraint line and the kill. `CONSTRAINT_MEMCG` is a
+container at its own limit; `CONSTRAINT_NONE … global_oom` is a machine that
+ran out. `dmesg` needs root on the runner, so the drivers fall back to
+`sudo -n`, and where neither works they say so.
+
+Tested by causing it. Docker in WSL cannot limit swap, so `--memory` alone
+gave a container that swapped and crawled for ten minutes instead of dying.
+Writing `0` to that container's own `memory.swap.max`, as root, made the kill
+land in seconds. One mistake on the way: the first attempt went through
+`wsl -u root -- sh -c '…'`, the shell `wsl.exe` spawns expanded `$d` early,
+and the result was a stray `/memory.swap.max` holding `0` in the WSL root. It
+was removed straight away, and every command after that ran from a script file.
+
+| | driver | result |
+|---|---|---|
+| server, `--memory 300m`, `--cases '12.*'` | `autobahn.sh` | `oom-killed=true`, report with `wstest` at 333 MiB and `CONSTRAINT_MEMCG`, exit 1 |
+| client, `--memory 200m` | `autobahn-client.sh` | killed at case 275, `oomkilled=true`, the same report after the container line, exit 3 |
+| server, no cap, `--cases '1.*'` | `autobahn.sh` | green, no report |
+| client, no cap, cases 1–20 | `autobahn-client.sh` | 20/20, no report |
+| dmesg unreadable and `sudo -n` refused, stubbed | both | "kernel log: not readable here" |
+| a kernel log with no OOM report in it | both | "kernel log: no OOM report in it" |
+
+**`tests/proxy.sh`** stops losing what a chain answered. The entry before
+records Envoy failing a curl check once, and the run had deleted the only
+record of the answer. A new curl difference is now followed in the log by the
+line `tests/curl-matrix.sh` wrote under the check. The log is all the nightly
+keeps. A failed run keeps its work directory and names it, and a clean run
+still leaves nothing behind. Tested by deleting Envoy's row for "the 103
+carries the hint": red, with
+`expected '103 </prose>; rel="preload"; as=fetch', got '200 </prose>; …'`
+under the check, and the directory kept. `proxy-known.txt` came back
+byte-identical.
+
+## 2026-11-01 — Java ran two of its eleven checks for four nights
+
+PLAN.md said the reference peers were 65/65, "nightly on `ubuntu-latest`".
+The nightly said 56/56. The difference had been there since before H-40.
+Locally it was 58 against the nightly's 50, then 65 against 56, so of H-40's
+seven new checks six reached the nightly.
+
+Nothing was installed differently. The runner had all five runtimes: go1.26.10,
+OpenJDK 25.0.5, Node v24.22.1, Python 3.14.4 and wget 1.25.0. `interop.sh` run
+natively in WSL, on the Linux path the nightly takes, gave 65/65. Each peer
+client under the runner's version, in the official image, then showed it:
+
+```
+=== eclipse-temurin:25: java Client.java
+PASS	baseline
+PASS	chunked
+Exception in thread "main" java.net.ProtocolException: CR expected
+	at java.net.http/jdk.internal.net.http.ResponseContent$ChunkedBodyParser.tryConsumeCRLF(…)
+```
+
+Node 24, Python 3.14 and Go 1.26 ran through.
+
+**The JDK.** `/trailers` answers with a well-formed trailer section,
+`0\r\nX-Demo-Checksum: deadbeef\r\nX-Demo-Duration: 0ms\r\n\r\n`. That is
+RFC 9112 §7.1's `last-chunk trailer-section CRLF`. Measured on the same
+response:
+
+| JDK | `/trailers` |
+|---|---|
+| 17.0.20.1 | read |
+| 25.0.1 | read |
+| 25.0.4.1 (Debian) | read |
+| 21.0.13 | `ProtocolException: CR expected` |
+| 25.0.5 | `ProtocolException: CR expected` |
+| 25.0.5, `/chunked` without trailers | read |
+
+The cause is JDK-8383439, "Enhance HTTP Client Response Handling", in the
+October 2026 updates, 17.0.21, 21.0.13 and 25.0.5 by
+[apache/druid#20717](https://github.com/apache/druid/pull/20717)'s account.
+Since that update the client wants a CRLF straight after the last chunk, where
+older ones skipped two bytes unchecked. JDK-8383439 is not public, and Druid
+found no public report of the regression; neither was one found here. Druid
+now sends trailers only after `TE: trailers`. RFC 9110 permits that and does
+not require it, and Hermod is conformant without it.
+
+Read back through the nightlies, it dates itself exactly:
+
+| nightlies | runner image | JDK | peers |
+|---|---|---|---|
+| to 10-22 | ubuntu-24.04 | 17.0.20.1 | 58/58 |
+| 10-23 to 10-28 | ubuntu-26.04, 20261012 | 25.0.4.1 | 58/58 |
+| 10-29 to 11-01 | ubuntu-26.04, 20261025 | 25.0.5 | 50/50, then 56/56 |
+
+**The driver.** `run_peer_client` counted the `PASS` and `FAIL` lines a
+program printed and never read its exit status. A stack trace is neither, so
+it showed as a note, and nine checks that never ran were a shorter list
+rather than a failure. That makes it the sixth check in this repository that
+was structurally unable to fail, and CLAUDE.md's list now names it. A program
+that exits non-zero without having printed a `FAIL` now counts as one that
+died. The failure names the check count and the first line it died with.
+Measured with a `Client.java` mutated to throw "CR expected" where the runner's
+does:
+
+| | old `interop.sh` | new `interop.sh` |
+|---|---|---|
+| `--only java` | green, `2/2 checks passed` | red, `✗ java — the program died after 2 check(s), exit 1: Exception in thread "main" java.net.ProtocolException: CR expected` |
+
+**The pin.** `Client.java`'s trailers check accepts exactly two outcomes: the
+body as before, as `trailers-body`, or that exception with that message, as
+`trailers-body-rejected (known JDK deviation, JDK-8383439)`. Anything else
+fails. It is the CPython pin's shape, except that it has to hold on both
+sides of a JDK update. Under 25.0.5 and 21.0.13 the program now prints
+eleven results with the pinned name. Under 25.0.1 and 25.0.4.1 it prints
+eleven with the plain one.
+
+**The log.** `tests/run-tests.sh` printed only the verdict for a peer run
+that passed, so the nightly could not say what it had skipped. It now prints
+the skips under the verdict, as it already did for `h1fuzz`. `run-tests.sh
+--peers --filter peers` on Linux and `--wsl --filter peers` on Windows both
+read:
+
+```
+  PASS  peers          interop (peers): 65/65 checks passed
+      ~ java/trailers (java.net.http does not expose the trailer section)
+      ~ node/redirect (node:http follows no redirects; the 302 itself is checked instead)
+      ~ python/trailers (http.client does not expose the trailer section)
+```
+
+With the runner on 25.0.5 the next nightly should read 65/65 too, with Java's
+fourth check under its pinned name. That is a prediction, and the nightly will
+show whether it holds.

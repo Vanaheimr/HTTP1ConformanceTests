@@ -304,6 +304,17 @@ not known. `tests/proxy.sh` writes each chain's curl output into a work
 directory and deletes it on exit, so the one run that failed kept only its
 verdict.
 
+It no longer does either. Since the same day, a new curl difference is
+followed by the line `tests/curl-matrix.sh` wrote under the failed check: what
+it looked for, and the first 160 bytes of what came back. That goes into the
+log, which is all the nightly keeps. A run that fails also keeps its work
+directory, every chain's curl output, the `h1desync` observations and
+compose's log, and names it. Tested by deleting Envoy's row for "the 103
+carries the hint" from `tests/proxy-known.txt`. The run went red with
+`expected '103 </prose>; rel="preload"; as=fetch', got '200 </prose>; …'`
+under the check, and the directory was there afterwards. A clean run still
+leaves nothing behind.
+
 What *was* done about it is not a fix. The eighteen failures said nothing
 about their common cause, so `tests/proxy.sh` now checks that the demo still
 answers between sections and stops with
