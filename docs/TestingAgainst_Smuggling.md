@@ -133,6 +133,25 @@ connection open is not:
 > after responding to such a request to avoid the potential attacks.**
 > — RFC 9112 §6.1
 
+**Go has fixed this on its `master`, for Go 1.28.** It is
+[golang/go#80942](https://github.com/golang/go/issues/80942), opened by Go's
+maintainers on 2026-08-18 and closed two days later by `b2b97b9496`, which
+closes the connection after any message carrying both fields. That was five
+weeks before the table above was measured, but in no release then or since:
+go1.27.3, the latest on 2026-11-01, still serves the hidden request and leaves
+the connection open, measured that day. It came to light when this was about
+to be filed, and it was not filed.
+
+So the nightly differential will go red by itself once the Go it runs is 1.28
+or later. `cl-te` and `te-cl` should then read `ONE` for Go: the request
+processed per Transfer-Encoding, and the connection closed. A known row that
+changes shape fails the run, and that red is the fix arriving. The two lines in
+`tests/smuggle-known.txt` then need rewriting rather than deleting, because
+Hermod and Node still refuse what Go processes. Go's `master` has other framing
+changes since August, `cff1e3df74` on invalid trailers among them, so more of
+Go's seven rows may move at the same time. This is read in the source; no build
+of Go's `master` has been run against the differential.
+
 `chunk-bws` is the same shape from a different door: Go accepts `5 ` — a
 chunk-size followed by a bare space — where `chunk-size = 1*HEXDIG` and an
 extension has to begin with `;`. It reads the body and serves what follows as

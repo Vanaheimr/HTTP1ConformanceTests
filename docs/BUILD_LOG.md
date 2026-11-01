@@ -5338,3 +5338,49 @@ HTTP/1.0.
 
 A6's CL.TE connection that Go leaves open is still not filed. Neither is a
 comment on python/cpython#72756.
+
+## 2026-11-01 — Go's CL.TE connection: already golang/go#80942, not filed
+
+A6's other Go finding was to be filed next. Go answers a request with both
+`Content-Length` and `Transfer-Encoding` per Transfer-Encoding, which RFC 9112
+§6.1 allows, and then leaves the connection open, where §6.1 says it MUST
+close it. The search for an existing issue found one:
+[golang/go#80942](https://github.com/golang/go/issues/80942). Go's
+maintainers opened it on 2026-08-18 and closed it two days later with
+`b2b97b9496`, milestone Go 1.28. On `master`, `determineBodyLength` in
+`transfer.go` sets `t.Close` when a message carries both fields, and quotes
+§6.1 beside it. There is no backport.
+
+So the fix was on Go's `master` five weeks before A6 measured the behaviour on
+2026-09-27, and it is in no release. That was measured, not inferred. A
+program with an `httptest` server and one raw request,
+`POST /first` with `Content-Length: 5` and `Transfer-Encoding: chunked` and
+`GET /second` hidden behind its `0` chunk, gets two `200`s and a connection
+still open a second later. That holds on go1.24.4 and on go1.27.3, the latest
+release, pulled with `GOTOOLCHAIN`. The fix itself was read in the source and
+not run. No build of Go's `master` has been made here.
+
+Nothing was filed, since it would have been a duplicate. The docs that said
+"not ours to fix" now name the issue: `docs/TestingAgainst_Smuggling.md`,
+`docs/TestingAgainst_Proxies.md`, PLAN.md and CLAUDE.md.
+
+What the fix will do here, written down before it happens:
+
+- **The nightly differential goes red** once the Go on its runner is 1.28 or
+  later. `cl-te` and `te-cl` should change from `TWO` to `ONE` in Go's
+  column, and `tests/smuggle.sh` fails a known row that changes shape. The
+  two lines of `tests/smuggle-known.txt` are then rewritten, not deleted,
+  because Hermod and Node still refuse what Go processes. Other rows of Go's
+  may move with them, since `master` also has `cff1e3df74`, which closes after
+  invalid trailers.
+- **Caddy should stop splitting `cl-te` and `te-cl`** once it is built with Go
+  1.28. `tests/proxy.sh` will not notice. It matches a framing row by kind,
+  proxy and probe, and the `direct=REJECT chain=TWO` beside it is a note that
+  nothing compares. A chain that went from `ONE` to `TWO`, which is the
+  dangerous direction, would pass just as quietly. That is a gap in the
+  instrument, not in Go, and it is left as its own task.
+- **`tests/thirdparty/poscontrol.sh` loses its lenient back end.** This is
+  the positive control for A5's poison probe, and it is untracked. It uses
+  Go's `net/http` because that serves the hidden request. Under Go 1.28 the
+  control poisons nothing and proves nothing. Its header now says to run it
+  with an older Go.

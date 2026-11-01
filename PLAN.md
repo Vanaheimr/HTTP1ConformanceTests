@@ -22,7 +22,7 @@ nightly; it found **H-28** on its first run, ✅ fixed 2026-10-03. **A6 ✅** �
 differential: `tests/h1desync` in the gate, three implementations compared
 nightly, two third-party probe suites, and Hermod added to the HTTP Garden; it
 found **H-29** and **H-30**, and a MUST violation in Go's `net/http` that is
-not ours to fix. **A11 ✅** — CI per push
+not ours to fix and is fixed on Go's `master` for 1.28. **A11 ✅** — CI per push
 on two legs, nightly for both Autobahn directions. **A8 ✅** — three browser engines, **27/27** since H-10 closed; it read 24/27 before, the three failures being H-10 shown from the only vantage point that can see it. Track B: **40 findings, 37 fixed upstream**
 and pinned here, all of them whole — H-4, H-6, H-8, H-21 and H-22 landed
 together with [Hermod#43](https://github.com/Vanaheimr/Hermod/pull/43) on 2026-09-26, one commit each and the
@@ -360,7 +360,10 @@ which the fix's own verification turned up. Six are Go's, and two of those are a
 MUST violation rather than a divergence: `net/http` answers the CL.TE and TE.CL
 shapes with two responses and **does not close the connection**, where §6.1 says
 "Regardless, the server MUST close the connection after responding to such a
-request to avoid the potential attacks." Verified by hand against go1.24.4.
+request to avoid the potential attacks." Verified by hand against go1.24.4, and
+on 2026-11-01 against go1.27.3, which still does it. Go had already fixed it on
+its `master` for 1.28 ([golang/go#80942](https://github.com/golang/go/issues/80942),
+closed 2026-08-20), so the nightly differential goes red when its Go gets there.
 
 **The Garden is built but not fully run, and that is a cost decision rather
 than an omission.** `tests/http-garden/` holds a Dockerfile on the Garden's own

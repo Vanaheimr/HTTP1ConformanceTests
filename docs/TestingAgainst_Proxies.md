@@ -154,8 +154,10 @@ go1.27.3, the latest release on 2026-10-31, it does the same, and so does
 the Caddy image is built with go1.26.3. It is the second MUST that Go's
 `net/http` misses in this repository, after A6's CL.TE connection that is not
 closed. Neither is ours to fix. This one is filed as
-[golang/go#82743](https://github.com/golang/go/issues/82743) (2026-10-31); the
-CL.TE one is not.
+[golang/go#82743](https://github.com/golang/go/issues/82743) (2026-10-31). The
+CL.TE one needed no filing: it is
+[golang/go#80942](https://github.com/golang/go/issues/80942), fixed on Go's
+`master` for 1.28 and still in go1.27.3.
 
 The third column is a difference and not a defect. nginx, Caddy and httpd
 send their own version upstream, so behind them the origin sees HTTP/1.1 and
@@ -183,7 +185,9 @@ Three readings worth keeping:
   it turns out to be near-universal.
 - **Caddy splits `cl-te` and `te-cl` into two requests.** Caddy is built on
   Go's `net/http`, and A6 measured exactly this behaviour in Go directly. The
-  same finding arriving through a different door.
+  same finding arriving through a different door. Caddy should stop once it
+  is built with Go 1.28, which closes the connection
+  ([golang/go#80942](https://github.com/golang/go/issues/80942)).
 - **Apache answers 500 where Hermod answers 400.** For the three
   chunked-twice spellings, Hermod refuses with `400` and closes — the
   behaviour [H-29](../PLAN.md) added this morning — and Apache turns that
