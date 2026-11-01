@@ -176,6 +176,14 @@ it, normalises it, refuses it, or splits it into two requests.
 It is the most informative column and the least judgemental: a row here is a
 fact about the proxy, recorded rather than graded.
 
+A row is matched on its shape as well as on its probe, so the fact has to stay
+the same for the run to pass. A chain that reads a recorded probe differently
+from what is recorded, `chain=ONE` turning into `chain=TWO` for example, fails
+the run, and the old line is listed as "differing differently". Until
+2026-11-01 only the proxy and the probe were compared, and the shape beside
+them was a note. A chain that went from `ONE` to `TWO`, and so began to execute
+the hidden request, would have passed as already recorded.
+
 Three readings worth keeping:
 
 - **`chunk-bws` goes through all five.** A chunk-size followed by a bare space
@@ -187,7 +195,8 @@ Three readings worth keeping:
   Go's `net/http`, and A6 measured exactly this behaviour in Go directly. The
   same finding arriving through a different door. Caddy should stop once it
   is built with Go 1.28, which closes the connection
-  ([golang/go#80942](https://github.com/golang/go/issues/80942)).
+  ([golang/go#80942](https://github.com/golang/go/issues/80942)), and this
+  column goes red when it does.
 - **Apache answers 500 where Hermod answers 400.** For the three
   chunked-twice spellings, Hermod refuses with `400` and closes — the
   behaviour [H-29](../PLAN.md) added this morning — and Apache turns that
@@ -277,6 +286,23 @@ explanations were tested and all three are wrong:
 So it stands as unexplained, most plausibly debris from a force-stopped
 predecessor, and it is written down rather than rounded off — four green runs
 do not make the fifth not have happened.
+
+**A second one, on 2026-11-01**, and smaller. A full run was 31/32 because
+Envoy failed one curl check it has always passed: "the identity one keeps the
+plain ETag", a `GET /prose` without `Accept-Encoding` that should come back
+with `ETag: "prose-1"`. The images were the ones measured green on
+2026-10-30, and the run was not reproduced. The curl section through Envoy
+alone gave 88/99 with every difference recorded. Sixty pairs of that check's
+two requests, the `br` one and then the identity one, gave the right `ETag`
+sixty times. A full run straight after was 32/32. One explanation was tried
+and not confirmed. The demo, with `--fast-timeouts`, closes an idle keep-alive
+connection silently after 3 s. Envoy's upstream pool has no idle timeout and
+no retry policy, so a request sent on a connection Hermod is just closing would
+come back as Envoy's own `503`. Sixty-three requests timed between 2.5 s and
+3.5 s after the one before all came back `200`. What Envoy actually answered is
+not known. `tests/proxy.sh` writes each chain's curl output into a work
+directory and deletes it on exit, so the one run that failed kept only its
+verdict.
 
 What *was* done about it is not a fix. The eighteen failures said nothing
 about their common cause, so `tests/proxy.sh` now checks that the demo still

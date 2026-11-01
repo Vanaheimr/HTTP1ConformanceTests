@@ -337,16 +337,25 @@ fi
 
 touch "$KNOWN"
 
-# is_known <kind> <proxy> <detail>
+# is_known <kind> <proxy> <detail> [<shape>]
+#
+# With a shape, the fourth field has to match as well. A framing row's fourth
+# field is not a note but the measurement - "direct=REJECT chain=TWO" - and
+# matched on the first three alone, a chain that went from ONE to TWO, and so
+# began to execute the hidden request, passed as "already recorded". So would
+# Caddy going from TWO to ONE once it is built with Go 1.28 (golang/go#80942).
+# A curl or via row's fourth field is prose, and is not compared.
 is_known() {
-    awk -F'\t' -v k="$1" -v p="$2" -v d="$3" \
-        '$1==k && $2==p && $3==d { found=1 } END { exit found ? 0 : 1 }' "$KNOWN"
+    awk -F'\t' -v k="$1" -v p="$2" -v d="$3" -v s="${4:-}" \
+        '$1==k && $2==p && $3==d && (s=="" || $4==s) { found=1 } END { exit found ? 0 : 1 }' "$KNOWN"
 }
 
 # record <kind> <proxy> <detail> <note>
 record() {
     ALL_ROWS+=("$1	$2	$3	${4:-}")
-    if is_known "$1" "$2" "$3"; then
+    shape=""
+    [ "$1" = framing ] && shape="${4:-}"
+    if is_known "$1" "$2" "$3" "$shape"; then
         return 0
     fi
     NEW_ROWS+=("$1	$2	$3	${4:-}")
@@ -570,6 +579,7 @@ fi
 # in the file unnoticed for good. Reported, never failed - a row can also go
 # missing because a proxy did not come up.
 STALE=()
+CHANGED=()
 while IFS= read -r line; do
 
     case "$line" in ""|"#"*) continue ;; esac
@@ -591,17 +601,33 @@ while IFS= read -r line; do
     # Indexed, not "for row in ${ALL_ROWS[@]}" unquoted: a recorded curl check
     # is a sentence with spaces in it, and word-splitting turned one row into
     # six words that match nothing. Every row would then have looked stale.
+    #
+    # A framing row is matched on its shape as well, as record() does. One
+    # whose probe still reads differently, but differently from what is
+    # recorded, has changed rather than gone, and is listed as such: the
+    # run has already failed on its new shape.
+    shape="$(printf '%s' "$line" | cut -f4)"
     seen=0
+    moved=0
     i=0
     while [ "$i" -lt "${#ALL_ROWS[@]}" ]; do
         if [ "$(printf '%s' "${ALL_ROWS[$i]}" | cut -f1-3)" = "$(printf '%s	%s	%s' "$kind" "$who" "$what")" ]; then
-            seen=1
-            break
+            if [ "$kind" != framing ] || [ "$(printf '%s' "${ALL_ROWS[$i]}" | cut -f4)" = "$shape" ]; then
+                seen=1
+                break
+            fi
+            moved=1
         fi
         i=$((i + 1))
     done
 
-    [ "$seen" -eq 0 ] && STALE+=("$kind	$who	$what")
+    if [ "$seen" -eq 0 ]; then
+        if [ "$moved" -eq 1 ]; then
+            CHANGED+=("$line")
+        else
+            STALE+=("$kind	$who	$what")
+        fi
+    fi
 
 done < "$KNOWN"
 
@@ -609,6 +635,12 @@ if [ "${#STALE[@]}" -gt 0 ] && [ "$UPDATE" -eq 0 ]; then
     echo
     echo "  ${GREEN}no longer differing${OFF} — delete these lines from ${KNOWN#"$ROOT/"}:"
     for row in "${STALE[@]}"; do printf '    %s\n' "$row"; done
+fi
+
+if [ "${#CHANGED[@]}" -gt 0 ] && [ "$UPDATE" -eq 0 ]; then
+    echo
+    echo "  ${YELLOW}differing differently${OFF} — replace these lines in ${KNOWN#"$ROOT/"} with the new ones below:"
+    for row in "${CHANGED[@]}"; do printf '    %s\n' "$row"; done
 fi
 
 
@@ -621,6 +653,9 @@ if [ "$UPDATE" -eq 1 ]; then
         echo "#   curl     a check from tests/curl-matrix.sh that passes directly and not through this proxy"
         echo "#   framing  a tests/h1desync probe this chain reads differently from the demo alone"
         echo "#   via      an intermediary behaviour that is allowed but worth knowing"
+        echo "#"
+        echo "# A framing row's note is its shape, and is matched with the rest; a curl or via"
+        echo "# row's note is prose, and is not."
         echo "#"
         echo "# A row not listed here fails the run. Written by tests/proxy.sh --update on $(date -u +%Y-%m-%d)."
         echo "#"

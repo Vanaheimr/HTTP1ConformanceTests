@@ -288,7 +288,7 @@ Four measurements, and they are not equally strong:
 | | what | |
 |---|---|---|
 | `curl` | all 99 curl checks through each chain, against 99/99 direct | every difference recorded by name, a new one fails |
-| `framing` | `h1desync --observe` through each chain, against direct | says what each proxy does with an ambiguous message |
+| `framing` | `h1desync --observe` through each chain, against direct | says what each proxy does with an ambiguous message; recorded with its shape, and a changed shape fails |
 | `poison` | the attack: send it, then ask innocent questions on fresh connections | **see the calibration below** |
 | `via` | chunked bodies intact, trailers through a re-framing hop, `Connection: close` | |
 

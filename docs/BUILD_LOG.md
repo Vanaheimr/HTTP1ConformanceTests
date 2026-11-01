@@ -5384,3 +5384,51 @@ What the fix will do here, written down before it happens:
   Go's `net/http` because that serves the hidden request. Under Go 1.28 the
   control poisons nothing and proves nothing. Its header now says to run it
   with an older Go.
+
+## 2026-11-01 — `tests/proxy.sh` compares a framing row's shape
+
+The entry before found this gap while writing down what Go 1.28 will do to
+Caddy. `tests/proxy-known.txt` records a framing difference as
+`framing  caddy  cl-te  direct=REJECT chain=TWO`. `is_known` compared only the
+first three fields, so the shape beside them was never read. A chain that went
+from `ONE` to `TWO` would have passed as "already recorded", and that is the
+direction in which a proxy starts to execute the hidden request. The opposite
+change, which Go 1.28 should bring to Caddy, would have passed unremarked as
+well. It is the fifth check in this repository that was structurally unable to
+fail, and CLAUDE.md's list now names it.
+
+`record` passes the shape to `is_known` for framing rows, and `is_known`
+compares the fourth field whenever it is given a shape. Curl and via rows are
+matched on three fields as before, because their fourth field is prose: empty
+for curl, a sentence for via. The stale-row report reads the shape too. A
+framing row whose probe still differs, but differs in another way, is not
+reported as "no longer differing", since that would invite deleting it. It is
+listed under a heading of its own, "differing differently", above the new
+line that failed the run. `--update` writes what it wrote before, because the
+rows it writes were never changed.
+
+Measured against Hermod `b27d6483` and the five images of 2026-10-02:
+
+| run | result |
+|---|---|
+| `--filter framing`, three times | 6/6 each time. All 37 framing rows matched with their shapes, the same counts every run: nginx 4, HAProxy 8, Caddy 12, httpd 8, Envoy 5 |
+| M1: Caddy's `cl-te` recorded as `chain=ONE`, new script | **red**, 1/2. `framing/caddy` fails with "1 not in", the old line listed as differing differently and the new one as not in the file |
+| M2: the same file, the script as it was at `7141e0b` | green, 2/2. This is the blindness |
+| M3: httpd's via note rewritten | green, 3/3. Prose is still not compared |
+| the whole matrix | 31/32 once, Envoy's curl check below; **32/32** on the run after. 73 differences, and no row reported stale |
+| `--update --filter framing --only caddy`, on a copy | the same 12 rows, tabs included, under the header with its new line |
+
+The shapes were recorded on 2026-09-27, and all 37 still matched on
+2026-11-01, in all five runs that reached them. That is the evidence that comparing them adds
+no flakiness. `h1desync --observe` stops reading after two quiet slices, and a
+slow chain could in principle turn a `TWO` into a `ONE`. None did.
+
+The 31/32 was not this change. The check that failed was a curl row, and curl
+rows are matched as before. Envoy failed "the identity one keeps the plain
+ETag" once, a check it had always passed, against the same images that were
+green on 2026-10-30. It was not reproduced. The curl section through Envoy
+alone gave 88/99, sixty pairs of the check's two requests all came back
+right, and so did sixty-three requests timed around the demo's 3 s idle close,
+the one explanation tried. The run's curl output had been deleted with the
+work directory, so what Envoy answered is unknown.
+`docs/TestingAgainst_Proxies.md` records it beside the earlier unexplained run.

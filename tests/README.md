@@ -501,7 +501,9 @@ intermediary-facing things visible from outside — a chunked body arriving
 intact, a trailer surviving a re-framing hop, `Connection: close` honoured.
 
 73 differences are recorded by name in `proxy-known.txt` and a new one fails
-the run; a row that stops differing is reported so the line can be deleted.
+the run. A framing row is recorded with its shape, `direct=REJECT chain=TWO`,
+and a chain whose shape changes fails as well. A row that stops differing is
+reported so the line can be deleted.
 
 The poison column needs reading with its calibration, which is in
 [`../docs/TestingAgainst_Proxies.md`](../docs/TestingAgainst_Proxies.md): all

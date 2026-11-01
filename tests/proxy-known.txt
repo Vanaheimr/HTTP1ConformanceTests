@@ -6,6 +6,9 @@
 #   framing  a tests/h1desync probe this chain reads differently from the demo alone
 #   via      an intermediary behaviour that is allowed but worth knowing
 #
+# A framing row's note is its shape, and is matched with the rest; a curl or via
+# row's note is prose, and is not. Since 2026-11-01.
+#
 # A row not listed here fails the run. Written by tests/proxy.sh --update on 2026-09-27;
 # three framing rows pruned by hand on 2026-10-02 after the image bump below, two
 # caddy rows for /digest added by hand on 2026-10-29, and ten rows for /early-hints
