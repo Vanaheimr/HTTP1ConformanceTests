@@ -33,14 +33,16 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 Target framework is `net10.0`. TLS uses a self-signed cert generated at startup.
 
 **Tests:** most coverage is the **1328 NUnit tests** in `libs/Hermod/HermodTests/`
-under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **381** are the HTTP/1.x
+under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **782** are the HTTP/1.x
 protocol regression selection and **161** cover RFC 6455/7692 WebSockets. CI gates
 on those 1328 plus the single test in `Tests.HTTPS.` = **1329** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
-through `ATCPClient`. The regression selection did not move
-with the five findings of 2026-09-26: their four fixtures are not in its filter,
-and adding them made it 431 against `5ab74d7f`. These are run counts, not
+through `ATCPClient`. The regression selection is the thirty-eight fixtures
+`Hermod/HTTP1/README.md` names, by concern, since Hermod#221 (2026-11-03). It
+was eleven names and 381 before: a fixture joins only when it is named there,
+and from 2026-09-24 on none was, so every finding that brought a fixture of its
+own bypassed it. A new fixture of that kind adds its name in the same PR. These are run counts, not
 `--list-tests` counts; see the note under the coverage table in
 [`README.md`](README.md) for why the two differ by three here:
 
@@ -182,7 +184,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 1328 `Tests.HTTP.` / 381 regression selection / 161 WebSockets, all run counts — 1329 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2392** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP — the last of which is where most of Hermod's own work has been going, which is why that figure moves between pins faster than anything here does: 2321 five pins ago, 2324 at the two after it, 2337 at the next, and 2392 since the last, whose 55 more are DNS and HTTP/2 tests. All 2392 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
+| Hermod's own NUnit suites | 1328 `Tests.HTTP.` / 782 regression selection / 161 WebSockets, all run counts — 1329 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **2465** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP. That figure moves between pins faster than anything here does, because most of Hermod's own work happens there and in SSH and QUIC, which no filter here selects: 2321 on 2026-10-28, 2324 and then 2337 on 2026-10-29, 2392 on 2026-10-30, and 2465 since 2026-11-03, whose 73 more are HTTP/2, HTTP/3 and DNS tests. All 2465 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
 | this repo's gate | **334** cleartext, **340** over TLS (211 raw-wire + 99 curl + 24 desync; the TLS leg's six more are the ALPN check, curl's alt-svc cache and H-36's four misdirected requests, none of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28, 314/316 before the six RFC 9530 digest checks on 2026-10-29, 320/322 before H-36's four the same day, 320/326 before H-15's four problem-details checks later still, 324/330 before H-14's three link checks after that, 327/333 before H-40's five early-hints checks and H-19's two on `Content-Disposition` on 2026-10-30. The TLS leg has been in the nightly since H-14, on Windows and on `debian:13`, where curl's HTTP/2 makes it 341 |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **536/536** |
 | reference peers (A7) | **65/65** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers. One of the 65 is a known CPython deviation pinned rather than passed: `http.client` takes a `103` for the final response ([python/cpython#72756](https://github.com/python/cpython/issues/72756)). Another is pinned only on the JDKs that need it: since the October 2026 updates (21.0.13, 25.0.5; JDK-8383439, not public) `java.net.http` fails any chunked response with a trailer section with "CR expected". The nightly's runner took 25.0.5 on 2026-10-29, and the Java client then died after two checks for four nights, uncounted — see BUILD_LOG 2026-11-01 |

@@ -5662,3 +5662,93 @@ The peer prediction of 2026-11-01 held: the same nightly read
 check can only pass under its pinned name. The log has the verdict and the
 skips, not the names of the checks that passed, so that last part is
 inferred from the JDK and not read.
+
+## 2026-11-03 — Hermod to `b8d24be3`: the regression selection names its fixtures
+
+Twenty-eight merges past `b27d6483`, and one commit straight to master. One
+merge is this repository's:
+[Hermod#221](https://github.com/Vanaheimr/Hermod/pull/221), which rewrites the
+regression selection in `Hermod/HTTP1/README.md` and changes no code. The rest
+is Hermod's own, and none of it touches `Hermod/HTTP1`, `Hermod/HTTP` or
+`Hermod/TCP`:
+
+- SSH: fourteen merges, #193 to #220;
+- HTTP/2: #195, #197, #200, #202, #217 and #222;
+- HTTP/3: #194, #196, #208, and #213 for its tests under load;
+- QUIC: #201;
+- DNS: #209, #210 and `0f595ac4`.
+
+Styx stays at `1262aa28`. It
+has thirteen new commits, about COSE, `CBORJSON` and the command line's
+history. Hermod uses none of the types they change: its WebAuthn code parses a
+`COSE_Key` with `CBORValue` itself.
+
+### The regression selection
+
+Until #221 the selection was eleven `FullyQualifiedName~` names, the last
+three added on 2026-09-24 for H-2. A fixture counted only once a name in that
+filter matched it. So a finding whose tests went into a file already named
+moved the figure, as H-10's and H-28's did, and one that brought a fixture
+of its own did not. That happened to the four of 2026-09-26, then to H-11 and
+H-23 (2026-10-03), H-36 (2026-10-29) and H-40 (2026-10-30). On 2026-09-26
+this log called adding them "a one-line change upstream" and left it there.
+Five weeks later 27 protocol fixtures were outside the filter, not four.
+
+#221 names thirty-eight fixtures, grouped by concern. A fixture is in when its
+tests drive the HTTP/1.x client or server over the wire, or test a field or
+coding the stack writes or reads. The README lists what stays out and why:
+
+- the URL, query, hostname and method models;
+- the `HTTPAPI` and `HTTPExtAPI` layer and the static-file handlers;
+- the `HTTPTestServer`;
+- SSE and WebSockets, which have rows of their own;
+- `HTTPClientLazyDNSClientTests` (H-27), which measures what a client costs,
+  not what it sends;
+- `HTTPSClientTests`, the one test under `Tests.HTTPS.`, so that the
+  selection stays inside `Tests.HTTP.`.
+
+Measured on one tree:
+
+| filter | names | tests |
+|---|---:|---:|
+| before #221 | 11 | 381 |
+| #221 | 38 | **782** |
+
+The 401 between them equal the sum of the `[Test]` and `[TestCase]` counts in
+the 27 files that were added. `FullyQualifiedName~` matches substrings, and
+`HTTPClientTests` already reaches four other classes. So the check that
+mattered was that no new name reaches into a class it was not meant for, and
+none does.
+
+### Measured against `b8d24be3` and `1262aa28`
+
+Each row on its own, one after the other. The whole set ran twice. The first
+time was on #221's head before the merge, which is `e0a9413e` plus the README,
+while waiting for it. By the time #221 was merged, #220 and `0f595ac4` had gone
+in ahead of it and #222 after it, with SSH, DNS and HTTP/2 changes. So the
+first set measured a tree that no commit on master has, and the pin's figures
+come from the second run.
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1329 | **1329** |
+| `Tests.HTTP.` | 1328 | **1328** |
+| the protocol regression selection | 381 | **782** |
+| `Tests.HTTP.WebSockets` | 161 | **161** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2392 | **2465** |
+| gate, cleartext | 9/9, 334/334 | 9/9, **334/334** |
+| gate, `--tls` | 9/9, 340/340 | 9/9, **340/340** |
+| gate, `--wsl` | 12/12, 536/536 | 12/12, **536/536** |
+| reference peers, inside `--wsl` | 65/65 | **65/65** |
+
+The first run gave the same figure in every row but one: the neighbours read
+2464 there. #222 adds the 2465th, an HTTP/2 test. The 73 more are 32 for
+HTTP/2, 25 for HTTP/3 and 16 for DNS. Of HTTP/3's 25, 21 are attributes. Four
+tests in `WebTransportReleaseTests` take a `[Values] Closer` and run twice.
+SSH's 110 new tests and QUIC's 10 are outside every filter here.
+
+The proxies, Autobahn in both directions and the Debian clone were not run
+again for this pin. Nothing they reach changed: no file under `Hermod/HTTP1`,
+`Hermod/HTTP`, `Hermod/TCP` or the WebSocket code. The nightly runs all of
+them against the new pin, and its proxies job is also the first check of
+f605365's Caddy row against Caddy 2.11.7.
