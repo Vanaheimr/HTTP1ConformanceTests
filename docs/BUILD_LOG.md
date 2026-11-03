@@ -5587,3 +5587,78 @@ read:
 With the runner on 25.0.5 the next nightly should read 65/65 too, with Java's
 fourth check under its pinned name. That is a prediction, and the nightly will
 show whether it holds.
+
+## 2026-11-03 — The shape check's first catch, and what `TWO` does not say
+
+The nightly of 2026-11-02
+([41438513358](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/41438513358))
+was the first to compare a framing row's shape, and it failed one job on it:
+
+```
+✗ framing/caddy — 12 of 38 read differently
+    1 not in tests/proxy-known.txt
+framing	caddy	chunk-ext-quoted-crlf	direct=REJECT chain=TWO     (recorded: chain=ONE)
+```
+
+Nothing in this repository had changed. `caddy:2-alpine` had: the nightly
+pulls it fresh, and it now resolves to Caddy 2.11.7 built with Go 1.26.8, an
+image from 2026-10-21. The row was recorded against 2.11.4 built with Go
+1.26.3. Measured both ways on the same checkout, with the old image kept under
+a tag of its own:
+
+| `caddy:2-alpine` | `tests/proxy.sh --only caddy` |
+|---|---|
+| 2.11.4, Go 1.26.3 | 8/8, every difference recorded |
+| 2.11.7, Go 1.26.8 | 7/8, `chunk-ext-quoted-crlf` `ONE` → `TWO` |
+
+When it began is not knowable from the nightly logs: until 05f225b the match
+ignored the shape, and a row that matched printed nothing.
+
+**What `TWO` was.** The probe is `5;x="a\r\nb"\r\nhello\r\n0\r\n\r\n` with a
+hidden request after it, a CRLF inside a quoted chunk extension. The kept
+`obs-caddy` has the answers:
+
+```
+OBS	chunk-ext-quoted-crlf	TWO	502,400	closed
+OBS	chunk-trailer-cl	TWO	200,418	open
+```
+
+Caddy reads `5;x="a` as the chunk line, the five bytes after it do not end in
+CRLF, and it answers 502. 2.11.4 then closed. 2.11.7 reads what is left on the
+connection as a request of its own and refuses it with 400. The hidden request
+is not executed; one that is reads `200,418`, as `chunk-trailer-cl` does
+through the same proxy. A shape counts responses and says nothing more. The
+comment in `tests/proxy.sh` and the paragraph in
+`docs/TestingAgainst_Proxies.md` both said that `ONE` turning into `TWO` meant
+a chain had begun to execute the hidden request. That was written on
+2026-11-01 as the reason for the check, and the first thing the check found
+contradicts it. Both now say that a changed shape is a reason to read the
+status codes, which a failed run keeps in its working directory.
+
+Whether Caddy or Go made the change was not separated. The poison column
+stayed clean with either image.
+
+**The row** is `chain=TWO` now, and the header of `tests/proxy-known.txt`
+records what each floating tag resolved to when it was measured. It had the
+tags alone, though its own text says the version is the only thing that tells
+"we got stricter" from "the proxy did". All five tags had moved since the
+images here were pulled; the four besides Caddy changed no row:
+
+| tag | resolved 2026-11-03 |
+|---|---|
+| `nginx:1.31-alpine` | nginx 1.31.8 |
+| `haproxy:3.4-alpine` | HAProxy 3.4.7 |
+| `caddy:2-alpine` | Caddy 2.11.7, Go 1.26.8 |
+| `httpd:2.4-alpine` | Apache 2.4.69 |
+| `envoyproxy/envoy:v1.39-latest` | Envoy 1.39.6 |
+
+`tests/proxy.sh` against those five, before the change: 31/32, the Caddy row
+the only difference, as in the nightly. After it: 32/32. With the row changed
+and the old Caddy image tagged back: red, 7/8 for Caddy, the new row listed as
+"differing differently". So the row holds the shape in both directions.
+
+The peer prediction of 2026-11-01 held: the same nightly read
+`interop (peers): 65/65` on Temurin 25.0.5, a JDK on which Java's trailers
+check can only pass under its pinned name. The log has the verdict and the
+skips, not the names of the checks that passed, so that last part is
+inferred from the JDK and not read.

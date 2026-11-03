@@ -13,6 +13,9 @@
 # three framing rows pruned by hand on 2026-10-02 after the image bump below, two
 # caddy rows for /digest added by hand on 2026-10-29, and ten rows for /early-hints
 # on 2026-10-30 (docs/TestingAgainst_Proxies.md has what each proxy does with a 103).
+# caddy's chunk-ext-quoted-crlf went from chain=ONE to chain=TWO by hand on
+# 2026-11-03: Caddy 2.11.7 reads on after the 502 and refuses the rest with a 400,
+# where 2.11.4 closed. Not the hidden request; see docs/BUILD_LOG.md, 2026-11-03.
 #
 # Measured against these images. They matter: when a row disappears, this file
 # alone cannot say whether we got stricter or the proxy did, and the version is
@@ -20,11 +23,12 @@
 # 1.27→1.31 and Envoy v1.31→v1.39 both stopped splitting chunk-lf-only into two
 # requests downstream, and HAProxy 3.0→3.4 stopped differing on cl-list-diff,
 # while an unbumped Caddy still splits it. Nothing in this repository changed.
-#   caddy:2-alpine
-#   envoyproxy/envoy:v1.39-latest
-#   haproxy:3.4-alpine
-#   httpd:2.4-alpine
-#   nginx:1.31-alpine
+# The tags float, so what each resolved to is written beside it, as of 2026-11-03:
+#   caddy:2-alpine                  Caddy 2.11.7, built with Go 1.26.8
+#   envoyproxy/envoy:v1.39-latest   Envoy 1.39.6
+#   haproxy:3.4-alpine              HAProxy 3.4.7
+#   httpd:2.4-alpine                Apache httpd 2.4.69
+#   nginx:1.31-alpine               nginx 1.31.8
 
 curl	caddy	Alt-Svc arrives percent-encoded (RFC 7838 §3)	
 curl	caddy	Content-Digest names the octets that arrived	
@@ -62,7 +66,7 @@ curl	nginx	the 103 carries the hint
 curl	nginx	the accept value is RFC 6455's	
 curl	nginx	unsupported expectation → 417	
 framing	caddy	chunk-bws	direct=REJECT chain=TWO
-framing	caddy	chunk-ext-quoted-crlf	direct=REJECT chain=ONE
+framing	caddy	chunk-ext-quoted-crlf	direct=REJECT chain=TWO
 framing	caddy	chunk-hex-0x	direct=REJECT chain=ONE
 framing	caddy	chunk-lf-only	direct=REJECT chain=ONE
 framing	caddy	chunk-overflow	direct=REJECT chain=ONE

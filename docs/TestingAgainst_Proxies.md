@@ -181,8 +181,22 @@ the same for the run to pass. A chain that reads a recorded probe differently
 from what is recorded, `chain=ONE` turning into `chain=TWO` for example, fails
 the run, and the old line is listed as "differing differently". Until
 2026-11-01 only the proxy and the probe were compared, and the shape beside
-them was a note. A chain that went from `ONE` to `TWO`, and so began to execute
-the hidden request, would have passed as already recorded.
+them was a note. A chain that went from `ONE` to `TWO`, one more response and
+possibly the hidden request's, would have passed as already recorded.
+
+The first change it caught was not the hidden request. The nightly of
+2026-11-02 read Caddy's `chunk-ext-quoted-crlf` as `TWO` where `ONE` was
+recorded, and the answers were `502,400`. The probe puts a CRLF inside a quoted
+chunk extension, `5;x="a\r\nb"`. Caddy reads `5;x="a` as the chunk line, the
+five bytes after it do not end in CRLF, and it answers 502. Caddy 2.11.4 then
+closed. Caddy 2.11.7, which `caddy:2-alpine` resolves to now, reads what is
+left on the connection as a request of its own and refuses it with 400. A `TWO`
+that executes the hidden request reads `200,418`, as `chunk-trailer-cl` does
+through the same proxy. Measured both ways on one checkout: 2.11.4 green, 2.11.7
+red. Whether Caddy or the Go it is built with made the change (1.26.3 against
+1.26.8) was not separated. A shape counts responses and nothing more, so a
+changed one is a reason to read the status codes. A failed run keeps them in
+`obs-<proxy>` in its working directory.
 
 Three readings worth keeping:
 

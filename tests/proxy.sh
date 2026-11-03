@@ -349,10 +349,16 @@ touch "$KNOWN"
 #
 # With a shape, the fourth field has to match as well. A framing row's fourth
 # field is not a note but the measurement - "direct=REJECT chain=TWO" - and
-# matched on the first three alone, a chain that went from ONE to TWO, and so
-# began to execute the hidden request, passed as "already recorded". So would
-# Caddy going from TWO to ONE once it is built with Go 1.28 (golang/go#80942).
-# A curl or via row's fourth field is prose, and is not compared.
+# matched on the first three alone, a chain that went from ONE to TWO passed as
+# "already recorded". So would Caddy going from TWO to ONE once it is built with
+# Go 1.28 (golang/go#80942). A curl or via row's fourth field is prose, and is
+# not compared.
+#
+# A shape counts responses and says nothing more. TWO can be the hidden request
+# executed (200,418) or a proxy that failed on the body and then refused what
+# was left on the connection (502,400) - the first change this caught, Caddy
+# 2.11.7 on 2026-11-02. So a changed shape is a reason to read the status codes,
+# which a failed run keeps in obs-<proxy> in its working directory.
 is_known() {
     awk -F'\t' -v k="$1" -v p="$2" -v d="$3" -v s="${4:-}" \
         '$1==k && $2==p && $3==d && (s=="" || $4==s) { found=1 } END { exit found ? 0 : 1 }' "$KNOWN"
