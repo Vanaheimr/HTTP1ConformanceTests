@@ -156,7 +156,7 @@ if [ -z "$BASE" ]; then
         note "demo:       already listening on $BASE, using it"
     else
 
-        DEMO_EXE="$ROOT/Demo/bin/Debug/net10.0/HTTP1.Demo"
+        DEMO_EXE="$ROOT/Demo/bin/Debug/net11.0/HTTP1.Demo"
         # The Windows apphost only on Windows - a Windows-built tree carries both,
         # and the .exe started from inside WSL runs on the other machine. See the
         # long note in tests/run-tests.sh.

@@ -5801,3 +5801,97 @@ them as of today:
 
 Two runs of `tests/proxy.sh` against these images. Before the change: 7/8 for
 Caddy, with the row listed as "differing differently". After it: 32/32.
+
+## 2026-11-19 — .NET 11, and Hermod to `5dfbd920`
+
+On 2026-11-11 Hermod (`62704cc1`) and Styx (`2874a327`) moved every project
+to `net11.0`. From that night on the nightly's `against-hermod-master` job
+stopped at `NETSDK1045`. Raising the job's SDK alone would not have fixed it:
+a `net10.0` project cannot reference a `net11.0` one, and the demo host and all
+of `tests/` were `net10.0`. This repository follows the move now, and so does
+any further pin. HTTP3ConformanceTests made the same move the same day
+(`b6ab0d3`).
+
+- `net10.0` → `net11.0` in the demo, the thirteen projects under `tests/` and
+  `tests/http-garden/app`;
+- `dotnet-version: '11.0.x'` at all eleven `setup-dotnet` steps in `ci.yml`
+  and `nightly.yml`;
+- `bin/Debug/net11.0` in the eight scripts that start a build product;
+- `DOTNET_CHANNEL=11.0` in the HTTP Garden image;
+- README, CLAUDE.md: .NET 11.
+
+The old `bin/Debug/net10.0` directories were deleted before measuring, so that
+a path left behind would find nothing rather than last week's binary.
+
+**The pins.** Hermod `b8d24be3` → `5dfbd920`, 121 commits; Styx `1262aa28` →
+`a6b9f9fb`, 29. Unlike the last bump, this one reaches the stack:
+
+- **WebSockets:** a connection that closes now waits for the peer's close
+  frame, so what it sent before its own is no longer lost to a reset (#249,
+  `f48f6b0d`, `7162f145`). The same client and server also open WebSockets
+  over HTTP/2 (RFC 8441) and HTTP/3 (RFC 9220). One-time passwords (TOTP)
+  can be bound to the connection.
+- **TCP:** neither end holds writes back for Nagle's algorithm any more
+  (`19db5cad`). A message with a body cost 40 ms on Linux.
+- **TLS:** a second stack beside `SslStream` for raw public keys
+  (RFC 7250), chosen per connection, in `TCPConnection` and `ATLSClient`.
+- `AHTTPClient`, and `WWWAuthenticate` for one-time passwords.
+- **DNS:** a referral is no longer cached as a NODATA answer (`f5f7640d`).
+  `HTTPClient` resolves through `DNSClient`, which is why the bump was
+  measured again on `5dfbd920` rather than on `4b8be28a`, where it began.
+
+Styx moves with it: Hermod master builds against Styx master, both on
+`net11.0`.
+
+### Measured against `5dfbd920` and `a6b9f9fb`
+
+| | before | now |
+|---|---:|---:|
+| the filter CI gates on | 1329 | **1409** |
+| `Tests.HTTP.` | 1328 | **1408** |
+| the protocol regression selection | 782 | **786** |
+| `Tests.HTTP.WebSockets` | 161 | **234** |
+| HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP | 2465 | **2735** |
+| gate, cleartext | 9/9, 334/334 | 9/9, **334/334** |
+| gate, `--tls` | 9/9, 340/340 | 9/9, **340/340** |
+| gate, `--tls`, Debian 13 in a Linux-built clone | 9/9, 341/341 | 9/9, **341/341** |
+| gate, `--wsl` | 12/12, 536/536 | 12/12, **536/536** |
+| proxies, in the clone | 32/32 | **32/32** |
+| Autobahn, server, in the clone | 481/517 + 36 declined | **481/517** + 36 declined, 0 hard |
+| Autobahn, client, in the clone | 445/517 + 72 declined | **445/517** + 72 declined, 0 hard |
+
+`Tests.HTTP.`'s 80 more:
+
+- 73 WebSocket tests: the close handshake, and WebSockets over HTTP/2 and
+  HTTP/3;
+- `NagleTests`' 4;
+- `CaseInsensitiveIdTests`' 1;
+- 2 more in fixtures that already existed.
+
+The neighbours' 270 are mostly DNS: 252 by attribute count on `4b8be28a`,
+and `f5f7640d`'s one more. Autobahn did not
+notice the new close handshake; both directions read exactly as before.
+
+`NagleTests` drives the HTTP/1.1 client and server over real sockets, which is
+the selection's criterion. It arrived on 2026-11-18 without its name in the
+filter, so on `4b8be28a` the selection still read 782. #221 was meant to stop
+exactly that.
+[Hermod#256](https://github.com/Vanaheimr/Hermod/pull/256) added the name, and
+the 39 names select 786 — the selection's four more are `NagleTests`' four.
+
+Everything in the table was first measured on `4b8be28a`, then #256 and
+`f5f7640d` landed, and all of it was measured again on `5dfbd920`. The two runs
+differ only in the selection (782 → 786) and the neighbours (2734 → 2735).
+
+**The `--wsl` leg and the firewall.** The first `--wsl` run read 372/373 and
+10/11. The peers saw the demo as unreachable, and the Debian curl was skipped
+for the same reason. Windows Defender Firewall keys its inbound rule to the
+executable's path. For `Demo\bin\Debug\net10.0\HTTP1.Demo.exe` it holds two
+Allow rules. For the new `net11.0` path it had recorded two **Block** rules.
+The cleartext and TLS legs stayed green because they never leave loopback.
+The containers reach the demo the same way the WSL peers do, which is why
+the proxies and Autobahn were measured in the Linux clone above. CLAUDE.md
+and tests/README said no firewall rule was needed. That was true only while
+one path had been allowed. Both now say what the rule is keyed to. With the
+two rules switched to Allow, `--wsl` read 12/12 and 536/536, peers 65/65 and
+the Debian curl 99/99 included.

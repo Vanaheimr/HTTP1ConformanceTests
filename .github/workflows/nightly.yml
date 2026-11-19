@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Debug, matching ci.yml: tests/autobahn.sh locates the demo host under
       # bin/Debug, and a Release-only build would leave it with nothing to start.
@@ -157,7 +157,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Build
         run: dotnet build HTTP1.slnx
@@ -226,7 +226,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # What the runner actually has, recorded in the log: a peer that silently
       # stopped being installed would otherwise look like a peer that passed.
@@ -268,7 +268,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Which versions produced today's table. A row that changes is only
       # interpretable next to the version that changed it.
@@ -301,7 +301,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Build
         run: dotnet build HTTP1.slnx
@@ -334,7 +334,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Which versions produced today's table. A row that moves is only
       # interpretable next to the image that moved it.
@@ -371,7 +371,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - uses: actions/setup-node@v7
         with:
@@ -416,7 +416,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Build
         run: dotnet build tests/h1fuzz/h1fuzz.csproj -c Release
@@ -476,7 +476,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Debug, for the reason ci.yml gives: run-tests.sh drives each harness
       # through `dotnet run --no-build`.
@@ -534,11 +534,11 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Debug, without --configuration, exactly as ci.yml builds it. Not a
       # preference: tests/run-tests.sh looks for the demo host at
-      # Demo/bin/Debug/net10.0/, so a Release build followed by --no-build fails
+      # Demo/bin/Debug/net11.0/, so a Release build followed by --no-build fails
       # with "Demo host not built" — which is how the HTTP/3 sibling's copy of
       # this job would have behaved here, since its runner reads bin/Release.
       #

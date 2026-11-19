@@ -167,7 +167,7 @@ fi
 # *executable* through binfmt interop, so it would start as a Windows process
 # bound to Windows' loopback — which nothing inside the WSL network namespace
 # can then reach. The failure looks like "the demo never became ready".
-DEMO="$ROOT/Demo/bin/Debug/net10.0/HTTP1.Demo"
+DEMO="$ROOT/Demo/bin/Debug/net11.0/HTTP1.Demo"
 if is_windows && [ -f "$DEMO.exe" ]; then
     DEMO="$DEMO.exe"
 fi

@@ -84,7 +84,7 @@ trap 'rm -rf "$WORK"' EXIT
 # ---------------------------------------------------------------------------
 
 PEERS_DIR="$ROOT/tests/peers"
-DESYNC_DLL="$ROOT/tests/h1desync/bin/Debug/net10.0/h1desync.dll"
+DESYNC_DLL="$ROOT/tests/h1desync/bin/Debug/net11.0/h1desync.dll"
 
 case "$(uname -s)" in
 

@@ -74,7 +74,7 @@ note()    { printf '  %s%s%s\n' "$DIM" "$1" "$OFF"; }
 # ---------------------------------------------------------------------------
 
 PEERS_DIR="$ROOT/tests/peers"
-H1PEER_DLL="$ROOT/tests/h1peer/bin/Debug/net10.0/h1peer.dll"
+H1PEER_DLL="$ROOT/tests/h1peer/bin/Debug/net11.0/h1peer.dll"
 
 case "$(uname -s)" in
 

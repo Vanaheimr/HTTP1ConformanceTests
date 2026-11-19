@@ -14,7 +14,7 @@ FROM http-garden-soil:latest
 
 # --- .NET ------------------------------------------------------------------
 #
-# Debian trixie has no .NET 10, so it comes from Microsoft's install script,
+# Debian trixie has no .NET 11, so it comes from Microsoft's install script,
 # the way images/go_stdlib fetches its own Go tarball.
 #
 # libicu is not optional here, and not only for the app. The SDK itself
@@ -24,7 +24,7 @@ FROM http-garden-soil:latest
 # is the wrong fix for a conformance target: it changes how the RUNNING
 # server compares strings, and a target that parses differently from a normal
 # Hermod deployment is measuring the wrong thing.
-ARG DOTNET_CHANNEL=10.0
+ARG DOTNET_CHANNEL=11.0
 RUN apt -y update \
  && apt -y install --no-install-recommends wget ca-certificates libicu-dev \
  && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \

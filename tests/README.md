@@ -67,7 +67,7 @@ Over TLS the six transport-conditional checks join in, and the nightly's
 | Windows / Git Bash, and the nightly's Windows leg | no | yes | 105 | **340** |
 | Debian 13, and the nightly's `debian:13` leg | yes | yes | 106 | **341** |
 
-Both were measured on 2026-10-29 before the job existed, as 326 and 327, and again at Hermod `7946ad01`, `2b6eecc2` and `b27d6483`. The Debian figure
+Both were measured on 2026-10-29 before the job existed, as 326 and 327, and again at Hermod `7946ad01`, `2b6eecc2`, `b27d6483` and, on .NET 11, `4b8be28a` and `5dfbd920`. The Debian figure
 comes from a fresh clone built and run inside WSL, a Linux-built tree, and
 not from the Windows tree driven from WSL, which is not a configuration CI
 runs.
@@ -185,8 +185,13 @@ WSL VM can route to it. **Opt-in**, because a plain test run must never widen a
 listener as a side effect; without it the runner prints
 `SKIP … pass --wsl`, since a silent skip is indistinguishable from a pass.
 
-No firewall rule turned out to be necessary — WSL's vSwitch reaches the host
-once the listener is not loopback-bound. **This also unblocks A5 and A6**, whose
+No firewall rule had to be written by hand — WSL's vSwitch reaches the host
+once the listener is not loopback-bound, and the inbound rule is the one Windows
+offers on the demo's first start. That rule belongs to the executable's path:
+the move to `net11.0` on 2026-11-19 made a new one, and for it Windows had
+recorded a **Block** rule, so every `--wsl` peer saw
+the demo as unreachable while the cleartext and TLS legs stayed green, until
+that rule was switched to Allow. **This also unblocks A5 and A6**, whose
 containers need exactly the same reachability.
 
 #### Two layers of argument mangling, neither of them curl's

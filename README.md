@@ -49,17 +49,17 @@ On top of that, the coverage inside Hermod itself:
 
 | Where | Measured by | Count | What |
 |---|---|---:|---|
-| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **1328** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
-| ↳ the protocol regression selection | the thirty-eight-name filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **782** | every fixture whose tests drive the HTTP/1.x client or server over the wire, or test a field or coding the stack writes or reads: framing and connections end to end, methods and status codes, TLS and origin, content codings in both roles, the typed fields, Digest authentication. The list there is grouped by concern and says what it leaves out and why — the URL and query models, the `HTTPAPI` layer, the static-file handlers, the `HTTPTestServer`, SSE and WebSockets, and H-27's `HTTPClientLazyDNSClientTests`, which measures what a client costs rather than what it sends. It was eleven names and **381** until [Hermod#221](https://github.com/Vanaheimr/Hermod/pull/221) (2026-11-03). A finding whose tests went into a file the filter named moved it, as H-10's three and H-28's two did; one whose tests came in a fixture of their own — the four of 2026-09-26, H-23's, H-11's — landed in the row above and not in this one, because joining the selection took a name in that filter, and none was added after 2026-09-24. On one tree the eleven names select 381 and the thirty-eight 782, and the 401 between them are exactly the tests of the 27 fixtures added: no new name reaches into a class it was not meant for |
-| ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **161** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate` |
-| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **1329** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 1328 and 1329, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
+| everything HTTP/1.x | `FullyQualifiedName~Hermod.Tests.HTTP.` | **1408** | the two rows below plus URL/query/hostname/method models, the `HTTPAPI` layer and the `HTTPTestServer` |
+| ↳ the protocol regression selection | the thirty-nine-name filter printed in [`HTTP1/README.md`](libs/Hermod/Hermod/HTTP1/README.md) | **786** | every fixture whose tests drive the HTTP/1.x client or server over the wire, or test a field or coding the stack writes or reads: framing and connections end to end, methods and status codes, TLS and origin, content codings in both roles, the typed fields, Digest authentication. The list there is grouped by concern and says what it leaves out and why — the URL and query models, the `HTTPAPI` layer, the static-file handlers, the `HTTPTestServer`, SSE and WebSockets, and H-27's `HTTPClientLazyDNSClientTests`, which measures what a client costs rather than what it sends. It was eleven names and **381** until [Hermod#221](https://github.com/Vanaheimr/Hermod/pull/221) (2026-11-03). A finding whose tests went into a file the filter named moved it, as H-10's three and H-28's two did; one whose tests came in a fixture of their own — the four of 2026-09-26, H-23's, H-11's — landed in the row above and not in this one, because joining the selection took a name in that filter, and none was added after 2026-09-24. On one tree the eleven names select 381 and the thirty-eight 782, and the 401 between them are exactly the tests of the 27 fixtures added: no new name reaches into a class it was not meant for. The thirty-ninth, `NagleTests`, came with [Hermod#256](https://github.com/Vanaheimr/Hermod/pull/256) (2026-11-19) and adds its own four |
+| ↳ WebSockets | `FullyQualifiedName~Hermod.Tests.HTTP.WebSockets` | **234** | RFC 6455 framing, handshake hardening, subprotocols, backpressure, reconnect, `permessage-deflate`, the close handshake waiting for the peer's close, and the same client and server over HTTP/2 (RFC 8441) and HTTP/3 (RFC 9220) |
+| what CI actually gates on | `…Tests.HTTP.` **+** `…Tests.HTTPS.` | **1409** | the row above plus `Tests.HTTPS.`, which is one single test — that one test is the whole difference between 1408 and 1409, and it is why this table and a CI log used to disagree by one for no visible reason. What the filter does *not* reach is `Tests.TCP` and `Tests.Warden`, the layer `AHTTPServer` is built on |
 | Autobahn vs. the **server** (demo host `:8081`) | `tests/autobahn.sh` | **481** / 517 + 36 declined | RFC 6455 + RFC 7692, nightly and gated on a floor — see [`tests/TestingAgainst_Autobahn.md`](tests/TestingAgainst_Autobahn.md) |
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
-Every count above is a **run** count, re-measured on 2026-11-03 against Hermod
-`b8d24be3` and Styx `1262aa28` by running the filter in its own row — which is now printed, because
+Every count above is a **run** count, re-measured on 2026-11-19 against Hermod
+`5dfbd920` and Styx `a6b9f9fb` by running the filter in its own row — which is now printed, because
 every time a figure here drifted it was a figure whose filter nobody could check. The two Autobahn
-rows are the exception: they were last run locally on 2026-10-30 against `b27d6483`, and nightly since.
+rows were measured in a Linux-built clone inside WSL, the configuration the nightly runs them in.
 
 `--list-tests` and `dotnet test` disagree on this checkout, and by a stable
 amount: three, whatever the totals are — re-measured 2026-09-24 at 564 listed
@@ -85,7 +85,7 @@ comparable either: the 295 was a list count.
 
 ## Requirements
 
-- .NET 10 SDK (`net10.0` target)
+- .NET 11 SDK (`net11.0` target)
 - `bash` for the runner scripts — on Windows, the Git Bash that ships with Git
   for Windows. There is no PowerShell runner in this repository and there never
   was; see A11 in [`PLAN.md`](PLAN.md) for why the two sibling repositories

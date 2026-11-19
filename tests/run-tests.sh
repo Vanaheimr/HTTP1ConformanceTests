@@ -105,7 +105,7 @@ if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$HTTP_PORT/" 2>/dev/null;
     exit 1
 fi
 
-DEMO_EXE="$ROOT/Demo/bin/Debug/net10.0/HTTP1.Demo"
+DEMO_EXE="$ROOT/Demo/bin/Debug/net11.0/HTTP1.Demo"
 # Prefer the Windows apphost only ON Windows. A tree built under Windows
 # carries BOTH - HTTP1.Demo is an ELF binary and HTTP1.Demo.exe a PE one -
 # so taking the .exe merely because it exists launches a WINDOWS process

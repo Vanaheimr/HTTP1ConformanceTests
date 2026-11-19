@@ -123,7 +123,7 @@ if [ "$nobuild" -eq 0 ]; then
     dotnet build "$root/tests/autobahn-client/autobahn-client.csproj" --nologo --verbosity quiet || exit 1
 fi
 
-driver="$root/tests/autobahn-client/bin/Debug/net10.0/autobahn-client.dll"
+driver="$root/tests/autobahn-client/bin/Debug/net11.0/autobahn-client.dll"
 [ -f "$driver" ] || {
     echo "Client driver not built (no autobahn-client.dll). Run without --no-build first." >&2
     exit 1

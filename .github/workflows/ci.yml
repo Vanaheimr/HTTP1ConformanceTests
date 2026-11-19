@@ -71,7 +71,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       # Debug, not Release, and the runner forces it: run-tests.sh drives each
       # harness through `dotnet run --no-build`, which resolves the default
