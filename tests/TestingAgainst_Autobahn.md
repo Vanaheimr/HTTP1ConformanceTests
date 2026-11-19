@@ -351,12 +351,41 @@ demo host by its RSS, every two seconds:
 | 13.4 | 3.4 GiB | 125 MB |
 | the end | **3.6 GiB** | 118 MB |
 
-It is the suite's own Python heap, not page cache: capped at 300 MiB, the container's
+It is the suite's own anonymous memory, not page cache: capped at 300 MiB, the container's
 `memory.stat` showed 270 MiB anonymous and 4 MiB of file pages, with 2 GiB already in swap by the
 end of 12.3. It grows through the compression sections and gives nothing back. The demo host stays
 flat. But GitHub gives a public repository's `ubuntu-latest` 16 GB, and 3.6 GiB does not reach that.
 What held the rest at 10:55:46 could not be reconstructed, because nothing was recorded at the
 moment of the kill.
+
+That paragraph called it the suite's Python heap. **It is not**, measured 2026-11-19. `wstest`
+runs on PyPy 2.7, and PyPy honours `PYPY_GC_MAX`: at 100 MB a test allocation raises
+`MemoryError` at 107 MiB. A whole server run with `PYPY_GC_MAX=1GB` still peaked at 3 594 MiB,
+against 3 607 MiB without, 481/517 as before. So most of it lies outside the GC heap. A fixed glibc mmap threshold
+(`MALLOC_MMAP_THRESHOLD_=65536`) cut 12.1 on its own from 1 749 MiB to 1 068 MiB, and let the
+memory go down again between cases. A whole run peaked at 3 463 MiB on the server against 3 607 and
+3 692 without, and at 2 846 MiB on the client against 3 551: about 5 % and 20 %, one run each, and
+nowhere near the factor of four between this machine and the runner. It was left out, so that the
+first curves from the runner show the suite as it was on the nights it died. Splitting the run into
+several `wstest` processes would not help much either: one compression section on its own climbs
+to about 3 000 MiB.
+
+That leaves the question the three red nights of November asked unanswered: why the same suite
+reaches 15 000 MiB on the runner when it reaches 3 600 MiB here. They died in 13.4.13 (twice,
+server) and 13.2.17 (client), at 14 516–15 147 MiB, with the demo at 30 MiB. Both drivers now sample the
+container every five seconds, with the case it is on, keep the samples as `wstest-memory.tsv`
+beside the report, and print a peak per section at the end of every run:
+
+```
+suite memory, peak 3692 MiB over 82 samples; per section (MiB):
+  5.x 68  9.x 227  12.1 2476  12.2 2795  12.3 2824  12.4 2838  12.5 2844  13.1 3391  13.2 3422
+13.4 3500  13.6 3646  13.7 3692
+```
+
+That one is local. The next red night will have a curve next to its OOM report, and a green
+night a curve to compare it with. The summary is diagnostic only: when it fails, it says so and
+the run goes on, because under `set -e` a broken `awk` would otherwise end the server driver
+before it read the report. That happened once, in the first run with the sampler.
 
 So both drivers now ask the kernel. When the container's state says it was OOM-killed, they print
 `free -m` and a digest of the kernel's last OOM report: the task that invoked the killer, the eight

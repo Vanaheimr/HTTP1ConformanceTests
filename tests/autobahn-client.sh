@@ -158,6 +158,7 @@ container="h1-autobahn-fuzzingserver-$port"
 docker rm -f "$container" >/dev/null 2>&1 || true
 
 cleanup() {
+    [ -n "${sampler_pid:-}" ] && kill "$sampler_pid" 2>/dev/null || true
     docker rm -f "$container" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
@@ -211,6 +212,49 @@ kernel_oom_report() {
         }' | sort -t "$(printf '\t')" -k1,1nr | head -8 \
            | awk -F'\t' '{ printf "    %7d MiB  pid %-8s %s\n", $1, $2, $3 }' >&2 || true
     printf '%s\n' "$report" | grep -E 'oom-kill:constraint=|Killed process' | tail -2 | sed 's/^\[[^]]*\] */  /' >&2 || true
+}
+
+# --- the suite's own memory, sampled --------------------------------------
+#
+# The same sampler as tests/autobahn.sh, for the same open question: on
+# 2026-11-03 the kernel killed this fuzzingserver at 14 516 MiB in 13.2.17, on
+# a 16 GB runner. Every five seconds, the container's memory and the case it is
+# on, kept as wstest-memory.tsv beside the report and summarised per section
+# at the end of every run.
+memlog="$repdir/wstest-memory.tsv"
+sample_memory() {
+    local m k
+    while :; do
+        m="$(docker stats --no-stream --format '{{.MemUsage}}' "$1" 2>/dev/null | cut -d/ -f1 | tr -d ' ' || true)"
+        if [ -n "$m" ] && [ "$m" != "0B" ]; then
+            k="$(docker logs --tail 3 "$1" 2>&1 | grep -oE 'case ID [0-9.]+' | tail -1 | cut -d' ' -f3 || true)"
+            printf '%s\t%s\t%s\n' "$(date +%T)" "$m" "${k:--}" >> "$memlog"
+        fi
+        sleep 5
+    done
+}
+# Diagnostics only: whatever goes wrong in here must never decide the run.
+memory_summary() {
+    if [ ! -s "$memlog" ]; then
+        echo "suite memory: no samples"
+        return 0
+    fi
+    awk -F'\t' '
+        {
+            n = $2 + 0; u = $2; sub(/^[0-9.]+/, "", u)
+            mib = (u ~ /^G/) ? n * 1024 : (u ~ /^M/) ? n : (u ~ /^K/) ? n / 1024 : n / 1048576
+            split($3, c, ".")
+            s = ($3 == "-") ? "-" : (c[1] >= 12) ? c[1] "." c[2] : c[1] ".x"
+            if (!(s in peak)) order[++k] = s
+            if (mib > peak[s]) peak[s] = mib
+            if (mib > top) top = mib
+        }
+        END {
+            printf "suite memory, peak %d MiB over %d samples; per section (MiB):\n", top, NR
+            line = ""
+            for (i = 1; i <= k; i++) line = line sprintf("  %s %d", order[i], peak[order[i]])
+            print line
+        }' "$memlog" | fold -s -w 100 || echo "suite memory: the summary failed; the samples are in $memlog"
 }
 
 echo "Starting the Autobahn fuzzingserver (image $image) on :$port..."
@@ -270,6 +314,9 @@ fi
 echo "fuzzingserver up on ws://127.0.0.1:$port/"
 echo
 
+sample_memory "$container" &
+sampler_pid=$!
+
 args="--host 127.0.0.1 --port $port --agent $agent"
 [ "$deflate" -eq 1 ] && args="$args --deflate"
 [ "$first" -gt 0 ] && args="$args --first $first"
@@ -302,12 +349,17 @@ $runner dotnet "$driver" $args || {
     esac
 }
 
+kill "$sampler_pid" 2>/dev/null || true
+wait "$sampler_pid" 2>/dev/null || true
+sampler_pid=""
+
 echo
 state="$(container_state)"
 echo "fuzzingserver container: $state"
 case "$state" in *oomkilled=true*) kernel_oom_report ;; esac
 echo "fuzzingserver log (tail):"
 docker logs "$container" 2>&1 | tail -5
+memory_summary
 
 # The driver returns 4 when a case's handshake was not answered with 101: the
 # fuzzingserver stopped accepting connections mid-run. Nothing was asked to write

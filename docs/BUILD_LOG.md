@@ -5922,3 +5922,71 @@ order simply did not reproduce on this machine. The same build of the old pin
 on .NET 11 failed at restore and was not pursued, because the .NET 10 run had
 already answered the question. PLAN.md, tests/README and CLAUDE.md quote both
 orders now, with dates, instead of "marginally faster".
+
+## 2026-11-19 — Autobahn's memory: not PyPy's heap, and not yet explained
+
+The third cause of the red November, still open in the entry above. Three
+nights lost an Autobahn leg to the kernel's OOM killer, and the logs saved
+from them before the runs were deleted say:
+
+| night | leg | killed in | `wstest` resident | demo host |
+|---|---|---|---|---|
+| 2026-11-03 | client | 13.2.17 | 14 516 MiB | — |
+| 2026-11-04 | server | 13.4.13 | 15 132 MiB | 31 MiB |
+| 2026-11-06 | server | 13.4.13 | 15 147 MiB | 30 MiB |
+
+All three are `CONSTRAINT_NONE … global_oom`: the runner ran out, and `wstest`
+held almost all of it. Locally a whole run peaks at about 3 600 MiB.
+
+**A curve, locally.** Sampled every second with the case it is on, in the
+Linux-built clone: up to 241 MiB through 9.x, then 400 to 2 417 MiB within
+12.1, 2 856 MiB by the end of 12.x, 3 607 MiB in 13.6. It never went down.
+
+**Not PyPy's heap.** `wstest` runs on PyPy 2.7.18, and its source shows the
+compression cases sending one message, waiting for its echo, and switching the
+wirelog off, so there is no unbounded queue in the suite. PyPy honours
+`PYPY_GC_MAX`: at 100 MB a test allocation raised `MemoryError` at 107 MiB. A
+whole server run with `PYPY_GC_MAX=1GB` peaked at 3 594 MiB, 481/517, against
+3 607 MiB without. Most of the memory is outside the GC heap.
+
+**glibc, partly.** 12.1 alone, 18/18 each time:
+
+| variant | peak |
+|---|---:|
+| unchanged | 1 749 MiB |
+| `MALLOC_MMAP_THRESHOLD_=65536` | 1 068 MiB |
+| the same, with `PYPY_GC_MAX=512MB` | 1 190 MiB |
+| `MALLOC_MMAP_THRESHOLD_=16384` | 941 MiB |
+| 64 KiB threshold, `MALLOC_TRIM_THRESHOLD_=131072` | 1 029 MiB |
+| 16 KiB threshold, trim, `PYPY_GC_MAX=512MB` | 1 128 MiB |
+
+A fixed threshold also let the memory go down between cases. Whole runs:
+
+| | server | client |
+|---|---:|---:|
+| unchanged | 3 607 and 3 692 MiB | 3 551 MiB |
+| 64 KiB threshold | 3 463 MiB | 2 846 MiB |
+
+Lower by about 5 % on the server and 20 % on the client, one run each, and
+nowhere near the factor of four between this machine and the runner. It was
+left out, so that the first curves from the runner show the suite as it was
+on the nights it died. It is the first thing to try once they are in.
+Splitting the run into several `wstest` processes, the other idea, would not
+help much: one compression section climbs to about 3 000 MiB on its own.
+
+**What changed.** Both drivers now sample the suite's container every five
+seconds with the case it is on, keep the samples as `wstest-memory.tsv` in the
+report directory, which the nightly already uploads, and print a peak per
+section at the end of every run, green or red. Why the runner reaches four
+times what this machine does is the question, and the next red night will have
+a curve beside its OOM report. With the sampler and nothing else, in the
+Linux-built clone: the server 481/517, peak 3 692 MiB over 82 samples, and
+the client 445/517, peak 3 551 MiB over 73.
+
+The first run with the sampler went red here: a literal newline inside an
+`awk` string, put there by the script that wrote the patch, and under
+`set -e` the failing summary ended the server driver with exit 2 before it
+read the report. The summary now reports its own failure and returns, tested
+by pointing `awk` at a program file that does not exist under
+`set -euo pipefail`. TestingAgainst_Autobahn.md said "Python heap" since
+2026-11-01; it now says what was measured.

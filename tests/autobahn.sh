@@ -197,6 +197,7 @@ DEMO_LOG="$(mktemp -t h1-autobahn-demo.XXXXXX.log)"
 DEMO_PID=$!
 
 cleanup() {
+    [ -n "${SAMPLER_PID:-}" ] && kill "$SAMPLER_PID" 2>/dev/null || true
     kill "$DEMO_PID" 2>/dev/null || true
     wait "$DEMO_PID" 2>/dev/null || true
     free_ports "$http_port" "$tls_port" "$ws_port"
@@ -310,10 +311,59 @@ kernel_oom_report() {
     printf '%s\n' "$report" | grep -E 'oom-kill:constraint=|Killed process' | tail -2 | sed 's/^\[[^]]*\] */  /' >&2 || true
 }
 
+# --- the suite's own memory, sampled --------------------------------------
+#
+# The OOM report above is a picture of one moment, the kill. What it cannot
+# show is how the suite got there, and that is the question three nightlies
+# left open (2026-11-03, -04, -06): wstest at about 15 000 MiB in 13.4.13 on
+# a 16 GB runner, where a whole local run peaks at about 3 600 MiB. So the container's
+# memory is sampled every five seconds with the case it is on, kept next to the
+# report as wstest-memory.tsv, and summarised per section at the end of every
+# run, green or red, so that a red night can be read against a green one.
+MEMLOG="$REPDIR/wstest-memory.tsv"
+sample_memory() {
+    local m k
+    while :; do
+        m="$(docker stats --no-stream --format '{{.MemUsage}}' "$1" 2>/dev/null | cut -d/ -f1 | tr -d ' ' || true)"
+        if [ -n "$m" ] && [ "$m" != "0B" ]; then
+            k="$(docker logs --tail 3 "$1" 2>&1 | grep -oE 'case ID [0-9.]+' | tail -1 | cut -d' ' -f3 || true)"
+            printf '%s\t%s\t%s\n' "$(date +%T)" "$m" "${k:--}" >> "$MEMLOG"
+        fi
+        sleep 5
+    done
+}
+# Diagnostics only: whatever goes wrong in here must never decide the run, and
+# under set -e a failing awk would end the script before the report is read.
+memory_summary() {
+    if [ ! -s "$MEMLOG" ]; then
+        echo "suite memory: no samples"
+        return 0
+    fi
+    awk -F'\t' '
+        {
+            n = $2 + 0; u = $2; sub(/^[0-9.]+/, "", u)
+            mib = (u ~ /^G/) ? n * 1024 : (u ~ /^M/) ? n : (u ~ /^K/) ? n / 1024 : n / 1048576
+            split($3, c, ".")
+            s = ($3 == "-") ? "-" : (c[1] >= 12) ? c[1] "." c[2] : c[1] ".x"
+            if (!(s in peak)) order[++k] = s
+            if (mib > peak[s]) peak[s] = mib
+            if (mib > top) top = mib
+        }
+        END {
+            printf "suite memory, peak %d MiB over %d samples; per section (MiB):\n", top, NR
+            line = ""
+            for (i = 1; i <= k; i++) line = line sprintf("  %s %d", order[i], peak[order[i]])
+            print line
+        }' "$MEMLOG" | fold -s -w 100 || echo "suite memory: the summary failed; the samples are in $MEMLOG"
+}
+
 runner=""
 if [ "$run_timeout" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
     runner="timeout --signal=TERM --kill-after=30s ${run_timeout}s"
 fi
+
+sample_memory "$CONTAINER" &
+SAMPLER_PID=$!
 
 echo "Running Autobahn fuzzingclient (image $image, ws://$ws_host:$ws_port$ws_path)..."
 # PYTHONUNBUFFERED, because without it wstest's "Running test case ID X" lines
@@ -354,6 +404,11 @@ MSYS_NO_PATHCONV=1 $runner docker run --name "$CONTAINER" -e PYTHONUNBUFFERED=1 
             echo "container already gone; no state to inspect." >&2
         fi
     }
+
+kill "$SAMPLER_PID" 2>/dev/null || true
+wait "$SAMPLER_PID" 2>/dev/null || true
+SAMPLER_PID=""
+memory_summary
 
 # --- parse the report ------------------------------------------------------
 #
