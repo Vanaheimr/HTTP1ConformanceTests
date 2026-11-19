@@ -5895,3 +5895,30 @@ and tests/README said no firewall rule was needed. That was true only while
 one path had been allowed. Both now say what the rule is keyed to. With the
 two rules switched to Allow, `--wsl` read 12/12 and 536/536, peers 65/65 and
 the Debian curl 99/99 included.
+
+## 2026-11-19 — The HTTP Garden and the benchmark on .NET 11
+
+Two things had not yet run on .NET 11 after the move above: the HTTP Garden
+image and `tests/h1bench`.
+
+**The Garden.** `tests/http-garden.sh --build`, then `--contract`, against
+Hermod `5dfbd920` and Styx `a6b9f9fb`. The image installs .NET 11.0.0 from
+`DOTNET_CHANNEL=11.0`, the app's runtimeconfig names `net11.0`, and both
+contract checks pass: the target starts and answers on `:80`, and it answers
+the Garden's parse-tree contract. The targets were stopped afterwards.
+
+**The benchmark.** Two full runs and a series of `connect control` runs, all
+in Release, recorded in A9 of PLAN.md beside September's table. The
+throughput rows are within a run's noise of September's. The control is not:
+`HttpClient` → Hermod 0.296 ms p50 against `HttpClient` → Kestrel 0.244 ms, the
+median of seven runs, where September read 0.240 against 0.252. Kestrel was
+ahead in eleven of twelve runs at this pin.
+
+Before writing that down as a regression, the old pin was measured the same
+evening: `b8d24be3` from a worktree, on .NET 10.0.15. Kestrel was ahead in
+three runs of four there too, and Hermod by 0.003 ms in the fourth. So the
+order did not turn with the runtime or with the 121 commits. September's
+order simply did not reproduce on this machine. The same build of the old pin
+on .NET 11 failed at restore and was not pursued, because the .NET 10 run had
+already answered the question. PLAN.md, tests/README and CLAUDE.md quote both
+orders now, with dates, instead of "marginally faster".

@@ -397,8 +397,11 @@ dotnet run -c Release --project tests/h1bench -- --mib 256
 Client and server share one process over loopback, so every figure covers both
 roles. The one comparison worth quoting is the control: .NET's `HttpClient`
 against our server and against Kestrel, same loopback, same process, one after
-the other — **0.240 ms** p50 against **0.252 ms**. An absolute number with
-nothing beside it is how "slower than I expected" becomes "slow".
+the other — **0.240 ms** p50 against **0.252 ms** on .NET 10 in September,
+**0.296 ms** against **0.244 ms** on .NET 11 on 2026-11-19 (the median of seven
+runs). The order turned, and the old pin on .NET 10 turned with it the same
+evening, so it was not the runtime or the pin. An absolute number with nothing
+beside it is how "slower than I expected" becomes "slow".
 
 See A9 in [`PLAN.md`](../PLAN.md) for the full table and the three things the
 numbers said that the code did not — one of which became finding **H-27**, now

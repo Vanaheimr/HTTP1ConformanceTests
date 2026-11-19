@@ -516,12 +516,39 @@ Measured 2026-09-26, 16-core Windows box, .NET 10.0.12, Release:
 | **control**: .NET `HttpClient` → Hermod | p50 **0.240 ms** |
 | **control**: .NET `HttpClient` → Kestrel | p50 **0.252 ms** |
 
+Measured again 2026-11-19, same box, .NET 11.0.0, Hermod `5dfbd920`, Release:
+
+| | |
+|---|---|
+| request header parsing | **46,780 parses/s**, **18,439 bytes allocated** per parse |
+| chunked coding | **2,060 MiB/s** encode, **1,716 MiB/s** decode |
+| small GET, one client | **4,350 req/s** at 1, **5,328** at 8 and 64 |
+| small GET, a client each | **21,248 req/s** at 8, **19,518** at 64 · p50 0.29 ms / 1.80 ms |
+| 64 MiB download | **933 MiB/s**, 3.00× the payload allocated |
+| 64 MiB upload | **918 MiB/s**, 3.01× the payload allocated |
+| request on a kept-open connection | p50 **0.197 ms** |
+| **control**: .NET `HttpClient` → Hermod | p50 **0.296 ms**, the median of seven runs (0.265–0.370) |
+| **control**: .NET `HttpClient` → Kestrel | p50 **0.244 ms**, the median of the same seven (0.226–0.296) |
+
+The throughput rows are within a run's noise of September's: a second full run
+the same evening read 49,288 parses/s and 2,242 / 1,916 MiB/s, and 759 / 699
+MiB/s for the 64 MiB bodies, in a run slower in every networked row. The
+control is not. Kestrel was ahead in every one of the seven, and in eleven of
+the twelve runs at this pin; in the twelfth, from a slower series, Hermod led
+by 0.002 ms. The old pin `b8d24be3` on .NET 10.0.15, built from a worktree and
+run the same evening, put Kestrel ahead in three runs of four, and Hermod ahead
+by 0.003 ms in the fourth. So neither .NET 11 nor the 121 commits of the bump
+made the difference: September's order did not reproduce on this machine,
+whatever the pin.
+
 Three things the numbers say that the code did not:
 
 **Per-request latency is not a problem.** Against Kestrel on the same loopback,
-in the same process, driven by the same `HttpClient`, our server is the
-marginally faster of the two. That is what a control is for: an absolute number
-with nothing beside it is how "slower than I expected" becomes "slow".
+in the same process, driven by the same `HttpClient`, our server was the
+marginally faster of the two on 2026-09-26. On 2026-11-19 it was the
+marginally slower, by about 0.05 ms at p50, and the old pin was no different.
+Either way the two are in the same range. That is what a control is for: an
+absolute number with nothing beside it is how "slower than I expected" becomes "slow".
 
 **A fresh client costs 39 ms, and none of it is the connection.** Split: 38.3 ms
 constructing the `HTTPClient`, 1.06 ms for its first request. One shared
