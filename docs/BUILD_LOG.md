@@ -5752,3 +5752,52 @@ again for this pin. Nothing they reach changed: no file under `Hermod/HTTP1`,
 `Hermod/HTTP`, `Hermod/TCP` or the WebSocket code. The nightly runs all of
 them against the new pin, and its proxies job is also the first check of
 f605365's Caddy row against Caddy 2.11.7.
+
+## 2026-11-19 — Sixteen red nightlies, and Caddy back to `ONE`
+
+The nightly has been red every night since 2026-11-03, sixteen runs up to
+[44301650948](https://github.com/Vanaheimr/HTTP1ConformanceTests/actions/runs/44301650948).
+It failed for three reasons, none of them in the HTTP/1.x code:
+
+| job | red | why |
+|---|---|---|
+| `proxies` | every night from 2026-11-05 | Caddy's `chunk-ext-quoted-crlf` read `chain=ONE` against the recorded `TWO` |
+| `against-hermod-master` | every night from 2026-11-11 | Hermod `62704cc1` and Styx `2874a327` moved every project to `net11.0`. The job installs the SDK 10.0.x and stops at `NETSDK1045` |
+| `autobahn`, `autobahn-client` | 2026-11-03 (client), 2026-11-04 and 2026-11-06 (server) | the kernel OOM-killed `wstest`, the suite itself, at about 15 GB resident. The demo was not killed. The diagnostics added on 2026-11-01 reported exactly that |
+
+This entry is about the first row. The second needs this repository on
+.NET 11 and is the next entry. The third is still open.
+
+**Caddy.** The official image for Caddy 2.11.8 was published on 2026-11-04
+at 17:51 UTC, after that day's nightly, and 2.11.9 followed the next day.
+From 2.11.8 on, its release notes say, the release builds use Go 1.27.
+`caddy:2-alpine` is now 2.11.9 built with go1.27.3. With that image the kept
+`obs-caddy` reads:
+
+```
+OBS	chunk-ext-quoted-crlf	ONE	502	closed
+```
+
+That is a `502` followed by a close, as 2.11.4 with go1.26.3 behaved. The
+`502,400` of 2026-11-03 was 2.11.7 with go1.26.8 and no other build. The row
+is `chain=ONE` again.
+
+**HAProxy.** The same run printed `framing haproxy cl-dup-diff` as no longer
+differing. HAProxy 3.4.8 came out on 2026-11-18. It now refuses two
+`Content-Length` fields that disagree, as the direct run does, where 3.4.7 sent
+no answer at all. The row is deleted. A row that stops differing only prints;
+it does not fail the run.
+
+The four other tags moved too. The header of `tests/proxy-known.txt` lists
+them as of today:
+
+| tag | resolved 2026-11-19 |
+|---|---|
+| `nginx:1.31-alpine` | nginx 1.31.9 |
+| `haproxy:3.4-alpine` | HAProxy 3.4.8 |
+| `caddy:2-alpine` | Caddy 2.11.9, Go 1.27.3 |
+| `httpd:2.4-alpine` | Apache 2.4.71 |
+| `envoyproxy/envoy:v1.39-latest` | Envoy 1.39.6 |
+
+Two runs of `tests/proxy.sh` against these images. Before the change: 7/8 for
+Caddy, with the row listed as "differing differently". After it: 32/32.

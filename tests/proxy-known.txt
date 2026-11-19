@@ -16,6 +16,12 @@
 # caddy's chunk-ext-quoted-crlf went from chain=ONE to chain=TWO by hand on
 # 2026-11-03: Caddy 2.11.7 reads on after the 502 and refuses the rest with a 400,
 # where 2.11.4 closed. Not the hidden request; see docs/BUILD_LOG.md, 2026-11-03.
+# And back to chain=ONE by hand on 2026-11-19: from 2.11.8 on, Caddy is built with
+# Go 1.27, and 2.11.9 answers 502 and closes again, as 2.11.4 did. The nightly was
+# red on this row from 2026-11-05; see docs/BUILD_LOG.md, 2026-11-19.
+# haproxy's cl-dup-diff (chain=NONE) deleted the same day: HAProxy 3.4.8 answers two
+# disagreeing Content-Length fields with a refusal, as the direct run does, where
+# 3.4.7 answered nothing at all.
 #
 # Measured against these images. They matter: when a row disappears, this file
 # alone cannot say whether we got stricter or the proxy did, and the version is
@@ -23,12 +29,12 @@
 # 1.27→1.31 and Envoy v1.31→v1.39 both stopped splitting chunk-lf-only into two
 # requests downstream, and HAProxy 3.0→3.4 stopped differing on cl-list-diff,
 # while an unbumped Caddy still splits it. Nothing in this repository changed.
-# The tags float, so what each resolved to is written beside it, as of 2026-11-03:
-#   caddy:2-alpine                  Caddy 2.11.7, built with Go 1.26.8
+# The tags float, so what each resolved to is written beside it, as of 2026-11-19:
+#   caddy:2-alpine                  Caddy 2.11.9, built with Go 1.27.3
 #   envoyproxy/envoy:v1.39-latest   Envoy 1.39.6
-#   haproxy:3.4-alpine              HAProxy 3.4.7
-#   httpd:2.4-alpine                Apache httpd 2.4.69
-#   nginx:1.31-alpine               nginx 1.31.8
+#   haproxy:3.4-alpine              HAProxy 3.4.8
+#   httpd:2.4-alpine                Apache httpd 2.4.71
+#   nginx:1.31-alpine               nginx 1.31.9
 
 curl	caddy	Alt-Svc arrives percent-encoded (RFC 7838 §3)	
 curl	caddy	Content-Digest names the octets that arrived	
@@ -66,7 +72,7 @@ curl	nginx	the 103 carries the hint
 curl	nginx	the accept value is RFC 6455's	
 curl	nginx	unsupported expectation → 417	
 framing	caddy	chunk-bws	direct=REJECT chain=TWO
-framing	caddy	chunk-ext-quoted-crlf	direct=REJECT chain=TWO
+framing	caddy	chunk-ext-quoted-crlf	direct=REJECT chain=ONE
 framing	caddy	chunk-hex-0x	direct=REJECT chain=ONE
 framing	caddy	chunk-lf-only	direct=REJECT chain=ONE
 framing	caddy	chunk-overflow	direct=REJECT chain=ONE
@@ -84,7 +90,6 @@ framing	envoy	http10-te	direct=REJECT chain=ONE
 framing	envoy	lf-only-headers	direct=REJECT chain=TWO
 framing	haproxy	chunk-bws	direct=REJECT chain=TWO
 framing	haproxy	chunk-trailer-cl	direct=REJECT chain=TWO
-framing	haproxy	cl-dup-diff	direct=REJECT chain=NONE
 framing	haproxy	cl-dup-same	direct=REJECT chain=TWO
 framing	haproxy	cl-list-same	direct=REJECT chain=TWO
 framing	haproxy	cl-te	direct=REJECT chain=ONE

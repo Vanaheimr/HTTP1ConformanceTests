@@ -189,14 +189,19 @@ The first change it caught was not the hidden request. The nightly of
 recorded, and the answers were `502,400`. The probe puts a CRLF inside a quoted
 chunk extension, `5;x="a\r\nb"`. Caddy reads `5;x="a` as the chunk line, the
 five bytes after it do not end in CRLF, and it answers 502. Caddy 2.11.4 then
-closed. Caddy 2.11.7, which `caddy:2-alpine` resolves to now, reads what is
-left on the connection as a request of its own and refuses it with 400. A `TWO`
-that executes the hidden request reads `200,418`, as `chunk-trailer-cl` does
-through the same proxy. Measured both ways on one checkout: 2.11.4 green, 2.11.7
-red. Whether Caddy or the Go it is built with made the change (1.26.3 against
-1.26.8) was not separated. A shape counts responses and nothing more, so a
-changed one is a reason to read the status codes. A failed run keeps them in
-`obs-<proxy>` in its working directory.
+closed. Caddy 2.11.7 read what was left on the connection as a request of its
+own and refused it with 400. A `TWO` that executes the hidden request reads
+`200,418`, as `chunk-trailer-cl` does through the same proxy. Measured both ways
+on one checkout: 2.11.4 green, 2.11.7 red. Whether Caddy or the Go it is built
+with made the change (1.26.3 against 1.26.8) was not separated. A shape counts
+responses and nothing more, so a changed one is a reason to read the status
+codes. A failed run keeps them in `obs-<proxy>` in its working directory.
+
+The row went back sixteen days later. From 2.11.8 on, Caddy's release builds use
+Go 1.27, and 2.11.9 with go1.27.3 answers `502` and closes, as 2.11.4 did with
+go1.26.3. So `502,400` was 2.11.7's alone. The row has been `chain=ONE` again
+since 2026-11-19. The nightly had been red on it every night from 2026-11-05,
+the first run after the 2.11.8 image was published.
 
 Three readings worth keeping:
 
