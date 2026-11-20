@@ -5990,3 +5990,89 @@ read the report. The summary now reports its own failure and returns, tested
 by pointing `awk` at a program file that does not exist under
 `set -euo pipefail`. TestingAgainst_Autobahn.md said "Python heap" since
 2026-11-01; it now says what was measured.
+
+## 2026-11-20 — The client answers a 401 and follows a redirect, and Hermod to `b83e7d41`
+
+H-38's first half and a finding it turned up, both fixed upstream and pinned:
+41 commits from `5dfbd920`, most of them SMTP.
+
+**H-38, challenges and redirects ([Hermod#265](https://github.com/Vanaheimr/Hermod/pull/265)).**
+The HTTP/2 client could already answer a `401` and follow a `3xx`, and the
+HTTP/1.x client could do neither. The classes for both sat in `HTTP2/Core`,
+the shape H-3, H-7, H-11, H-13 and H-36 had before:
+`HTTPClientAuthenticator`, `HTTPClientCredentials` and `HTTPRedirect` moved
+to `Hermod/HTTP/`, with only their namespace changed.
+
+- `AHTTPClient.Credentials` answers a `401` once, with the strongest scheme
+  offered: Digest, then Bearer, Token, Basic.
+- `AHTTPClient.MaxRedirects` follows a `3xx` on the client's own origin.
+- Both are off by default.
+
+Three decisions are worth more than the feature:
+
+- **Each hop starts from the request that was redirected.** It does not start
+  from the request that answered a challenge, because Digest signs the
+  request-target, and an `Authorization` field for `/a` is wrong for `/b`. A
+  test with two Digest-protected paths pins this: built from the answered
+  request, the second hop carries the wrong credential and comes back `401`.
+- **A response whose body is still a stream is handed back.** The first
+  version read a leftover redirect body before the next hop, and its test
+  passed with the reading removed. Moving the body into a later TCP segment
+  did not change that. The client reads every body before it returns except
+  an event stream's, so there was never anything to drain, and draining the
+  one body it does leave would wait for good. A `3xx` or `401` whose body is an
+  event stream now comes back as it is, and two cases pin that.
+- **Downloads that resume are the second half, still open.** They need a
+  partial body to resume from. This client has none to offer until it has a
+  streaming path for bodies with a `Content-Length`.
+
+25 tests in two fixtures, both named in the regression selection. Eight
+mutations each turn at least one of them red. The commit message says nine:
+the ninth was the drain, which is no longer in the code, and amending a pushed
+commit was not an option.
+
+**H-41, `Content-Length: 0` on a `GET` ([Hermod#266](https://github.com/Vanaheimr/Hermod/pull/266)).**
+Found writing the redirect tests. A `GET` the client had not rewritten arrived
+with the field, and one it had rewritten from a `POST` did not. Measured
+against a raw listener, all five of `GET`, `HEAD`, `DELETE`, `OPTIONS` and
+`POST` without content said `Content-Length: 0`. RFC 9110 §8.6 has a user
+agent send the field when the method defines a meaning for content, and not
+send it when the request has no content and the method anticipates none. The
+cause was `AHTTPPDUBuilder.Content`, which writes `0` for `null`. The request
+builder now drops it for `GET`, `HEAD`, `DELETE`, `CONNECT`, `OPTIONS` and
+`TRACE`. Responses keep theirs on purpose, see `46d38b38` above. The two
+mutations go red from opposite sides: without the fix, the five methods
+without content fail; with the field dropped for every method, `POST`, `PUT`
+and `PATCH` fail.
+
+**The selection's count needed a third PR.** #265 wrote 811 into
+`HTTP1/README.md`, the 786 and its own 25. #266 merged sixteen seconds later
+with eight cases in a fixture already named. Measured on the merged
+`7d821a1c`, the selection is **819**, and [Hermod#267](https://github.com/Vanaheimr/Hermod/pull/267)
+says so. `b83e7d41` differs from the tree measured only in that file.
+
+**This repository's own README printed a stale filter.** Under "The
+Hermod-side regression suites" it gave five names, while the table above it
+counted thirty-nine. It now prints the forty-one, copied from
+`HTTP1/README.md`.
+
+| | `5dfbd920` | `b83e7d41` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1408 | **1444** |
+| ↳ regression selection | 786 | **819** |
+| ↳ WebSockets | 234 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1409 | **1445** |
+| the neighbours (HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP) | 2735 | **2863** |
+| gate, cleartext / TLS / `--wsl` | 334 / 340 / 536 | **334 / 340 / 536** |
+| Linux-built clone: TLS, proxies | 341, 32/32 | **341, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+
+The 36 more under `Tests.HTTP.` are H-38's 25, H-41's 8, and 3 WebSocket
+tests net: `2c8a5d72` routes several WebSocket servers on one port by
+subprotocol, adds six tests in `WebSocketRoutedBySubprotocolTests` and removes
+three from `WebSocketOverHTTP3Tests`. Since that commit changes the WebSocket
+server, both Autobahn directions ran again rather than being carried over.
+They held their floors with no hard failures. The suite's own peak was
+3 944 MiB on the server side, against 3 607 and 3 692 MiB in the two runs of
+2026-11-19, and 3 518 MiB on the client side. The new memory line in both
+drivers printed that with no extra step.
