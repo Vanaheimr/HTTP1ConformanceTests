@@ -641,14 +641,28 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #region GET /files/resource.txt  — conditional requests + Range
 
-            // GET alone, as for "/" above: HEAD comes from the derivation, and
-            // ServeResource answers it unchanged — a conditional HEAD still gets
-            // its 304, and a ranged one still gets what the range says, because
-            // the handler is the same handler.
-            API.AddHandler(
-                HTTPMethod.GET,
+            // The handler says what the representation is; the 304, 412, 206 and
+            // 416, the multipart/byteranges body and the If-Range check are the
+            // library's — HTTPResourceSemantics, the same rules HTTP/2 applies
+            // (H-37). Until 2026-11-20 this route was the demo's own
+            // ServeResource, which implemented If-None-Match, If-Modified-Since
+            // and a single range and nothing else, so what h1semantics verified
+            // here was the demo, not the stack.
+            //
+            // GET alone, as for "/" above: HEAD comes from the derivation, which
+            // calls this handler with the request's own method, so a conditional
+            // HEAD still gets its 304 and a ranged one the whole length, since
+            // RFC 9110 Section 14.2 defines Range for GET only.
+            API.AddResource(
                 HTTPPath.Root + "files" + "resource.txt",
-                HTTPDelegate: request => Task.FromResult(ServeResource(request))
+                (path, headers, cancellationToken) => Task.FromResult<HTTPResource?>(
+                    new HTTPResource {
+                        Body          = resourceBytes,
+                        ContentType   = "text/plain; charset=utf-8",
+                        ETag          = resourceETag,
+                        LastModified  = resourceDate
+                    }
+                )
             );
 
             API.AddHandler(
@@ -1155,149 +1169,6 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             });
 
             #endregion
-
-        }
-
-        #endregion
-
-        #region ServeResource(Request)
-
-        /// <summary>
-        /// /files/resource.txt — conditional requests (RFC 9110 §13) and Range
-        /// (RFC 9110 §14), both implemented *here* rather than by the library.
-        ///
-        /// Hermod exposes If-None-Match / If-Modified-Since / Range as typed
-        /// fields and applies no policy of its own, which is the documented
-        /// design: an origin server hands its handlers the information and lets
-        /// them decide what the resource means. So this method is what the
-        /// h1semantics harness actually exercises.
-        /// </summary>
-        private static HTTPResponse ServeResource(HTTPRequest Request)
-        {
-
-            // --- Conditional: If-None-Match wins over If-Modified-Since (§13.1.3)
-            if (Request.IfNoneMatch is not null)
-            {
-                if (Request.IfNoneMatch == "*" ||
-                    Request.IfNoneMatch.Split(',').Any(tag => tag.Trim().TrimStart('W', '/') == resourceETag))
-                {
-                    return NotModified(Request);
-                }
-            }
-            else if (Request.IfModifiedSince is not null &&
-                     DateTimeOffset.TryParse(Request.IfModifiedSince, out var since) &&
-                     resourceDate <= since.UtcDateTime)
-            {
-                return NotModified(Request);
-            }
-
-            // --- Range: a single byte range only; anything else falls back to 200
-            if (Request.Range is not null)
-                return ServeRange(Request);
-
-            var builder = new HTTPResponse.Builder(Request) {
-                              HTTPStatusCode  = HTTPStatusCode.OK,
-                              ContentType     = HTTPContentType.Text.PLAIN,
-                              ETag            = resourceETag,
-                              LastModified    = resourceDate,
-                              Content         = resourceBytes,
-                              AcceptRanges    = "bytes"
-                          };
-
-            return builder.AsImmutable;
-
-        }
-
-        #endregion
-
-        #region ServeRange(Request)
-
-        private static HTTPResponse ServeRange(HTTPRequest Request)
-        {
-
-            var spec = (Request.Range ?? "").Trim();
-
-            if (!spec.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
-                return RangeNotSatisfiable(Request);
-
-            var parts = spec[6..].Split('-');
-
-            if (parts.Length != 2)
-                return RangeNotSatisfiable(Request);
-
-            Int64 from, to;
-            var   length = resourceBytes.Length;
-
-            if (parts[0].Length == 0)
-            {
-                // suffix-byte-range-spec: "bytes=-N" — the last N bytes
-                if (!Int64.TryParse(parts[1], out var suffix) || suffix <= 0)
-                    return RangeNotSatisfiable(Request);
-
-                from = Math.Max(0, length - suffix);
-                to   = length - 1;
-            }
-            else
-            {
-                if (!Int64.TryParse(parts[0], out from) || from < 0)
-                    return RangeNotSatisfiable(Request);
-
-                to = parts[1].Length == 0
-                         ? length - 1
-                         : Int64.TryParse(parts[1], out var explicitTo)
-                               ? Math.Min(explicitTo, length - 1)
-                               : -1;
-
-                if (to < 0)
-                    return RangeNotSatisfiable(Request);
-            }
-
-            if (from >= length || from > to)
-                return RangeNotSatisfiable(Request);
-
-            var slice   = resourceBytes[(Int32) from .. (Int32) (to + 1)];
-
-            var builder = new HTTPResponse.Builder(Request) {
-                              HTTPStatusCode  = HTTPStatusCode.PartialContent,
-                              ContentType     = HTTPContentType.Text.PLAIN,
-                              ETag            = resourceETag,
-                              LastModified    = resourceDate,
-                              Content         = slice,
-                              AcceptRanges    = "bytes"
-                          };
-
-            builder.SetContentRange($"bytes {from}-{to}/{length}");
-
-            return builder.AsImmutable;
-
-        }
-
-        #endregion
-
-        #region NotModified / RangeNotSatisfiable
-
-        /// <summary>
-        /// RFC 9110 §15.4.5: a 304 carries the validators it would have sent with
-        /// a 200, and no body.
-        /// </summary>
-        private static HTTPResponse NotModified(HTTPRequest Request)
-
-            => new HTTPResponse.Builder(Request) {
-                   HTTPStatusCode  = HTTPStatusCode.NotModified,
-                   ETag            = resourceETag,
-                   LastModified    = resourceDate
-               }.AsImmutable;
-
-        private static HTTPResponse RangeNotSatisfiable(HTTPRequest Request)
-        {
-
-            var builder = new HTTPResponse.Builder(Request) {
-                              HTTPStatusCode = HTTPStatusCode.RequestedRangeNotSatisfiable
-                          };
-
-            builder.SetContentRange($"bytes */{resourceBytes.Length}");
-
-            return builder.AsImmutable;
 
         }
 
