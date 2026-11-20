@@ -50,9 +50,10 @@ checks.Status(
     200
 );
 
-// §3.2.2: absolute-form is for requests to a proxy. Hermod is an origin server
-// and rejects it rather than silently treating it as origin-form — the
-// permissive reading is a documented smuggling vector past front-end routers.
+// §3.2.2: "A server MUST accept the absolute-form in requests", and an origin
+// server then ignores Host and uses the target's authority. Hermod refuses the
+// form with 400, which this check pins as today's behaviour: H-42 in PLAN.md.
+// It flips to accepting once that fix is pinned.
 checks.Status(
     "absolute-form target (proxy request) rejected",
     await target.RoundTripAsync($"GET http://{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),

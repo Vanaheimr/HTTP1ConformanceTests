@@ -201,7 +201,7 @@ claim as "Hermod serves `206 Partial Content`". The former is 🟡, the latter i
 
 | Spec / section | Topic | Hermod HTTP/1.x |
 |---|---|---|
-| RFC 9112 §2–3 | Message format, request line, request-target forms | ✅ origin-form ✅, asterisk-form (`OPTIONS *`) ✅, absolute-form ❌ *by design* (not a proxy), authority-form (`CONNECT`) → `501` |
+| RFC 9112 §2–3 | Message format, request line, request-target forms | ✅ origin-form ✅, asterisk-form (`OPTIONS *`) ✅, absolute-form ❌ refused with `400`, which §3.2.2 does not allow: *"A server MUST accept the absolute-form"*. Marked *by design* (not a proxy) until 2026-11-20, now **H-42**; authority-form (`CONNECT`) → `501` |
 | RFC 9110 §5 | Field syntax, obs-fold, whitespace before `:`, control chars | ✅ all rejected |
 | RFC 9112 §6 | Message body length, the 7-step algorithm | ✅ incl. duplicate/conflicting `Content-Length`, `CL`+`TE` conflict, overflow/sign/non-decimal |
 | RFC 9110 §8.6 | `Content-Length` on a request without content | ✅ since H-41 (2026-11-20): none on a `GET`, `HEAD`, `DELETE`, `CONNECT`, `OPTIONS` or `TRACE` without content, `0` on a `POST`, `PUT`, `PATCH` or `QUERY`. Every request without content said `0` before |

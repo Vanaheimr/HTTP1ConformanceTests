@@ -6230,3 +6230,30 @@ Left open, deliberately:
   its own.
 
 Track B is 40 of 41. H-5, the client-side cache, is the one left.
+
+## 2026-11-20 — H-42 and H-43 filed
+
+Two findings that H-37 brought up, filed rather than fixed, at the user's
+request. Neither changes a count yet.
+
+**H-42, the absolute-form.** H-37's adapter had a case sending
+`GET http://host/path`, and the server refused it with `400` before the
+handler saw it. The refusal was written down as deliberate in three places:
+`HTTPRequest.cs`, the matrix row for RFC 9112 §2–3, and `h1syntax`, which
+asserts the `400`. The reason given was that Hermod is not a proxy, and that
+accepting the form invites smuggling past a front end. RFC 9112 §3.2.2 says
+otherwise: *"A server MUST accept the absolute-form in requests"*. The same
+section tells an origin server to ignore `Host` and use the authority of the
+target, which closes the smuggling gap that the refusal was meant to close.
+The matrix row says ❌ and names H-42 now. `h1syntax` keeps asserting today's
+`400` until the fix is pinned, so that the gate measures what the stack does.
+
+**H-43, validators for static files.** The handlers in
+`HTTPStandardHandlers` serve files with no `ETag` and no `Last-Modified`.
+So no request for a static file can get a `304`, and none can resume with
+`If-Range`. `SinglePageAppHandler` has an `ETag` and answers `If-None-Match`,
+but has no `If-Match`, no `Last-Modified` and no `Range`. The fix is to route
+both through `HTTPResourceSemantics`. The catch is that the layer reads the
+whole body into memory, while these handlers stream it.
+
+Track B is 40 of 43.
