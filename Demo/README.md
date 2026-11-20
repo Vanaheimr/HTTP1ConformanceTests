@@ -28,7 +28,7 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/slow` | GET | 2 s handler — client patience, reuse afterwards |
 | `/chunked` | GET | `Transfer-Encoding: chunked` + chunk extensions (token, valueless) |
 | `/trailers` | GET | chunked + trailer fields after the terminal chunk |
-| `/files/resource.txt` | GET HEAD OPTIONS | `ETag`/`Last-Modified`, conditional requests, `Range` → `206`/`416` |
+| `/files/resource.txt` | GET HEAD OPTIONS | `ETag`/`Last-Modified`, conditional requests, `Range` → `206`/`416`/`multipart/byteranges` — all of it the library's, through `AddResource` |
 | `/files/greeting` | GET | proactive negotiation (`Accept`, `Accept-Language`) + `Vary` |
 | `/secret` | GET | `401` + `WWW-Authenticate`, Basic (`alice:secret`) and Bearer (`valid-token-123`) |
 | `/secret/digest` | GET | RFC 7616 Digest, `algorithm=SHA-256` (`alice:secret`) |
@@ -44,18 +44,24 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/events` | GET | SSE — `retry`, `id`, `event`, a 2 s ticker |
 | `/ws` | GET | RFC 9110 §7.8 `Upgrade` — a WebSocket echo on the HTTP port itself, cleartext and TLS. A plain GET gets `426` |
 
-## Why the handlers implement semantics themselves
+## Who implements the semantics
 
-Several routes do work a framework might do for you — conditional requests,
-`Range`, negotiation. That is not a workaround. Hermod exposes `If-None-Match`,
-`Range` and friends as typed fields and applies **no policy of its own**,
-because it is an origin server rather than a framework: the resource decides
-what its own preconditions mean.
+Hermod exposes `If-None-Match`, `Range`, `Accept` and friends as typed fields.
+A handler registered with `AddHandler` decides what they mean for its
+resource, because Hermod is an origin server rather than a framework. Since
+H-37 (2026-11-20) a resource can be registered with `AddResource` instead,
+and then the library answers them by RFC 9110 §12–14. It is the same layer
+HTTP/2 has always used.
 
-So `ServeResource` in [`Program.cs`](Program.cs) is the demo doing its job, and
-the `h1semantics` harness will be verifying *that method* as much as the library
-underneath it. A harness reporting "no automatic 206" would be reporting a
-design decision, not a defect.
+The demo shows both:
+
+- **`/files/resource.txt`** is registered with `AddResource`. Its `304`, `412`,
+  `206`, `416` and `multipart/byteranges` are the library's, and `h1semantics`
+  measures the library there. Until 2026-11-20 it was the demo's own
+  `ServeResource`, which knew `If-None-Match`, `If-Modified-Since` and a single
+  range and nothing else, so the harness measured the demo.
+- **`/files/greeting`** still negotiates in its own handler, so the negotiation
+  checks measure that handler.
 
 ## Verified
 

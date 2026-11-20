@@ -6145,3 +6145,88 @@ on the server side and 3 525 MiB on the client side, both within the range
 of the runs before.
 
 H-38 is done. Track B is 39 of 41, and the two left are H-5 and H-37.
+
+## 2026-11-20 — RFC 9110's core mechanics on HTTP/1.x, and Hermod to `832a32cc`
+
+H-37, fixed upstream and pinned. Apart from #275's two commits, the pin is
+SMTP and OpenPGP.
+
+**H-37 ([Hermod#275](https://github.com/Vanaheimr/Hermod/pull/275)).** The
+finding was a question rather than a defect. HTTP/2 had negotiation,
+preconditions, ranges and `QUERY` as a library layer, `HTTPSemantics.Wrap`.
+HTTP/1.x left all of it to each handler. The stack had made one design
+decision twice, in opposite directions, and the answer was to make it once.
+The layer is now opt-in on both versions:
+
+- `HTTPResourceSemantics` in `Hermod/HTTP/` is the version-neutral core.
+  `Answer(...)` takes a method, a target, header fields and content, and
+  returns header fields and content.
+- It is `HTTPSemantics`' code with the HTTP/2 request handler taken off it,
+  and no rule changed: the diff of that file, comments aside, is the
+  lambda that became `Answer` and the overload that became `Variants`.
+- The first commit is a pure move, so `git log --follow` reaches the code's
+  history.
+- `HTTP2.HTTPSemantics.Wrap` keeps both signatures, and the HTTP/2 tests
+  run unchanged.
+- `HTTPResourceHandlers` adapts it to HTTP/1.x, and `httpAPI.AddResource(…)`
+  registers it.
+
+Three things the adapter had to get right, each with a test that goes red
+without it:
+
+- **Field names go in lower case**, as HTTP/2 delivers them. Without that, a
+  precondition spelled as a client spells it is silently not evaluated. That
+  mutation turned 12 of the 47 tests red.
+- **A `HEAD` reaches the layer as a `HEAD`**, not as the `GET` it was routed
+  to. RFC 9110 §14.2 defines `Range` for `GET` alone.
+- **`Content-Type` goes out verbatim.** The typed `HTTPContentType` keeps a
+  charset and nothing else. A first test with a multipart boundary did not
+  tell the two apart, because the typed parser fails on that boundary and the
+  code falls back to the raw value anyway. A JSON-LD `profile` does.
+
+Eleven mutations were tried, and ten went red. The eleventh joined a field
+sent on two lines from only its first line. That cannot be seen from the wire:
+the server's parser joins list fields itself and refuses other repeats. The
+code comment says so instead of a test pretending otherwise.
+
+**The demo's `/files/resource.txt` is the library's now.** It was the demo's
+own `ServeResource`, which knew `If-None-Match`, `If-Modified-Since` and a
+single range. So until today, `h1semantics` measured the demo there, and said
+so in its header. The route is registered with `AddResource` now. To check
+that the harness can tell, `If-None-Match` was disabled in the core: it read
+72/75. `/files/greeting` still negotiates in its own handler.
+
+The route answers differently in three places:
+
+- an unknown range unit is ignored with a `200` rather than refused with a
+  `416` (RFC 9110 §14.2);
+- a `416` carries the `ETag`;
+- several ranges are one `multipart/byteranges` body.
+
+None of the gates, the peers or the five proxy chains noticed any of these as
+a difference: `h1semantics` accepts either answer to `items=0-4`, and
+`tests/proxy-known.txt` needed no new line.
+
+| | `62eae97e` | `832a32cc` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1458 | **1505** |
+| ↳ regression selection | 833 | **880** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1459 | **1506** |
+| the neighbours (HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP) | 2867 | **3004** |
+| gate, cleartext / TLS / `--wsl` | 334 / 340 / 536 | **334 / 340 / 536** |
+| Linux-built clone: TLS, proxies | 341, 32/32 | **341, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+
+The 47 are `HTTPResourceSemanticsTests`, which joins the regression
+selection as its forty-third name. The neighbours' 137 more are SMTP's. The
+full Hermod suite before the PR: 6464 passed, 6 skipped, none failed.
+
+Left open, deliberately:
+
+- `HTTPStandardHandlers`' static files send no `ETag` or `Last-Modified`, and
+  `SinglePageAppHandler` has an `If-None-Match` of its own. Routing them
+  through the layer changes what static files answer, so it needs a change of
+  its own.
+
+Track B is 40 of 41. H-5, the client-side cache, is the one left.

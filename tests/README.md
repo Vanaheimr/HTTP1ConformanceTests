@@ -213,13 +213,15 @@ path, which is why the `-T -` chunked-upload check works unchanged.
 
 Two things worth stating plainly, because both are easy to misread later.
 
-**`h1semantics` verifies the demo as much as the library.** Hermod exposes
-`If-None-Match`, `Range`, `Accept` and friends as typed fields and applies no
-policy of its own — it is an origin server, and the resource decides what its
-own preconditions mean. The 304s, 206s and negotiated variants are produced by
-`Demo/Program.cs`. A harness reporting "no automatic 206" would be reporting a
-design decision; what these checks can honestly establish is that an origin
-server built on this library *can* implement RFC 9110 correctly.
+**What `h1semantics` measures depends on the route.** Hermod exposes
+`If-None-Match`, `Range`, `Accept` and friends as typed fields, and a handler
+registered with `AddHandler` decides what they mean. The conditionals and
+ranges on `/files/resource.txt` are the library's since H-37 (2026-11-20): the
+route is registered with `AddResource`, and with `If-None-Match` disabled in
+the library's core the harness reads 72/75. Before that the route was the
+demo's own `ServeResource`, and these checks could only establish that a
+handler built on the library *can* implement RFC 9110. The negotiated variants
+on `/files/greeting` are still the demo's own handler.
 
 **A single origin server cannot exhibit a TE.TE desync.** Request smuggling is a
 disagreement between two parsers, and there is only one here. The first version

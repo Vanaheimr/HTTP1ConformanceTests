@@ -23,17 +23,15 @@ using org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests;
 //
 // IMPORTANT — what is under test here.
 //
-// Hermod exposes If-None-Match, Range, Accept and friends as typed fields and
-// applies no policy of its own: it is an origin server, and the resource
-// decides what its own preconditions mean. So the 304s, 206s and negotiated
-// variants below are produced by the *demo's handlers* (Demo/Program.cs,
-// ServeResource), and this harness verifies that code at least as much as the
-// library underneath it.
+// Hermod exposes If-None-Match, Range, Accept and friends as typed fields, and
+// a handler registered with AddHandler decides what they mean. A resource
+// registered with AddResource leaves them to the library instead, which
+// answers by RFC 9110 Sections 12-14 the way HTTP/2 always has (H-37).
 //
-// That is not a gap. A harness reporting "no automatic 206" would be reporting
-// a design decision. What it can honestly report is whether an origin server
-// built on this library can implement RFC 9110 correctly — which is the
-// question that actually matters.
+// The demo has both. /files/resource.txt is registered with AddResource since
+// 2026-11-20, so the 304s, 412s, 206s and 416s below measure the library; until
+// then it was the demo's own ServeResource and they measured the demo. The
+// negotiated variants of /files/greeting are still the demo's own handler.
 // ---------------------------------------------------------------------------
 
 var target = Target.FromArguments(args);
