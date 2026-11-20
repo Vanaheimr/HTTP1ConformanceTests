@@ -6076,3 +6076,72 @@ They held their floors with no hard failures. The suite's own peak was
 3 944 MiB on the server side, against 3 607 and 3 692 MiB in the two runs of
 2026-11-19, and 3 518 MiB on the client side. The new memory line in both
 drivers printed that with no extra step.
+
+## 2026-11-20 — The client resumes a download, and Hermod to `62eae97e`
+
+H-38's second half, fixed upstream and pinned. The pin is three commits from
+`b83e7d41`: #268's one, and two in `ATCPClient` that came from elsewhere.
+
+**H-38, downloads that resume ([Hermod#268](https://github.com/Vanaheimr/Hermod/pull/268)).**
+The first half left this open because the client had no partial body to
+resume from. It read every body except an event stream's into memory before
+returning, and its retry loop answered a body that broke off by sending the
+whole request again. `AHTTPClient.DownloadAsync` gives the body a sink: what
+arrives goes to the destination as it arrives, and a body that breaks off
+leaves what was written there.
+
+- The rest is asked for with `Range: bytes=n-` and `If-Range`, guarded by a
+  strong entity-tag or else `Last-Modified`. RFC 9110 §13.1.5 does not let a
+  weak one guard it. With neither, a break is reported, not retried.
+- A `200`, or a `206` that starts anywhere else, starts the destination over.
+- A `416` whose `Content-Range` says `*/n`, with `n` what is already written,
+  finishes it.
+- The request asks for `identity`, so the octets written are the
+  representation's own. With `VerifyDigests` the pieces are checked together
+  against `Repr-Digest` at the end.
+- The result is an `HTTPDownloadResult`, never an exception: what was written,
+  how many attempts, resumes and restarts, and why it stopped if it did.
+
+`HTTPContentRange` and `HTTPValidators` moved from `HTTP2/Core` to
+`Hermod/HTTP/`, the same move the first half made for its two classes.
+
+**A defect found on the way.** The chunked download test wrote nothing.
+`ChunkedTransferEncodingStream` read on until the caller's buffer was full,
+and when the connection ended inside a chunk, the exception took the octets
+already in that buffer with it. A read now returns as soon as it has data,
+which is what `Stream.Read` promises. The same stream reads chunked request
+bodies on the server, so this pin is the first in a while whose change
+reaches the server's framing: the gates, the proxy chains and the
+Linux-built clone below all ran on it. `ChunkedFramingTests` has two cases
+more, one synchronous and one asynchronous.
+
+14 tests, twelve mutations each turning one or more of them red. The full
+Hermod suite before the PR: 6275 passed, 6 skipped, 1 failed. The failure was
+`MulticastDNSBrowser_Tests.QueryLoop_SendsAnInitialPTRQuery_AndRepeatsItWithADoublingInterval`,
+a timing test that passed five runs out of five on its own.
+
+**What else the pin carries.** `cc67b89e` and `76642b20` make `ATCPClient`
+try every address it resolved, the preferred family first and the families
+interleaved, with RFC 8305's 250 ms Connection Attempt Delay before the next
+attempt. Before them it dialled one address and gave up when that failed.
+That is the connect under `HTTPClient`, but its four tests are in
+`Tests.TCP`, which CI's filter does not reach, as with H-27. They show in the
+neighbours' row, not in ours.
+
+| | `b83e7d41` | `62eae97e` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1444 | **1458** |
+| ↳ regression selection | 819 | **833** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1445 | **1459** |
+| the neighbours (HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS, SMTP) | 2863 | **2867** |
+| gate, cleartext / TLS / `--wsl` | 334 / 340 / 536 | **334 / 340 / 536** |
+| Linux-built clone: TLS, proxies | 341, 32/32 | **341, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+
+Neither change touches WebSockets, and both Autobahn directions ran anyway
+and held their floors with no hard failures. The suite peaked at 3 634 MiB
+on the server side and 3 525 MiB on the client side, both within the range
+of the runs before.
+
+H-38 is done. Track B is 39 of 41, and the two left are H-5 and H-37.
