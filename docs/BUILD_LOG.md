@@ -6354,3 +6354,72 @@ out 6 ms shorter. DNS, not this repository's, and a timing assertion rather
 than a defect. The Autobahn suite peaked at 3 577 MiB.
 
 Track B is 42 of 43. H-5, the cache, is left.
+
+## 2026-11-21 — The HTTP/1.x client has a cache, and Hermod to `862434cc`
+
+H-5 is fixed, merged as [Hermod#286](https://github.com/Vanaheimr/Hermod/pull/286) and pinned. It was the last open finding of
+Track B.
+
+`AHTTPClient.Cache` takes an `HTTPClientCache`. It is null by default, and
+private when set. It works like this:
+
+- it stores responses to `GET`;
+- it serves fresh ones with their `Age`;
+- it revalidates stale ones, and keys variants by `Vary`;
+- it honours `stale-while-revalidate`, `stale-if-error` and `immutable`;
+- it invalidates a target when an unsafe request to it succeeds.
+
+The rules are `HTTPCache`'s, which moved from `HTTP2/Core/` to
+`HTTP/Caching/`. Moving the rules was the larger part of the work. They had
+been HTTP/2's alone and had never been read against RFC 9111 line by line.
+That reading found these deviations:
+
+- a fresh `must-revalidate` response was revalidated anyway;
+- a request's `max-age` was parsed and never read;
+- `Expires: 0` was left to the heuristic, which could make it fresh, where
+  §5.3 says it has expired;
+- a validator alone made a response storable;
+- a `206` was stored as the whole representation;
+- a `304` overwrote the stored `Content-Length` and was applied whatever its
+  entity tag;
+- `Cache-Control` kept the last occurrence of a directive and read an invalid
+  `max-age` as absent;
+- `Vary` compared the first line of a field only.
+
+The HTTP/2 client's own wiring had three more:
+
+- `only-if-cached` revalidated with the origin;
+- a `HEAD` was answered from a stored `GET`, since entries are keyed by path;
+- a `304` for another entity tag was applied.
+
+All of them are fixed for both versions.
+
+`HTTPClientCacheTests` share one clock between the cache and the origin's
+`Date`. A cache reads the gap between its clock and `Date` as apparent age
+(§4.2.3). The first draft advanced only the cache's clock, and every response
+would then have looked as old as the time skipped. Thirty-three mutations,
+one per fix, each turned a test red. One of them did so only after a second
+value went into the test: a `max-age` of 2^63 wraps to a negative number,
+while the first value had wrapped to a large positive one that the cap of
+2^31 had hidden.
+
+No harness here uses the client's cache, and none reaches it from outside.
+`cache-tests.fyi` tests a cache standing in front of its own origin, so
+measuring this one needs a forwarding harness here first.
+
+| | `cc4bd449` | `862434cc` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1545 | **1588** |
+| ↳ regression selection | 920 | **963** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1546 | **1589** |
+| the neighbours | 3117 | **3219** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+
+The selection adds `HTTPCacheTests` and `HTTPClientCacheTests` as its
+forty-sixth and forty-seventh names. The neighbours are 3219,
+whose 102 more are SMTP's 99, from Hermod#282, #284 and #285, and the three new HTTP/2 `CachingClientTests`. All of them passed on the first run, the mDNS timing test included. The Autobahn suite peaked at 3 634 MiB.
+
+Track B is 43 of 43.
