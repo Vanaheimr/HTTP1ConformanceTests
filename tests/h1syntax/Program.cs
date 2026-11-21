@@ -51,12 +51,43 @@ checks.Status(
 );
 
 // §3.2.2: "A server MUST accept the absolute-form in requests", and an origin
-// server then ignores Host and uses the target's authority. Hermod refuses the
-// form with 400, which this check pins as today's behaviour: H-42 in PLAN.md.
-// It flips to accepting once that fix is pinned.
+// server "MUST ignore the received Host header field (if any) and instead use
+// the host information of the request-target". Hermod refused the form with
+// 400 until Hermod#278 (H-42, 2026-11-21), and this check asserted the 400.
+//
+// The second check is the one that can tell "ignored" from "agreed with": over
+// TLS a Host of evil.example alone is a 421 (RFC 9110 §7.4, H-36), so a 200
+// there says the target's authority was asked and not the field. The third is
+// the same sentence of §7.4 from the target's side: over TLS a target naming
+// an origin the certificate does not cover, and on cleartext one naming https
+// at all, which no certificate stands behind.
+var scheme = target.TLS ? "https" : "http";
+
 checks.Status(
-    "absolute-form target (proxy request) rejected",
-    await target.RoundTripAsync($"GET http://{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),
+    "absolute-form target accepted (§3.2.2)",
+    await target.RoundTripAsync($"GET {scheme}://{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),
+    200
+);
+
+checks.Status(
+    "absolute-form: the target's authority, not the Host field",
+    await target.RoundTripAsync($"GET {scheme}://{host}/ HTTP/1.1\r\nHost: evil.example\r\n\r\n"),
+    200
+);
+
+checks.Status(
+    target.TLS ? "absolute-form for an origin the certificate does not name → 421"
+               : "absolute-form naming https on cleartext → 421",
+    await target.RoundTripAsync(target.TLS
+                                    ? $"GET https://evil.example/ HTTP/1.1\r\nHost: {host}\r\n\r\n"
+                                    : $"GET https://{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),
+    421
+);
+
+// RFC 9110 §4.2.4: userinfo in an http(s) URI SHOULD be treated as an error.
+checks.Status(
+    "absolute-form with userinfo rejected",
+    await target.RoundTripAsync($"GET {scheme}://user@{host}/ HTTP/1.1\r\nHost: {host}\r\n\r\n"),
     400
 );
 
