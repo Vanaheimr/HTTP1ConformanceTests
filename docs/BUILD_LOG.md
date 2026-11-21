@@ -6257,3 +6257,53 @@ both through `HTTPResourceSemantics`. The catch is that the layer reads the
 whole body into memory, while these handlers stream it.
 
 Track B is 40 of 43.
+
+## 2026-11-21 — The absolute-form is accepted, and Hermod to `6011efc6`
+
+H-42 is fixed, merged as [Hermod#278](https://github.com/Vanaheimr/Hermod/pull/278)
+and pinned.
+
+RFC 9112 §3.2.2 says *"A server MUST accept the absolute-form in requests"*.
+The server refused it with `400` instead. Both parse paths now accept an `http`
+or `https` target, and the target's authority replaces the `Host` field, as
+the same section requires. Routing, H-36's `421` check and the handler
+therefore all see one origin. The path is held to the origin-form rules.
+These are still `400`:
+
+- an HTTP/1.1 request without `Host`;
+- userinfo;
+- an empty host;
+- any other scheme.
+
+An `https` target on a cleartext connection is a `421` (RFC 9110 §7.4),
+unless `IsAuthorityServed` says otherwise.
+
+`h1syntax` asserted the old `400`. It now asserts four things:
+
+- the `200`;
+- that the target's authority wins over a `Host` of `evil.example`;
+- the `421` for an origin that no certificate covers;
+- the `400` for userinfo.
+
+The second check is the one that can tell "ignored" from "agreed with". Over
+TLS, a `Host` of `evil.example` alone gets a `421`, so a `200` there means
+the server asked the target and not the field.
+
+| | `832a32cc` | `6011efc6` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1505 | **1529** |
+| ↳ regression selection | 880 | **904** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1506 | **1530** |
+| the neighbours | 3004 | **3019** |
+| gate, cleartext / TLS / `--wsl` | 334 / 340 / 536 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 341, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+
+The 24 are `AbsoluteFormTests`' 19, which joins the selection as its
+forty-fourth name, four in `MisdirectedRequestTests` and one in
+`HTTPServerSocketRegressionTests`. The neighbours' 15 more are SMTP's. The
+Autobahn suite peaked at 3 728 MiB, about what it reached on this machine
+before.
+
+Track B is 41 of 43. H-5 and H-43 are left.
