@@ -6307,3 +6307,50 @@ Autobahn suite peaked at 3 728 MiB, about what it reached on this machine
 before.
 
 Track B is 41 of 43. H-5 and H-43 are left.
+
+## 2026-11-21 — Static files carry validators, and Hermod to `cc4bd449`
+
+H-43 is fixed, merged as [Hermod#283](https://github.com/Vanaheimr/Hermod/pull/283)
+and pinned.
+
+The static-file handlers sent a `200` with neither `ETag` nor
+`Last-Modified`, so no request for a static file could be answered `304` or
+`206`. RFC 9110, Sections 8.8.2.1 and 8.8.3 say an origin server SHOULD send
+both where it can determine them, and for a file it can. They now go through
+`HTTPResourceSemantics`, the layer H-37 opened to HTTP/1.x:
+
+- a file on disk is dated by its last write and tagged by that time and its
+  length, as nginx does, so that no request hashes it;
+- an embedded resource and a templated page are tagged by their content;
+- up to `HTTPStandardHandlers.MaxBufferedFileSize` (16 MiB) a file is answered
+  by the layer: `304`, `412`, `206` and `416`;
+- a larger one is streamed as before, with its validators and the `304` and
+  `412` of its preconditions, but no ranges;
+- `SinglePageAppHandler` keeps choosing its coding and hands the layer that
+  one representation, `Vary: Accept-Encoding` on every answer.
+
+No harness here sees it: the demo maps no folder. `StaticFileValidatorsTests`
+is the evidence, sixteen tests over raw sockets, and thirteen mutations of the
+fix each turned some of them red.
+
+| | `6011efc6` | `cc4bd449` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1529 | **1545** |
+| ↳ regression selection | 904 | **920** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1530 | **1546** |
+| the neighbours | 3019 | **3117** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+
+The 16 are `StaticFileValidatorsTests`, which joins the selection as its
+forty-fifth name. The neighbours' 98 more are SMTP's: SPF, DKIM and the
+next hop. One of the 3117 failed in the full run and passed alone three times out of three:
+`MulticastDNSBrowser_Tests.QueryLoop_SendsAnInitialPTRQuery_AndRepeatsItWithADoublingInterval`
+asserts that the second gap between two queries is longer than the first, at
+about 100 ms each, and under the load of three thousand tests the second came
+out 6 ms shorter. DNS, not this repository's, and a timing assertion rather
+than a defect. The Autobahn suite peaked at 3 577 MiB.
+
+Track B is 42 of 43. H-5, the cache, is left.

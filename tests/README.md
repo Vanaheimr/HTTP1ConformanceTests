@@ -67,7 +67,7 @@ Over TLS the six transport-conditional checks join in, and the nightly's
 | Windows / Git Bash, and the nightly's Windows leg | no | yes | 105 | **343** |
 | Debian 13, and the nightly's `debian:13` leg | yes | yes | 106 | **344** |
 
-Both were measured on 2026-10-29 before the job existed, as 326 and 327, and again at Hermod `7946ad01`, `2b6eecc2`, `b27d6483` and, on .NET 11, `4b8be28a`, `5dfbd920` and `6011efc6`. The Debian figure
+Both were measured on 2026-10-29 before the job existed, as 326 and 327, and again at Hermod `7946ad01`, `2b6eecc2`, `b27d6483` and, on .NET 11, `4b8be28a`, `5dfbd920`, `6011efc6` and `cc4bd449`. The Debian figure
 comes from a fresh clone built and run inside WSL, a Linux-built tree, and
 not from the Windows tree driven from WSL, which is not a configuration CI
 runs.

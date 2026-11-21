@@ -6,7 +6,7 @@ test drivers** for the from-scratch HTTP/1.0 + HTTP/1.1 stack (built directly on
 `System.Net.Http`). The stack itself lives in the Vanaheimr **Hermod** library,
 pulled in here as a git submodule under `libs/Hermod/Hermod/HTTP1/`. This repo
 adds the `Demo/` host, the `tests/` raw-wire harnesses, and the third-party
-suite drivers; the **1529 NUnit tests** live with the stack in Hermod
+suite drivers; the **1545 NUnit tests** live with the stack in Hermod
 (`HermodTests/`, filter `FullyQualifiedName~Hermod.Tests.HTTP.`).
 
 Sibling projects, same shape: **HTTP2ConformanceTests** and
@@ -32,13 +32,13 @@ curl --http1.0 http://localhost:8080/         # HTTP/1.0 path: close-delimited
 
 Target framework is `net11.0`. TLS uses a self-signed cert generated at startup.
 
-**Tests:** most coverage is the **1529 NUnit tests** in `libs/Hermod/HermodTests/`
-under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **904** are the HTTP/1.x
+**Tests:** most coverage is the **1545 NUnit tests** in `libs/Hermod/HermodTests/`
+under `FullyQualifiedName~Hermod.Tests.HTTP.` — of which **920** are the HTTP/1.x
 protocol regression selection and **237** cover RFC 6455/7692 WebSockets. CI gates
-on those 1529 plus the single test in `Tests.HTTPS.` = **1530** — a filter that
+on those 1545 plus the single test in `Tests.HTTPS.` = **1546** — a filter that
 reaches neither `Tests.TCP` nor `Tests.Warden`, which is where H-27's fix lives
 and why its own regression test was written through `HTTPClient` rather than
-through `ATCPClient`. The regression selection is the forty-four fixtures
+through `ATCPClient`. The regression selection is the forty-five fixtures
 `Hermod/HTTP1/README.md` names, by concern, since Hermod#221 (2026-11-03). It
 was eleven names and 381 before: a fixture joins only when it is named there,
 and from 2026-09-24 on none was, so every finding that brought a fixture of its
@@ -188,7 +188,7 @@ pointed at a foreign suite. See
 
 | | |
 |---|---|
-| Hermod's own NUnit suites | 1529 `Tests.HTTP.` / 904 regression selection / 237 WebSockets, all run counts — 1530 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **3019** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP. That figure moves between pins faster than anything here does, because most of Hermod's own work happens there and in SSH and QUIC, which no filter here selects: 2321 on 2026-10-28, 2324 and then 2337 on 2026-10-29, 2392 on 2026-10-30, 2465 on 2026-11-03, 2735 on 2026-11-19, whose 270 more are mostly DNS tests, 2863 on 2026-11-20, 2867 at `62eae97e`, whose 4 more are `IPVersionPreferenceTests` for RFC 8305's connection attempts in `ATCPClient`, 3004 at `832a32cc`, whose 137 more are SMTP's, and 3019 since `6011efc6`, whose 15 more are SMTP's too. All 3019 pass here, `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
+| Hermod's own NUnit suites | 1545 `Tests.HTTP.` / 920 regression selection / 237 WebSockets, all run counts — 1546 under the filter CI gates on, which adds the one test in `Tests.HTTPS.`; see [`README.md`](README.md) for each filter. Beside them, measured against the same pin: **3117** across HTTP/2, HTTP/3, WebSocket, TCP, Timers, Warden, DNS and SMTP. That figure moves between pins faster than anything here does, because most of Hermod's own work happens there and in SSH and QUIC, which no filter here selects: 2321 on 2026-10-28, 2324 and then 2337 on 2026-10-29, 2392 on 2026-10-30, 2465 on 2026-11-03, 2735 on 2026-11-19, whose 270 more are mostly DNS tests, 2863 on 2026-11-20, 2867 at `62eae97e`, whose 4 more are `IPVersionPreferenceTests` for RFC 8305's connection attempts in `ATCPClient`, 3004 at `832a32cc`, whose 137 more are SMTP's, 3019 at `6011efc6`, whose 15 more are SMTP's too, and 3117 since `cc4bd449`, whose 98 more are SMTP's. All 3117 pass here, one of them on its second run (an mDNS timing test, see `docs/BUILD_LOG.md` 2026-11-21), `DANE_EE_authenticates_the_next_hop` included, which failed deterministically on this machine from the day it arrived with Hermod#136 until `09da8f3f` stopped Windows from fetching certificates while building a DANE chain — SMTP, not ours, recorded in `docs/BUILD_LOG.md` (2026-10-04, 2026-10-28) |
 | this repo's gate | **337** cleartext, **343** over TLS (214 raw-wire + 99 curl + 24 desync; the TLS leg's six more are the ALPN check, curl's alt-svc cache and H-36's four misdirected requests, none of which a cleartext connection carries) — 303 before H-23's eight `HEAD` probes, 311 before H-9's and H-17's, 313/314 before H-7's `Alt-Svc` on 2026-10-28, 314/316 before the six RFC 9530 digest checks on 2026-10-29, 320/322 before H-36's four the same day, 320/326 before H-15's four problem-details checks later still, 324/330 before H-14's three link checks after that, 327/333 before H-40's five early-hints checks and H-19's two on `Content-Disposition` on 2026-10-30, 334/340 before H-42's three on the absolute-form on 2026-11-21. The TLS leg has been in the nightly since H-14, on Windows and on `debian:13`, where curl's HTTP/2 makes it 344 |
 | with `--wsl` (second curl build + foreign peers + the smuggling differential) | **539/539** |
 | reference peers (A7) | **65/65** + 3 skips — Go, Java, Node, Python, wget as clients; Go and Node as servers. One of the 65 is a known CPython deviation pinned rather than passed: `http.client` takes a `103` for the final response ([python/cpython#72756](https://github.com/python/cpython/issues/72756)). Another is pinned only on the JDKs that need it: since the October 2026 updates (21.0.13, 25.0.5; JDK-8383439, not public) `java.net.http` fails any chunked response with a trailer section with "CR expected". The nightly's runner took 25.0.5 on 2026-10-29, and the Java client then died after two checks for four nights, uncounted — see BUILD_LOG 2026-11-01 |
