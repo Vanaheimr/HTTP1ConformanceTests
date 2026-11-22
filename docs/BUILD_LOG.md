@@ -6423,3 +6423,89 @@ forty-sixth and forty-seventh names. The neighbours are 3219,
 whose 102 more are SMTP's 99, from Hermod#282, #284 and #285, and the three new HTTP/2 `CachingClientTests`. All of them passed on the first run, the mDNS timing test included. The Autobahn suite peaked at 3 634 MiB.
 
 Track B is 43 of 43.
+
+## 2026-11-22 — cache-tests: Hermod's client cache, behind a proxy of its own
+
+H-5 left one thing unmeasured: `cache-tests.fyi`. Its suite,
+[cache-tests](https://github.com/http-tests/cache-tests), tests a cache the way
+a CDN is tested. Its client talks to the cache as if it were the origin, its
+own Node origin answers what gets through, and a cached response is one whose
+`Server-Request-Count` says the origin never saw the request. A client
+library's cache does not stand anywhere a client can talk to, so
+`tests/cache-proxy/` puts it there: an `HTTPServer` whose every route forwards
+through an `HTTPClient`, and every client shares one `HTTPClientCache`.
+
+Three things about the plumbing came out of building it.
+
+- **`AHTTPClient` sends one request at a time.** The suite runs 25 tests at
+  once, some with the origin's answer paused for seconds, so each request rents
+  an idle client or makes a new one. A cache keyed by `Host` does not mind how
+  many clients share it.
+- **`MaxNumberOfRetries: 0` sends nothing.** The proxy wanted no retries, since
+  the suite reports a retry as a result of its own, and every request came back
+  `ClientError` with "Giving up on this HTTP request … after 0 attempts: no
+  reason was recorded". The loop runs `while (retry <= maxNumberOfRetries)`
+  from 1: the parameter counts attempts. **H-48.**
+- **npm 11 refuses `npm run cli --base=…`** with `EUNKNOWNCONFIG`, the form the
+  suite's README gives. The driver sets `npm_config_base` and starts the CLI
+  with node directly, and sets `npm_package_config_id` as well as
+  `npm_config_id`, because the CLI reads the second when the first is empty.
+
+### Reading the result
+
+The CLI writes `true` or the failed assertion for each test, and counting the
+`true`s would be wrong four ways. A failed optimal test is a missed
+optimisation, a check is a yes or a no, and a test whose dependency failed says
+nothing about itself. `tests/cache-proxy/classify.mjs` asks the suite's own
+`determineTestResult`, the function cache-tests.fyi renders with:
+
+| | pass | yes | no | fail | optional_fail | setup_fail | dependency_fail | untested |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Hermod, shared | **270** | 89 | 33 | **6** | 26 | 7 | 44 | 5 |
+| Hermod, private | 250 | 89 | 33 | 9 | 26 | 7 | 61 | 5 |
+| no cache | 22 | 13 | 22 | 6 | 23 | 5 | 384 | 5 |
+
+The suite's own results, recorded 2026-11-17 and classified the same way, have
+13 to 37 required failures for nginx, Squid, ATS, httpd, Varnish, Caddy,
+HAProxy and Fastly.
+
+The two calibration runs are what make the first row mean anything. Without a
+cache 22 tests pass, those asking a cache not to store or serve. As a private
+cache, `cc-resp-private-shared`, `freshness-s-maxage-shared`,
+`other-authorization` and the 17 that depend on them turn red, and nothing
+else does. Three shared runs gave the same 480 results.
+
+### The record
+
+All 121 results that are not a pass or a yes are rows in
+`tests/cache-tests-known.txt`, each with its cause: 24 H-45, 23 CDN-Cache-Control
+(RFC 9213, a CDN's field), 37 checks, 14 by design (`Range`, qualified
+`no-cache`, an unknown transfer coding, a `304` for another entity tag), 8
+optional, 4 H-47, 4 for the proxy's missing interim responses, 5 browser-only,
+and H-44 and H-46. Any result that differs from its row fails the run,
+improvements included. Falsified before it was trusted: a row deleted, a pass
+recorded as a fail and a row invented gave three reports and exit 1.
+
+The first version of `--update` wrote no rows at all. With an empty record as
+its first file, `NR == FNR` holds for the second file too, and every line went
+to the branch meant for the record. It is `FILENAME == ARGV[1]` now.
+
+### What it found
+
+- **H-44.** `Age: 7200, 0` on one line reads as invalid, so as 0. RFC 9111 §5.1
+  says to use the first member.
+- **H-45.** A request with preconditions of its own goes past the cache, where
+  §4.3.2 says to evaluate them against a fresh stored response. This is 24 of
+  the rows.
+- **H-46.** `max-age=4294967295` is capped at 2^31, and an `Age` of 2147483646
+  makes it stale. §1.2.2 caps only what the cache cannot represent.
+- **H-47.** A `HEAD` neither freshens nor updates the stored `GET` (§4.3.5).
+- **H-48**, see above.
+- **H-49.** The client refuses status `999` as an invalid status line. RFC 9110
+  §15 says to read it as a `5xx`. The suite's origin answers `999` when it
+  expected a conditional request, which happens here after a `304` for another
+  entity tag. RFC 9111 §4.3.4 forbids that `304` to update anything, and the
+  cache asks again.
+
+Nightly from today, in a job of its own. The suite is pinned to `3942fbfe`
+(2026-11-17).

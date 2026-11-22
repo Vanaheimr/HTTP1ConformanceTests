@@ -1,0 +1,150 @@
+# cache-tests — every test whose result for Hermod's shared client cache is
+# not a pass or a yes, and why.
+#
+# <test id> TAB <result> TAB <why>
+#
+# The result is the suite's own classification (tests/cache-proxy/classify.mjs):
+#   fail             a required test failed: a conformance question
+#   optional_fail    an optimal test failed: a missed optimisation, allowed
+#   no               a behaviour check answered no; neither right nor wrong
+#   setup_fail       the test could not set up what it measures
+#   dependency_fail  a test it depends on did not pass, so it says nothing
+#   untested         the suite does not run it against a shared cache
+#
+# A test not listed here must pass (or answer yes), and tests/cache-tests.sh
+# fails on ANY test whose result is not what this file says, in either
+# direction. Written by tests/cache-tests.sh --update on 2026-11-22 against the
+# suite at 3942fbfe (2026-11-17) and Hermod 862434cc, the notes by hand.
+#
+# The notes name their cause first:
+#   H-44 … H-49   a finding in Hermod, tracked in PLAN.md
+#   proxy         tests/cache-proxy/, not the cache: the client hands back the
+#                 final response only, so no interim response reaches the suite
+#   by design     a decision of H-5's, with the RFC text that allows it
+#   CDN           RFC 9213's CDN-Cache-Control, a field for CDN caches. Hermod's
+#                 cache is a client's, private or shared, and not a CDN's. The
+#                 proxies cache-tests.fyi lists fail most of these too
+#   optional      an optimisation the suite looks for and the RFCs leave open
+#   check         a behaviour check; what Hermod does, and the RFC text it rests on
+
+304-etag-update-response-Content-Encoding	no	check: RFC 9111 §3.2 lists the field among those a 304 does not update
+304-etag-update-response-Content-Range	no	check: RFC 9111 §3.2 lists the field among those a 304 does not update
+304-etag-update-response-ETag	setup_fail	by design: the 304 names another entity tag, so it selects nothing (RFC 9111 §4.3.4: MUST NOT update) and the cache asks again without conditions. The suite's origin answers that third request with status 999, which the client refuses outright where RFC 9110 §15 would have it read as a 5xx (H-49)
+age-parse-numeric-parameter	no	check: an Age with a parameter is invalid, and an invalid Age is ignored (RFC 9111 §5.1)
+age-parse-parameter	no	check: an Age with a parameter is invalid, and an invalid Age is ignored (RFC 9111 §5.1)
+age-parse-suffix	fail	H-44: one Age line "7200, 0" is read as invalid, so as 0. RFC 9111 §5.1: a cache SHOULD use the first member of a list
+cc-resp-immutable-fresh	untested	untested: a browser test, which the suite runs only against a private cache in a browser
+cc-resp-immutable-stale	untested	untested: a browser test, which the suite runs only against a private cache in a browser
+cc-resp-private-private	untested	untested: a browser test, which the suite runs only against a private cache in a browser
+ccreq-no-store	no	check: a request's no-store forbids storing, not serving what is already stored (RFC 9111 §5.2.1.5)
+cdn-cc-invalid-sh-type-unknown	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-cc-invalid-sh-type-wrong	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-date-update-exceed	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-expires-update-exceed	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-fresh-cc-nostore	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age	optional_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-0	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-0-expires	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-age	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-case-insensitive	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-cc-max-age-invalid-expires	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-expires	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-extension	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-long-cc-max-age	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-max	optional_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-max-plus	optional_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-short-cc-max-age	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-space-after-equals	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-max-age-space-before-equals	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-no-cache	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-no-store-cc-fresh	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-private	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+cdn-remove-age-exceed	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
+conditional-304-etag	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-forward-unquoted	no	check: entity tags are sent as they arrived, quoted or not
+conditional-etag-precedence	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-quoted-respond-unquoted	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-strong-generate-unquoted	no	check: entity tags are sent as they arrived, quoted or not
+conditional-etag-strong-respond	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-strong-respond-multiple-first	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-strong-respond-multiple-last	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-strong-respond-multiple-second	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-strong-respond-obs-text	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-unquoted-respond-quoted	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-unquoted-respond-unquoted	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-vary-headers-mismatch	no	check: a variant whose Vary does not match is not a candidate for validation either
+conditional-etag-weak-respond	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-weak-respond-backslash	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-weak-respond-lowercase	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-weak-respond-omit-slash	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-lm-fresh	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-lm-fresh-earlier	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-lm-fresh-no-lm	setup_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-lm-fresh-rfc850	setup_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+freshness-expires-wrong-case-tz	optional_fail	optional: "gmt" is not GMT; an HTTP-date is case-sensitive (RFC 9110 §5.6.7), and an invalid Expires means already expired (RFC 9111 §5.3)
+freshness-expires-wrong-weekday	no	check: a date whose day-of-week does not match is not a valid HTTP-date, so Expires has passed (RFC 9111 §5.3)
+freshness-max-age-100a	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
+freshness-max-age-a100	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
+freshness-max-age-decimal-five	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
+freshness-max-age-decimal-zero	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
+freshness-max-age-s-maxage-private	untested	untested: a browser test, which the suite runs only against a private cache in a browser
+freshness-max-age-s-maxage-private-multiple	untested	untested: a browser test, which the suite runs only against a private cache in a browser
+freshness-max-age-space-after-equals	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
+freshness-max-age-space-before-equals	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
+freshness-max-age-two-stale-fresh-sameline	no	check: the first occurrence of a directive wins (RFC 9111 §4.2.1)
+freshness-max-age-two-stale-fresh-sepline	no	check: the first occurrence of a directive wins (RFC 9111 §4.2.1)
+head-200-freshness-update	no	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
+head-200-retain	no	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
+head-200-update	dependency_fail	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
+head-410-update	dependency_fail	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
+headers-omit-headers-listed-in-Cache-Control-no-cache	setup_fail	by design: no-cache="field" is treated as no-cache, so the response is revalidated every time. RFC 9111 §5.2.2.4 notes that is what most caches do
+headers-omit-headers-listed-in-Cache-Control-no-cache-single	setup_fail	by design: no-cache="field" is treated as no-cache, so the response is revalidated every time. RFC 9111 §5.2.2.4 notes that is what most caches do
+headers-store-Transfer-Encoding	setup_fail	by design: the client refuses a response with a transfer coding it does not know (RFC 9112 §6.1), so there is nothing to store. Most proxies cache-tests.fyi lists fail its setup the same way
+heuristic-delta-10	no	check: the heuristic is 10% of the time since Last-Modified, three seconds at most here, and the test pauses three
+heuristic-delta-30	no	check: the heuristic is 10% of the time since Last-Modified, three seconds at most here, and the test pauses three
+heuristic-delta-5	no	check: the heuristic is 10% of the time since Last-Modified, three seconds at most here, and the test pauses three
+interim-102	optional_fail	proxy: no interim response is forwarded, so the suite never sees one
+interim-103	optional_fail	proxy: no interim response is forwarded, so the suite never sees one
+interim-no-header-reuse	optional_fail	proxy: no interim response is forwarded, so the suite never sees one
+interim-not-cached	fail	proxy: no interim response is forwarded, so the suite never sees one
+invalidate-DELETE-cl	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-DELETE-location	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-M-SEARCH-cl	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-M-SEARCH-location	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-POST-cl	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-POST-location	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-PUT-cl	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+invalidate-PUT-location	no	check: only the target URI is invalidated; Location and Content-Location are a MAY (RFC 9111 §4.4)
+method-POST	optional_fail	optional: only GET is stored; a POST response is reusable for a GET only with Content-Location and explicit freshness (RFC 9110 §9.3.3)
+other-age-delay	no	check: a response passed on from the origin gets no Age of its own; RFC 9111 §5.1 has Age mean the origin did not generate it for this request
+partial-store-complete-reuse-partial	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-complete-reuse-partial-no-last	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-complete-reuse-partial-suffix	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-partial-complete	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-partial-reuse-partial	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-partial-reuse-partial-absent	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-partial-reuse-partial-byterange	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-store-partial-reuse-partial-suffix	optional_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-use-headers	dependency_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+partial-use-stored-headers	dependency_fail	by design: a request with Range goes past the cache, and a 206 is not stored. Storing and combining parts is a MAY (RFC 9111 §3.3, §3.4)
+stale-503	no	check: stale is served on an error only within stale-if-error (RFC 5861), not on the cache's own initiative, which RFC 9111 §4.2.4 allows and does not require
+stale-close	no	check: stale is served on an error only within stale-if-error (RFC 5861), not on the cache's own initiative, which RFC 9111 §4.2.4 allows and does not require
+stale-close-must-revalidate	dependency_fail	check: depends on stale-close, which Hermod answers no
+stale-close-no-cache	dependency_fail	check: depends on stale-close, which Hermod answers no
+stale-close-proxy-revalidate	dependency_fail	check: depends on stale-close, which Hermod answers no
+stale-close-s-maxage=2	dependency_fail	check: depends on stale-close, which Hermod answers no
+stale-warning-become	dependency_fail	check: depends on stale-close, which Hermod answers no
+stale-warning-stored	dependency_fail	check: depends on stale-close, which Hermod answers no
+status-200-must-understand	optional_fail	optional: must-understand (RFC 9111 §5.2.2.3) is not implemented, so no-store holds, which is the fallback the directive is designed around
+vary-normalise-lang-case	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
+vary-normalise-lang-order	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
+vary-normalise-lang-select	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
+vary-normalise-lang-space	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
+vary-normalise-space	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
+y2038-age-generated-across-int32-max	setup_fail	H-46: max-age=4294967295 is capped at 2^31, and with Age 2147483646 plus the pause the response is stale. RFC 9111 §1.2.2 caps only a value the cache cannot represent
+y2038-ims-future-int32-max-plus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+y2038-ims-future-round-year	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+y2038-ims-future-uint32-max-plus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+y2038-ims-past-epoch	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+y2038-ims-past-int32-min	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+y2038-ims-past-minus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response

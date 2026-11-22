@@ -567,8 +567,35 @@ The three failures are one finding — **H-10**, no automatic CORS preflight —
 recorded in `browser-known.txt` with its number. A failure not in that file
 fails the run.
 
+## The cache (A12)
+
+Hermod's HTTP/1.x client cache against
+[cache-tests](https://github.com/http-tests/cache-tests), the suite behind
+cache-tests.fyi, through `tests/cache-proxy/`: a reverse proxy written for the
+purpose, because the suite tests a cache standing in front of its own origin.
+
+```bash
+tests/cache-tests.sh                     # shared cache, gated on the record
+tests/cache-tests.sh --mode private      # reported, not gated
+tests/cache-tests.sh --mode none         # no cache: what the proxy alone scores
+tests/cache-tests.sh --id freshness-none # one test, its requests dumped
+tests/cache-tests.sh --update            # rewrite tests/cache-tests-known.txt
+```
+
+Node 22.19 or newer; the suite is cloned into `tests/thirdparty/` and pinned.
+About 70 seconds. Each test is classified by the suite's own rules, so a
+required failure, a missed optimisation, a behaviour check and a dependency
+that failed are four different results. **270 pass and 89 checks answer yes**;
+the other 121 are recorded with their reasons in `cache-tests-known.txt`, and
+the run fails on any test whose result is not the recorded one, a test that
+starts passing included. The raw results, in cache-tests.fyi's format and with
+the trace of every exchange, are in `artifacts/cache-tests/`, and the proxy's
+log says what the cache did with each request. See
+[`../docs/TestingAgainst_CacheTests.md`](../docs/TestingAgainst_CacheTests.md).
+
 ## Not here yet
 
 `PLAN.md` has no third-party suite left open. CI (A11)
 landed on 2026-09-22; the reference peers (A7), the benchmark (A9) and the
-fuzzer (A10) on 2026-09-26; the smuggling differential (A6) on 2026-09-27.
+fuzzer (A10) on 2026-09-26; the smuggling differential (A6) on 2026-09-27;
+the cache (A12) on 2026-11-22.

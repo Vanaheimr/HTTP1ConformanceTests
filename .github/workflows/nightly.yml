@@ -309,6 +309,44 @@ jobs:
       - name: smuggler and h2csmuggler
         run: bash tests/smuggler.sh
 
+  cache-tests:
+    # Hermod's HTTP/1.x client cache (H-5) against cache-tests, the suite
+    # behind cache-tests.fyi, through tests/cache-proxy/: a reverse proxy
+    # whose every request goes through one shared HTTPClientCache.
+    #
+    # Gated on tests/cache-tests-known.txt, in both directions: a test whose
+    # result is not what the record says fails the run, a test that starts
+    # passing included. Not a push gate because it clones the suite from
+    # GitHub and npm-installs its one runtime dependency.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '11.0.x'
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      - name: cache-tests, shared cache
+        run: bash tests/cache-tests.sh
+
+      # The suite's raw results, in cache-tests.fyi's format and with the
+      # traces of every exchange, and what the proxy logged.
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cache-tests
+          path: artifacts/cache-tests/
+
   proxies:
     # A5 - the demo host behind five reverse proxies.
     #
