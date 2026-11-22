@@ -15,9 +15,10 @@
 # fails on ANY test whose result is not what this file says, in either
 # direction. Written by tests/cache-tests.sh --update on 2026-11-22 against the
 # suite at 3942fbfe (2026-11-17) and Hermod 862434cc, the notes by hand.
+# age-parse-suffix left the same day with H-44's fix, at Hermod d27b68b0.
 #
 # The notes name their cause first:
-#   H-44 … H-49   a finding in Hermod, tracked in PLAN.md
+#   H-45 … H-49   a finding in Hermod, tracked in PLAN.md
 #   proxy         tests/cache-proxy/, not the cache: the client hands back the
 #                 final response only, so no interim response reaches the suite
 #   by design     a decision of H-5's, with the RFC text that allows it
@@ -32,7 +33,6 @@
 304-etag-update-response-ETag	setup_fail	by design: the 304 names another entity tag, so it selects nothing (RFC 9111 §4.3.4: MUST NOT update) and the cache asks again without conditions. The suite's origin answers that third request with status 999, which the client refuses outright where RFC 9110 §15 would have it read as a 5xx (H-49)
 age-parse-numeric-parameter	no	check: an Age with a parameter is invalid, and an invalid Age is ignored (RFC 9111 §5.1)
 age-parse-parameter	no	check: an Age with a parameter is invalid, and an invalid Age is ignored (RFC 9111 §5.1)
-age-parse-suffix	fail	H-44: one Age line "7200, 0" is read as invalid, so as 0. RFC 9111 §5.1: a cache SHOULD use the first member of a list
 cc-resp-immutable-fresh	untested	untested: a browser test, which the suite runs only against a private cache in a browser
 cc-resp-immutable-stale	untested	untested: a browser test, which the suite runs only against a private cache in a browser
 cc-resp-private-private	untested	untested: a browser test, which the suite runs only against a private cache in a browser
