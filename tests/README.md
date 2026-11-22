@@ -585,8 +585,8 @@ tests/cache-tests.sh --update            # rewrite tests/cache-tests-known.txt
 Node 22.19 or newer; the suite is cloned into `tests/thirdparty/` and pinned.
 About 70 seconds. Each test is classified by the suite's own rules, so a
 required failure, a missed optimisation, a behaviour check and a dependency
-that failed are four different results. **271 pass and 89 checks answer yes**;
-the other 120 are recorded with their reasons in `cache-tests-known.txt`, and
+that failed are four different results. **272 pass and 89 checks answer yes**;
+the other 119 are recorded with their reasons in `cache-tests-known.txt`, and
 the run fails on any test whose result is not the recorded one, a test that
 starts passing included. The raw results, in cache-tests.fyi's format and with
 the trace of every exchange, are in `artifacts/cache-tests/`, and the proxy's

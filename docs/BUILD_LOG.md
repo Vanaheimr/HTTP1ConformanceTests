@@ -6561,3 +6561,45 @@ unchanged. The Autobahn suite peaked at 3 732 MiB against the server and
 3 473 MiB against the client.
 
 Track B is 44 of 49.
+
+## 2026-11-22 — H-46: delta-seconds beyond 2^31 are what they say; Hermod to `810fdfbd`
+
+The second of A12's findings is fixed, merged as [Hermod#292](https://github.com/Vanaheimr/Hermod/pull/292) and pinned. RFC 9111
+§1.2.2 has a cache read a delta-seconds value too large to represent as 2^31
+"or the greatest positive integer it can conveniently represent". Hermod took
+2^31 for every value, the limit of 32-bit arithmetic, although the values
+become `TimeSpan`s. So `max-age=4294967295` lasted 68 years, and a response
+that arrived with `Age: 2147483646` was stale three seconds later. That is
+`y2038-age-generated-across-int32-max`, a required test that failed at setup.
+
+`HTTPCacheControl.MaxDeltaSeconds` is 2^38 now, some 8 700 years. It is not
+higher, because the age and staleness arithmetic of §4.2.3 must not overflow
+a `TimeSpan`. That arithmetic adds a response delay and a resident time, and it
+subtracts a freshness lifetime. An `Expires` far before its `Date` can make
+that lifetime as negative as `DateTimeOffset`'s whole range, under 2^39
+seconds. `AgeValue` parses with the same `DeltaSeconds` as `Cache-Control` now.
+
+There are three tests, each falsified by mutation. Two turned red with the cap
+back at 2^31. The third, at 2^40, failed with an `OverflowException`. On the
+branch, `tests/cache-tests.sh` reported exactly one result away from the record,
+the y2038 test now passing. This pin needed nothing beyond its row: `810fdfbd`
+is `d27b68b0` plus this one change, and the solution built at once.
+
+| | `d27b68b0` | `810fdfbd` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1594 | **1597** |
+| ↳ regression selection | 965 | **968** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1595 | **1598** |
+| the neighbours | 3310 | **3310** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / required fails / rows | 271 / 5 / 120 | **272 / 5 / 119** |
+
+cache-tests gave the same 480 results on Windows and in the Linux-built clone.
+As a private cache it gives 252 and 8, one more pass, and without a cache it
+is unchanged. The Autobahn suite peaked at 3 666 MiB against the server and
+3 464 MiB against the client.
+
+Track B is 45 of 49.
