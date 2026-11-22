@@ -6509,3 +6509,55 @@ to the branch meant for the record. It is `FILENAME == ARGV[1]` now.
 
 Nightly from today, in a job of its own. The suite is pinned to `3942fbfe`
 (2026-11-17).
+
+## 2026-11-22 — H-44: of an `Age` list, the first member counts; Hermod to `d27b68b0`
+
+The first of A12's findings is fixed, merged as [Hermod#291](https://github.com/Vanaheimr/Hermod/pull/291) and pinned.
+`HTTPStoredResponse.AgeValue` read one field line `Age: 7200, 0` as invalid,
+so as 0, and served a response two hours old as fresh. RFC 9111 §5.1 says a
+cache SHOULD use the first member of a list. It now takes the first non-empty
+member across all `Age` lines, in order, and an invalid first member still
+makes the field invalid. The same value on two lines had been read correctly
+all along, because the stored response keeps lines apart. That is why
+`age-parse-suffix-twoline` passed and `age-parse-suffix` did not.
+
+The class is shared with HTTP/2 and HTTP/3, so their caches have the fix too.
+Two tests, one in `HTTPCacheTests` with eleven cases and one in
+`HTTPClientCacheTests` replaying the suite's exchange. Both turned red against
+the old getter. On the branch, before the merge, `tests/cache-tests.sh`
+reported exactly one result away from the record, `age-parse-suffix` now
+passing, which is the record doing its job in the direction it had not yet
+been seen to. Its row is deleted.
+
+**The pin broke the demo's build.** Between `862434cc` and `d27b68b0` Hermod
+merged `86b8b083`, which makes `IPAddress` one value, IPv4 or IPv6, in place of
+the interface `IIPAddress`, and has a port handed over as an `IPPort` from its
+source on. `Demo/Program.cs` used both: `(IIPAddress) IPv4Address.Any` for
+`--bind-any`, and a `UInt16` for the `Alt-Svc` port. The first measurement
+therefore failed all three gate legs and the clone's TLS, proxy and Autobahn
+server runs at "solution build failed", while the NUnit suites, cache-tests and
+the Autobahn client, none of which builds the demo, were green. Two lines fixed
+it. `--bind-any` still binds `0.0.0.0`, which the `--wsl` leg, the only one that
+uses it, confirms. Everything was then measured again from the gates on.
+
+| | `862434cc` | `d27b68b0` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1588 | **1594** |
+| ↳ regression selection | 963 | **965** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1589 | **1595** |
+| the neighbours | 3219 | **3310** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / required fails / rows | 270 / 6 / 121 | **271 / 5 / 120** |
+
+`Tests.HTTP.` gains H-44's two and four `URLHostTests` from `86b8b083`. The
+neighbours are 3310, whose 91 more are SMTP's, from Hermod#287 to #290.
+`6010317f`'s Modbus test is in no filter here. cache-tests gave the same 480
+results on Windows and in the Linux-built clone. As a private cache it gives
+251 and 8, one better than before as well, and without a cache it is
+unchanged. The Autobahn suite peaked at 3 732 MiB against the server and
+3 473 MiB against the client.
+
+Track B is 44 of 49.

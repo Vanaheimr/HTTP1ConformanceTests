@@ -74,14 +74,14 @@ that failed. Counting the `true`s would mix four different things together, so
 | `dependency_fail` | a test it depends on did not pass, so it says nothing of its own |
 | `untested` | not run against a shared cache: browser-only tests |
 
-## Results, 2026-11-22, Hermod `862434cc`
+## Results, 2026-11-22, Hermod `d27b68b0`
 
 | | Hermod | nginx | Squid | ATS | httpd | Varnish | Caddy | HAProxy | Fastly |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| pass | **270** | 198 | 219 | 259 | 251 | 225 | 198 | 180 | 205 |
+| pass | **271** | 198 | 219 | 259 | 251 | 225 | 198 | 180 | 205 |
 | yes | 89 | 40 | 103 | 81 | 69 | 41 | 50 | 60 | 46 |
 | no | 33 | 57 | 30 | 42 | 55 | 63 | 50 | 37 | 59 |
-| **fail** (required) | **6** | 31 | 27 | 18 | 16 | 17 | 13 | 19 | 37 |
+| **fail** (required) | **5** | 31 | 27 | 18 | 16 | 17 | 13 | 19 | 37 |
 | optional_fail | 26 | 33 | 52 | 28 | 33 | 45 | 66 | 55 | 42 |
 | setup_fail | 7 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
 | dependency_fail | 44 | 99 | 37 | 42 | 36 | 72 | 90 | 117 | 78 |
@@ -102,16 +102,18 @@ twice more with the cache changed and nothing else:
 
 | | pass | yes | fail | dependency_fail |
 |---|---:|---:|---:|---:|
-| `--mode shared` | 270 | 89 | 6 | 44 |
-| `--mode private` | 250 | 89 | 9 | 61 |
+| `--mode shared` | 271 | 89 | 5 | 44 |
+| `--mode private` | 251 | 89 | 8 | 61 |
 | `--mode none` | 22 | 13 | 6 | 384 |
 
 Without a cache, 22 tests pass: the ones that ask a cache not to store or not
-to serve. So the other 248 are the cache's. `private` mode turns exactly the
+to serve. So the other 249 are the cache's. `private` mode turns exactly the
 shared cache's tests red: `cc-resp-private-shared`, `freshness-s-maxage-shared`,
 `other-authorization` and 17 that depend on them. That is the suite telling the
 two modes apart, which is what H-5 claims they are. Three runs in shared mode
-gave the same 480 results.
+gave the same 480 results. All three modes were measured again with H-44's
+fix: one more pass and one fewer fail in each cache mode, and no change
+without a cache.
 
 The record was checked the same way. Deleting the `age-parse-suffix` row,
 recording a fail for `freshness-none` and inventing a row for a test that does
@@ -126,13 +128,13 @@ not exist gave three reports and exit 1:
 ## The record
 
 Every test that is not a `pass` or a `yes` is a row in
-[`tests/cache-tests-known.txt`](../tests/cache-tests-known.txt), 121 of them,
+[`tests/cache-tests-known.txt`](../tests/cache-tests-known.txt), 120 of them,
 each with its reason. The run fails on any test whose result is not what the
 record says, in either direction. A test that starts passing is a row to
 delete: a record that cannot tell "stopped failing" from "never ran" is one of
 the checks CLAUDE.md warns about.
 
-The 121 rows, by cause:
+The 120 rows, by cause:
 
 | Cause | Rows | |
 |---|---:|---|
@@ -144,15 +146,15 @@ The 121 rows, by cause:
 | **H-47** HEAD | 4 | a `HEAD` neither freshens nor updates the stored `GET` |
 | proxy | 4 | no interim response reaches the suite |
 | untested | 5 | browser-only tests |
-| **H-44**, **H-46** | 2 | see below |
+| **H-46** | 1 | see below |
 
 ## What it found
 
 Four findings in the cache and two in the client around it, tracked in
 [`PLAN.md`](../PLAN.md):
 
-- **H-44** — `Age: 7200, 0` on one line is read as invalid, so as 0, and a
-  response 7200 seconds old is served as fresh. RFC 9111 §5.1: a cache SHOULD
+- ~~**H-44**~~, fixed 2026-11-22, [Hermod#291](https://github.com/Vanaheimr/Hermod/pull/291): `Age: 7200, 0` on one line was
+  read as invalid, so as 0, and a response 7200 seconds old was served as fresh. RFC 9111 §5.1: a cache SHOULD
   use the first member of a list. The same value on two lines passes, because
   the stored head keeps them apart.
 - **H-45** — a request with preconditions of its own goes past the cache, so it
