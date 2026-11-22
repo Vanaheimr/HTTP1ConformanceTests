@@ -160,7 +160,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
             // rather than by reading the whole file. Reachability beyond WSL is
             // then the firewall's decision, not ours — see tests/README.md.
             var bindAny       = Arguments.Contains("--bind-any");
-            var bindAddress   = bindAny ? (IIPAddress) IPv4Address.Any : null;
+            var bindAddress   = bindAny ? (IPAddress?) IPv4Address.Any : null;
 
             // --log[=<level>] gives Hermod's own diagnostics somewhere to go.
             // Every server here takes an ILoggerFactory and defaults it to
@@ -1011,7 +1011,7 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
                                               new HTTPAlternativeService(
                                                   ProtocolId:  "http/1.1",
                                                   Host:        "",
-                                                  Port:        httpsPort,
+                                                  Port:        IPPort.Parse(httpsPort),
                                                   MaxAge:      TimeSpan.FromMinutes(1),
                                                   Persist:     false
                                               )
