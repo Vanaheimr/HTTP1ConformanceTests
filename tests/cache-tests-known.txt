@@ -15,10 +15,11 @@
 # fails on ANY test whose result is not what this file says, in either
 # direction. Written by tests/cache-tests.sh --update on 2026-11-22 against the
 # suite at 3942fbfe (2026-11-17) and Hermod 862434cc, the notes by hand.
-# age-parse-suffix left the same day with H-44's fix, at Hermod d27b68b0.
+# age-parse-suffix left the same day with H-44's fix, at Hermod d27b68b0, and
+# y2038-age-generated-across-int32-max with H-46's, at Hermod 810fdfbd.
 #
 # The notes name their cause first:
-#   H-45 … H-49   a finding in Hermod, tracked in PLAN.md
+#   H-n           a finding in Hermod, tracked in PLAN.md: H-45, H-47 … H-49
 #   proxy         tests/cache-proxy/, not the cache: the client hands back the
 #                 final response only, so no interim response reaches the suite
 #   by design     a decision of H-5's, with the RFC text that allows it
@@ -141,7 +142,6 @@ vary-normalise-lang-order	optional_fail	optional: Vary compares the field values
 vary-normalise-lang-select	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
 vary-normalise-lang-space	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
 vary-normalise-space	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
-y2038-age-generated-across-int32-max	setup_fail	H-46: max-age=4294967295 is capped at 2^31, and with Age 2147483646 plus the pause the response is stale. RFC 9111 §1.2.2 caps only a value the cache cannot represent
 y2038-ims-future-int32-max-plus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
 y2038-ims-future-round-year	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
 y2038-ims-future-uint32-max-plus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
