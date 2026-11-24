@@ -17,9 +17,11 @@
 # suite at 3942fbfe (2026-11-17) and Hermod 862434cc, the notes by hand.
 # age-parse-suffix left the same day with H-44's fix, at Hermod d27b68b0, and
 # y2038-age-generated-across-int32-max with H-46's, at Hermod 810fdfbd.
+# head-200-freshness-update and head-200-update left with H-47's on
+# 2026-11-24, at Hermod c9f237f7.
 #
 # The notes name their cause first:
-#   H-n           a finding in Hermod, tracked in PLAN.md: H-45, H-47 … H-49
+#   H-n           a finding in Hermod, tracked in PLAN.md: H-45, H-48, H-49
 #   proxy         tests/cache-proxy/, not the cache: the client hands back the
 #                 final response only, so no interim response reaches the suite
 #   by design     a decision of H-5's, with the RFC text that allows it
@@ -94,10 +96,8 @@ freshness-max-age-space-after-equals	no	check: an invalid max-age reads as 0, so
 freshness-max-age-space-before-equals	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
 freshness-max-age-two-stale-fresh-sameline	no	check: the first occurrence of a directive wins (RFC 9111 §4.2.1)
 freshness-max-age-two-stale-fresh-sepline	no	check: the first occurrence of a directive wins (RFC 9111 §4.2.1)
-head-200-freshness-update	no	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
-head-200-retain	no	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
-head-200-update	dependency_fail	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
-head-410-update	dependency_fail	H-47: a HEAD goes past the cache, so its 200 neither freshens nor updates the stored GET. RFC 9111 §4.3.5: SHOULD
+head-200-retain	no	check: RFC 9111 §4.3.5 updates the stored GET from a HEAD's 200, not the HEAD's response from the stored GET, which the cache hands on as the origin sent it. None of the eleven caches the suite publishes fills it in either
+head-410-update	setup_fail	check: RFC 9111 §4.3.5 has only a 200 to a HEAD update a stored GET, so a 410 updates nothing, and the stale GET goes to the origin again
 headers-omit-headers-listed-in-Cache-Control-no-cache	setup_fail	by design: no-cache="field" is treated as no-cache, so the response is revalidated every time. RFC 9111 §5.2.2.4 notes that is what most caches do
 headers-omit-headers-listed-in-Cache-Control-no-cache-single	setup_fail	by design: no-cache="field" is treated as no-cache, so the response is revalidated every time. RFC 9111 §5.2.2.4 notes that is what most caches do
 headers-store-Transfer-Encoding	setup_fail	by design: the client refuses a response with a transfer coding it does not know (RFC 9112 §6.1), so there is nothing to store. Most proxies cache-tests.fyi lists fail its setup the same way
