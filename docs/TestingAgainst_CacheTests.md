@@ -74,17 +74,17 @@ that failed. Counting the `true`s would mix four different things together, so
 | `dependency_fail` | a test it depends on did not pass, so it says nothing of its own |
 | `untested` | not run against a shared cache: browser-only tests |
 
-## Results, 2026-11-24, Hermod `c9f237f7`
+## Results, 2026-11-24, Hermod `81ab1c86`
 
 | | Hermod | nginx | Squid | ATS | httpd | Varnish | Caddy | HAProxy | Fastly |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| pass | **272** | 198 | 219 | 259 | 251 | 225 | 198 | 180 | 205 |
-| yes | 91 | 40 | 103 | 81 | 69 | 41 | 50 | 60 | 46 |
-| no | 32 | 57 | 30 | 42 | 55 | 63 | 50 | 37 | 59 |
+| pass | **285** | 198 | 219 | 259 | 251 | 225 | 198 | 180 | 205 |
+| yes | 94 | 40 | 103 | 81 | 69 | 41 | 50 | 60 | 46 |
+| no | 39 | 57 | 30 | 42 | 55 | 63 | 50 | 37 | 59 |
 | **fail** (required) | **5** | 31 | 27 | 18 | 16 | 17 | 13 | 19 | 37 |
-| optional_fail | 26 | 33 | 52 | 28 | 33 | 45 | 66 | 55 | 42 |
-| setup_fail | 7 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
-| dependency_fail | 42 | 99 | 37 | 42 | 36 | 72 | 90 | 117 | 78 |
+| optional_fail | 23 | 33 | 52 | 28 | 33 | 45 | 66 | 55 | 42 |
+| setup_fail | 5 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
+| dependency_fail | 24 | 99 | 37 | 42 | 36 | 72 | 90 | 117 | 78 |
 | other | 5 | 10 | 5 | 6 | 12 | 5 | 5 | 5 | 10 |
 
 480 tests. The other columns are the results the suite publishes, from the
@@ -102,12 +102,12 @@ twice more with the cache changed and nothing else:
 
 | | pass | yes | fail | dependency_fail |
 |---|---:|---:|---:|---:|
-| `--mode shared` | 272 | 91 | 5 | 42 |
-| `--mode private` | 252 | 91 | 8 | 59 |
+| `--mode shared` | 285 | 94 | 5 | 24 |
+| `--mode private` | 265 | 94 | 8 | 41 |
 | `--mode none` | 22 | 13 | 6 | 384 |
 
 Without a cache, 22 tests pass: the ones that ask a cache not to store or not
-to serve. So the other 250 are the cache's. `private` mode turns exactly the
+to serve. So the other 263 are the cache's. `private` mode turns exactly the
 shared cache's tests red: `cc-resp-private-shared`, `freshness-s-maxage-shared`,
 `other-authorization` and 17 that depend on them. That is the suite telling the
 two modes apart, which is what H-5 claims they are. Three runs in shared mode
@@ -116,7 +116,9 @@ fix: one more pass and one fewer fail in each cache mode, and no change
 without a cache. With H-46's, again: one more pass and one fewer setup
 failure in each cache mode, and no change without a cache. With H-47's, two
 more checks answer yes and two fewer dependencies fail in each cache mode,
-and without a cache nothing changes.
+and without a cache nothing changes. With H-45's, thirteen more pass, three
+more checks answer yes and eighteen fewer dependencies fail in each cache
+mode, and without a cache nothing changes.
 
 The record was checked the same way. Deleting the `age-parse-suffix` row,
 recording a fail for `freshness-none` and inventing a row for a test that does
@@ -131,20 +133,19 @@ not exist gave three reports and exit 1:
 ## The record
 
 Every test that is not a `pass` or a `yes` is a row in
-[`tests/cache-tests-known.txt`](../tests/cache-tests-known.txt), 117 of them,
+[`tests/cache-tests-known.txt`](../tests/cache-tests-known.txt), 101 of them,
 each with its reason. The run fails on any test whose result is not what the
 record says, in either direction. A test that starts passing is a row to
 delete: a record that cannot tell "stopped failing" from "never ran" is one of
 the checks CLAUDE.md warns about.
 
-The 117 rows, by cause:
+The 101 rows, by cause:
 
 | Cause | Rows | |
 |---|---:|---|
-| **H-45** conditional requests | 24 | a request with `If-None-Match` or `If-Modified-Since` of its own goes past the cache |
 | **CDN** | 23 | `CDN-Cache-Control` (RFC 9213) targets CDN caches, and this is not one |
-| checks | 39 | behaviour checks answered no, each with the RFC text Hermod's answer rests on |
-| by design | 14 | `Range` and `206`, qualified `no-cache`, unknown transfer codings, and the `304` for another entity tag |
+| checks | 46 | behaviour checks answered no, each with the RFC text Hermod's answer rests on |
+| by design | 15 | `Range` and `206`, qualified `no-cache`, unknown transfer codings, the `304` for another entity tag, and an `If-Modified-Since` earlier than the stored `Date` |
 | optional | 8 | `Vary` normalisation, `must-understand`, a POST reused for a GET, a lower-case `gmt` |
 | proxy | 4 | no interim response reaches the suite |
 | untested | 5 | browser-only tests |
@@ -158,11 +159,19 @@ Four findings in the cache and two in the client around it, tracked in
   read as invalid, so as 0, and a response 7200 seconds old was served as fresh. RFC 9111 §5.1: a cache SHOULD
   use the first member of a list. The same value on two lines passes, because
   the stored head keeps them apart.
-- **H-45** — a request with preconditions of its own goes past the cache, so it
-  never answers one with a `304` from a fresh stored response. RFC 9111 §4.3.2
-  says it SHOULD. H-5 made that decision for a client cache, whose caller rarely
-  sends preconditions. Behind a proxy, where the caller is another cache, it is
-  the wrong decision. 24 rows.
+- ~~**H-45**~~, fixed 2026-11-24, [Hermod#300](https://github.com/Vanaheimr/Hermod/pull/300): a request with preconditions of
+  its own went past the cache, so it never answered one with a `304` from a
+  fresh stored response. RFC 9111 §4.3.2 says it SHOULD. H-5 had made that
+  decision for a client cache, whose caller rarely sends preconditions; behind
+  a proxy, where the caller is another cache, it was the wrong one. The cache
+  evaluates `If-None-Match` and `If-Modified-Since` against the stored `200`
+  now. 16 of the 24 rows are gone. Of the other eight, six are checks with a
+  malformed `ETag`, which matches nothing. One, `conditional-lm-fresh-no-lm`,
+  is by design: without `Last-Modified` the stored `Date` counts, and it is
+  later than the `If-Modified-Since`. The last, `conditional-etag-strong-respond-obs-text`,
+  gets its `304` and is a check for the stack, not the cache: an octet above
+  0x7F in the `ETag` leaves as two, and the `200` passed through before it
+  shows the same.
 - ~~**H-46**~~, fixed 2026-11-22, [Hermod#292](https://github.com/Vanaheimr/Hermod/pull/292): every delta-seconds value was
   capped at 2^31, `max-age=4294967295` included. With `Age: 2147483646` and
   three seconds' pause, the response was stale. RFC 9111 §1.2.2 allows 2^31 or

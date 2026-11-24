@@ -6658,3 +6658,67 @@ cache it is unchanged. The Autobahn suite peaked at 3 976 MiB against the
 server and 3 565 MiB against the client.
 
 Track B is 46 of 49.
+
+## 2026-11-24 — H-45: a cache answers a caller's own preconditions; Hermod to `81ab1c86`
+
+The fourth of A12's findings is fixed, merged as [Hermod#300](https://github.com/Vanaheimr/Hermod/pull/300) and pinned, and with
+it all four the suite found in the cache. RFC 9111 §4.3.2 has a cache that
+can answer a request with a stored `200` evaluate the request's own
+`If-None-Match` and `If-Modified-Since` against it. H-5 had sent such a
+request past the cache on purpose, a client's caller seldom having validators
+of its own. Behind `tests/cache-proxy/`, where the caller is another cache,
+that was every revalidation.
+
+`HTTPCache.IsNotModified` evaluates them against the `200` the same request
+without them gets: `If-None-Match` first, `*` or a weakly equal entity-tag,
+an `ETag` that is not an entity-tag by the grammar matching nothing;
+otherwise one valid `If-Modified-Since` against `Last-Modified`, else `Date`,
+else the time of receipt. A stored response that has to be revalidated first
+is revalidated with the cache's own validators in place of the caller's.
+`HTTPCache.NotModifiedHeaders` gives the `304` the fields RFC 9110 §15.4.5
+lists. With nothing stored, the request goes to the origin as it is, and
+`If-Match`, `If-Unmodified-Since`, `If-Range` and `Range` still go past. The
+HTTP/2 cache does the same.
+
+Seven tests, falsified by ten mutations, six of the tests in fixtures the
+selection names. On the branch and at the pin alike, cache-tests reports 13
+more passes and 3 more yeses, and 16 rows leave the record. Eight stay with
+new reasons. Six `ETag` checks answer no on purpose, the tag being malformed.
+`conditional-lm-fresh-no-lm` is by design, the stored `Date` being later than
+the `If-Modified-Since`. `conditional-etag-strong-respond-obs-text` gets its
+`304`, but an octet above 0x7F in the `ETag` reaches the suite as two. The
+`200` passed through before it shows the same: the server reads a request
+head as Latin-1 and writes a response head as UTF-8. That is the stack's
+and not the cache's, and it is written down here, not yet a finding.
+
+The rest of `81ab1c86` is Hermod#299, an HTTP/2 connection rejected for its
+TLS 1.2 cipher suite now waiting for the client's preface before it closes,
+and the WebSocket server asking the certificate selector for every QUIC
+connection. That one moved the WebSocket filter by seven. The solution built
+at once.
+
+| | `c9f237f7` | `81ab1c86` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1603 | **1616** |
+| ↳ regression selection | 974 | **980** |
+| ↳ WebSockets | 237 | **244** |
+| CI's filter, `+ Tests.HTTPS.` | 1604 | **1617** |
+| the neighbours | 3455 | **3458** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / yes / required fails / rows | 272 / 91 / 5 / 117 | **285 / 94 / 5 / 101** |
+
+The neighbours' 3 more are H-45's one test in the HTTP/2 `CachingClientTests`
+and Hermod#299's two `TLSCipherSuiteTests`. Every filter passed on the first
+run this time, the two HTTP/3 WebSocket tests that timed out once at
+`c9f237f7` included.
+
+cache-tests gave the same 480 results on Windows and in the Linux-built clone.
+As a private cache it gives 265 pass and 94 yes, exactly the 20 shared-cache
+tests below the shared mode, and without a cache it is unchanged at 22. The
+Autobahn suite peaked at 3 648 MiB against the server and 3 280 MiB against
+the client.
+
+Track B is 47 of 49. H-48 and H-49, the two left, are in the client around
+the cache.
