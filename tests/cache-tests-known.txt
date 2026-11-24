@@ -18,13 +18,14 @@
 # age-parse-suffix left the same day with H-44's fix, at Hermod d27b68b0, and
 # y2038-age-generated-across-int32-max with H-46's, at Hermod 810fdfbd.
 # head-200-freshness-update and head-200-update left with H-47's on
-# 2026-11-24, at Hermod c9f237f7.
+# 2026-11-24, at Hermod c9f237f7, and sixteen conditional-* and y2038-ims-*
+# rows with H-45's.
 #
 # The notes name their cause first:
-#   H-n           a finding in Hermod, tracked in PLAN.md: H-45, H-48, H-49
+#   H-n           a finding in Hermod, tracked in PLAN.md: H-48, H-49
 #   proxy         tests/cache-proxy/, not the cache: the client hands back the
 #                 final response only, so no interim response reaches the suite
-#   by design     a decision of H-5's, with the RFC text that allows it
+#   by design     a decision of H-5's or H-45's, with the RFC text that allows it
 #   CDN           RFC 9213's CDN-Cache-Control, a field for CDN caches. Hermod's
 #                 cache is a client's, private or shared, and not a CDN's. The
 #                 proxies cache-tests.fyi lists fail most of these too
@@ -63,27 +64,17 @@ cdn-no-cache	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this
 cdn-no-store-cc-fresh	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
 cdn-private	fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
 cdn-remove-age-exceed	dependency_fail	CDN: CDN-Cache-Control (RFC 9213) targets CDN caches, and this is not one
-conditional-304-etag	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
 conditional-etag-forward-unquoted	no	check: entity tags are sent as they arrived, quoted or not
-conditional-etag-precedence	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-quoted-respond-unquoted	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-quoted-respond-unquoted	no	check: the If-None-Match is not an entity-tag, unquoted here, and matches nothing, since what it would mean is a guess (RFC 9110 §8.8.3: an entity-tag is an optional, case-sensitive W/ and a quoted string)
 conditional-etag-strong-generate-unquoted	no	check: entity tags are sent as they arrived, quoted or not
-conditional-etag-strong-respond	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-strong-respond-multiple-first	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-strong-respond-multiple-last	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-strong-respond-multiple-second	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-strong-respond-obs-text	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-unquoted-respond-quoted	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-unquoted-respond-unquoted	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-strong-respond-obs-text	no	check: the 304 comes, with the ETag of the stored 200, but an octet above 0x7F in a field value leaves the proxy as two: the 200 before it, passed through from the origin, shows the same, so the answer is the stack's and not the cache's
+conditional-etag-unquoted-respond-quoted	no	check: the stored ETag is not an entity-tag, unquoted here, and matches nothing, since what it would mean is a guess (RFC 9110 §8.8.3: an entity-tag is an optional, case-sensitive W/ and a quoted string)
+conditional-etag-unquoted-respond-unquoted	no	check: neither is an entity-tag, both unquoted, and an ETag that is not one matches nothing, since what it would mean is a guess (RFC 9110 §8.8.3: an entity-tag is an optional, case-sensitive W/ and a quoted string)
 conditional-etag-vary-headers-mismatch	no	check: a variant whose Vary does not match is not a candidate for validation either
-conditional-etag-weak-respond	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-weak-respond-backslash	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-weak-respond-lowercase	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-etag-weak-respond-omit-slash	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-lm-fresh	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-lm-fresh-earlier	optional_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-lm-fresh-no-lm	setup_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-conditional-lm-fresh-rfc850	setup_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
+conditional-etag-weak-respond-backslash	no	check: W\ is no weakness flag, so neither is an entity-tag, and an ETag that is not one matches nothing, since what it would mean is a guess (RFC 9110 §8.8.3: an entity-tag is an optional, case-sensitive W/ and a quoted string)
+conditional-etag-weak-respond-lowercase	no	check: w/ is no weakness flag, so neither is an entity-tag, and an ETag that is not one matches nothing, since what it would mean is a guess (RFC 9110 §8.8.3: an entity-tag is an optional, case-sensitive W/ and a quoted string)
+conditional-etag-weak-respond-omit-slash	no	check: W without / is no weakness flag, so neither is an entity-tag, and an ETag that is not one matches nothing, since what it would mean is a guess (RFC 9110 §8.8.3: an entity-tag is an optional, case-sensitive W/ and a quoted string)
+conditional-lm-fresh-no-lm	optional_fail	by design: RFC 9111 §4.3.2 has a cache evaluate If-Modified-Since against the stored Date where there is no Last-Modified, and that Date is 3000 seconds after it, so the answer is the 200. The test expects a 304 all the same
 freshness-expires-wrong-case-tz	optional_fail	optional: "gmt" is not GMT; an HTTP-date is case-sensitive (RFC 9110 §5.6.7), and an invalid Expires means already expired (RFC 9111 §5.3)
 freshness-expires-wrong-weekday	no	check: a date whose day-of-week does not match is not a valid HTTP-date, so Expires has passed (RFC 9111 §5.3)
 freshness-max-age-100a	no	check: an invalid max-age reads as 0, so stale (RFC 9111 §4.2.1)
@@ -142,9 +133,3 @@ vary-normalise-lang-order	optional_fail	optional: Vary compares the field values
 vary-normalise-lang-select	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
 vary-normalise-lang-space	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
 vary-normalise-space	optional_fail	optional: Vary compares the field values as they arrived, after combining lines (RFC 9111 §4.1 allows normalising, and does not require it)
-y2038-ims-future-int32-max-plus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-y2038-ims-future-round-year	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-y2038-ims-future-uint32-max-plus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-y2038-ims-past-epoch	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-y2038-ims-past-int32-min	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
-y2038-ims-past-minus-1	dependency_fail	H-45: a request with preconditions of its own goes past the cache, so the cache never answers one with a 304. RFC 9111 §4.3.2: a cache SHOULD evaluate them against a fresh stored response
