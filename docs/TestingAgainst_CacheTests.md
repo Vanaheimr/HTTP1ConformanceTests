@@ -74,17 +74,17 @@ that failed. Counting the `true`s would mix four different things together, so
 | `dependency_fail` | a test it depends on did not pass, so it says nothing of its own |
 | `untested` | not run against a shared cache: browser-only tests |
 
-## Results, 2026-11-22, Hermod `810fdfbd`
+## Results, 2026-11-24, Hermod `c9f237f7`
 
 | | Hermod | nginx | Squid | ATS | httpd | Varnish | Caddy | HAProxy | Fastly |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | pass | **272** | 198 | 219 | 259 | 251 | 225 | 198 | 180 | 205 |
-| yes | 89 | 40 | 103 | 81 | 69 | 41 | 50 | 60 | 46 |
-| no | 33 | 57 | 30 | 42 | 55 | 63 | 50 | 37 | 59 |
+| yes | 91 | 40 | 103 | 81 | 69 | 41 | 50 | 60 | 46 |
+| no | 32 | 57 | 30 | 42 | 55 | 63 | 50 | 37 | 59 |
 | **fail** (required) | **5** | 31 | 27 | 18 | 16 | 17 | 13 | 19 | 37 |
 | optional_fail | 26 | 33 | 52 | 28 | 33 | 45 | 66 | 55 | 42 |
-| setup_fail | 6 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
-| dependency_fail | 44 | 99 | 37 | 42 | 36 | 72 | 90 | 117 | 78 |
+| setup_fail | 7 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
+| dependency_fail | 42 | 99 | 37 | 42 | 36 | 72 | 90 | 117 | 78 |
 | other | 5 | 10 | 5 | 6 | 12 | 5 | 5 | 5 | 10 |
 
 480 tests. The other columns are the results the suite publishes, from the
@@ -102,8 +102,8 @@ twice more with the cache changed and nothing else:
 
 | | pass | yes | fail | dependency_fail |
 |---|---:|---:|---:|---:|
-| `--mode shared` | 272 | 89 | 5 | 44 |
-| `--mode private` | 252 | 89 | 8 | 61 |
+| `--mode shared` | 272 | 91 | 5 | 42 |
+| `--mode private` | 252 | 91 | 8 | 59 |
 | `--mode none` | 22 | 13 | 6 | 384 |
 
 Without a cache, 22 tests pass: the ones that ask a cache not to store or not
@@ -114,7 +114,9 @@ two modes apart, which is what H-5 claims they are. Three runs in shared mode
 gave the same 480 results. All three modes were measured again with H-44's
 fix: one more pass and one fewer fail in each cache mode, and no change
 without a cache. With H-46's, again: one more pass and one fewer setup
-failure in each cache mode, and no change without a cache.
+failure in each cache mode, and no change without a cache. With H-47's, two
+more checks answer yes and two fewer dependencies fail in each cache mode,
+and without a cache nothing changes.
 
 The record was checked the same way. Deleting the `age-parse-suffix` row,
 recording a fail for `freshness-none` and inventing a row for a test that does
@@ -129,22 +131,21 @@ not exist gave three reports and exit 1:
 ## The record
 
 Every test that is not a `pass` or a `yes` is a row in
-[`tests/cache-tests-known.txt`](../tests/cache-tests-known.txt), 119 of them,
+[`tests/cache-tests-known.txt`](../tests/cache-tests-known.txt), 117 of them,
 each with its reason. The run fails on any test whose result is not what the
 record says, in either direction. A test that starts passing is a row to
 delete: a record that cannot tell "stopped failing" from "never ran" is one of
 the checks CLAUDE.md warns about.
 
-The 119 rows, by cause:
+The 117 rows, by cause:
 
 | Cause | Rows | |
 |---|---:|---|
 | **H-45** conditional requests | 24 | a request with `If-None-Match` or `If-Modified-Since` of its own goes past the cache |
 | **CDN** | 23 | `CDN-Cache-Control` (RFC 9213) targets CDN caches, and this is not one |
-| checks | 37 | behaviour checks answered no, each with the RFC text Hermod's answer rests on |
+| checks | 39 | behaviour checks answered no, each with the RFC text Hermod's answer rests on |
 | by design | 14 | `Range` and `206`, qualified `no-cache`, unknown transfer codings, and the `304` for another entity tag |
 | optional | 8 | `Vary` normalisation, `must-understand`, a POST reused for a GET, a lower-case `gmt` |
-| **H-47** HEAD | 4 | a `HEAD` neither freshens nor updates the stored `GET` |
 | proxy | 4 | no interim response reaches the suite |
 | untested | 5 | browser-only tests |
 
@@ -167,8 +168,14 @@ Four findings in the cache and two in the client around it, tracked in
   three seconds' pause, the response was stale. RFC 9111 §1.2.2 allows 2^31 or
   the greatest value the cache can conveniently represent. The cap is 2^38 now,
   some 8 700 years, which keeps the age arithmetic inside a `TimeSpan`.
-- **H-47** — a `HEAD` goes past the cache, so its `200` neither freshens nor
-  updates the stored `GET`. RFC 9111 §4.3.5: SHOULD. The four tests are checks.
+- ~~**H-47**~~, fixed 2026-11-24, [Hermod#296](https://github.com/Vanaheimr/Hermod/pull/296): a `HEAD` went past the cache,
+  so its `200` neither freshened nor updated the stored `GET`. RFC 9111 §4.3.5:
+  SHOULD. A `200` whose validators and `Content-Length` match updates it now,
+  and one that does not leaves it stale until it is validated again. Two of the
+  four checks answer yes. The other two are checks still: `head-200-retain`
+  expects the `HEAD` response filled in from the stored one, the reverse of
+  §4.3.5, and `head-410-update` a `410` to update it, which §4.3.5 does not
+  cover.
 - **H-48** — `MaxNumberOfRetries` counts attempts. `0` sends nothing and
   answers "Giving up … after 0 attempts". Found by writing the proxy.
 - **H-49** — the client refuses a status code outside 100–599 as an invalid

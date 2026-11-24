@@ -6603,3 +6603,58 @@ is unchanged. The Autobahn suite peaked at 3 666 MiB against the server and
 3 464 MiB against the client.
 
 Track B is 45 of 49.
+
+## 2026-11-24 — H-47: a 200 to a HEAD updates the stored GET; Hermod to `c9f237f7`
+
+The third of A12's findings is fixed, merged as [Hermod#296](https://github.com/Vanaheimr/Hermod/pull/296) and pinned. RFC 9111
+§4.3.5 has a cache that receives a `200` to a `HEAD` update each stored `GET`
+it could have chosen, where the validators and `Content-Length` received are
+the stored ones, and consider it stale otherwise. Hermod's client cache passed
+every `HEAD` through untouched, so a stored response neither became fresh
+again nor learned new header fields that way.
+
+`HTTPCache.UpdateFromHEAD` now updates the stored response's header section
+as a `304` does, with the same §3.2 exceptions, and resets its freshness. A
+`HEAD` whose `ETag`, `Last-Modified` or `Content-Length` differs sets
+`ConsideredStale` instead: the stored response stays, and the next `GET`
+revalidates it with its validators, `max-stale` still applying. Only a `200`
+counts, and only one that the cache could store. The HTTP/2 cache shares the
+logic and does the same. A body stored decoded has its `Content-Length`
+rewritten to the decoded length, so a `HEAD` for it does not match and costs
+one conditional request. Nothing is served wrong.
+
+Seven tests, each falsified by mutation, six of them in fixtures the
+selection names. On the branch, `tests/cache-tests.sh` reported exactly three
+results away from the record: `head-200-freshness-update` and
+`head-200-update` answer yes, and `head-410-update` is a setup failure now,
+because §4.3.5 covers a `200` only. `head-200-retain` stays no. It expects the
+`HEAD` response filled in from the stored `GET`, which no published cache
+does. The rest of `c9f237f7` is SMTP: Hermod#293 to #295, #297 and #298. The
+solution built at once.
+
+| | `810fdfbd` | `c9f237f7` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1597 | **1603** |
+| ↳ regression selection | 968 | **974** |
+| ↳ WebSockets | 237 | **237** |
+| CI's filter, `+ Tests.HTTPS.` | 1598 | **1604** |
+| the neighbours | 3310 | **3455** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / yes / required fails / rows | 272 / 89 / 5 / 119 | **272 / 91 / 5 / 117** |
+
+The neighbours' 145 more are 144 SMTP tests and H-47's one in the HTTP/2
+`CachingClientTests`. In the measurement's WebSocket run, two HTTP/3 tests
+timed out after 15 s, `AClientWithoutACertificateIsOneWithoutOverHTTP3` and
+`TheServerKnowsTheClientByTheCertificateItShowsOverHTTP3`. The same two passed
+in the same measurement under the two wider filters, three times alone
+afterwards, and in a second run of the whole WebSocket filter, 237 of 237. The
+change touches no WebSocket code, so the 237 stands, with this written down.
+
+cache-tests gave the same 480 results on Windows and in the Linux-built clone.
+As a private cache it gives 252 pass and 91 yes, two more yes, and without a
+cache it is unchanged. The Autobahn suite peaked at 3 976 MiB against the
+server and 3 565 MiB against the client.
+
+Track B is 46 of 49.
