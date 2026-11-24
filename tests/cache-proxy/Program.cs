@@ -203,9 +203,10 @@ async Task<HTTPResponse> Forward(HTTPRequest Request)
                                       outgoing.AsImmutable,
                                       ConsumeResponseChunkedTEImmediately:  true,
                                       RequestTimeout:                       TimeSpan.FromSeconds(30),
-                                      // Counts attempts, not retries:
-                                      // 1 is one try and no second one.
-                                      MaxNumberOfRetries:                   1
+                                      // One attempt, no retry. Until H-48
+                                      // the parameter counted attempts and
+                                      // this read 1.
+                                      MaxNumberOfRetries:                   0
                                   );
 
         if (log)
