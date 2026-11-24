@@ -6722,3 +6722,63 @@ the client.
 
 Track B is 47 of 49. H-48 and H-49, the two left, are in the client around
 the cache.
+
+## 2026-11-24 — H-48: `MaxNumberOfRetries` counts retries; a flaky HTTP/3 test explained; Hermod to `0800bcc7`
+
+H-48 is fixed, merged as [Hermod#306](https://github.com/Vanaheimr/Hermod/pull/306) and pinned. `AHTTPClient`'s loop made
+`MaxNumberOfRetries` attempts, so `0` sent nothing at all and answered
+"Giving up … after 0 attempts". Now it makes `1 + MaxNumberOfRetries`.
+`ATCPClient.DefaultMaxNumberOfRetries` went from 3 to 2, so a client that
+leaves it alone makes the same three attempts as before. `tests/cache-proxy/`,
+which wants exactly one attempt, now passes `0` instead of `1`. Five tests run
+against a server that drops every connection, and four mutations each turned
+them red. The tests are in `HTTPClientProtocolRegressionTests`, which the
+selection names.
+
+Not fixed and not yet filed: the same loop retries every method, `POST`
+included. RFC 9110 §9.2.2 says a client SHOULD NOT retry a non-idempotent
+request automatically unless it knows the request to be safe to repeat.
+
+Hermod's full suite, run before that PR, failed one test in
+`WebSocketOverHTTP3Tests`, and it was a different one in every bad run. This
+had nothing to do with H-48 and was fixed first, as [Hermod#307](https://github.com/Vanaheimr/Hermod/pull/307). 1 in 12 runs of
+the fixture failed on master, 3 in 25 under load. A WebSocket server on
+"localhost" listens for HTTP/3 on `127.0.0.1` and on `[::1]`. A port it could
+not take on one of them was left out as if the machine did not have that
+family, and the server then said `HTTP3Port` while listening on `[::1]` alone.
+`netstat` showed what held `127.0.0.1`: another program on this machine,
+holding the port on `0.0.0.0` to itself, which Windows answers with
+WSAEACCES. The test client tries IPv4 first, sent its handshake to that
+program, and timed out after five seconds. A port taken on one loopback
+address is a taken port now, as `ATCPServer` already treats it over TCP. The
+new test also found a race. `WhyNoHTTP3` was set to `null` at the start of
+every HTTP/3 start, and the listener restarts HTTP/3 in its own time. A caller
+that read it in between got `null` from a server without HTTP/3, in 17 of 25
+runs of the fixture. It keeps its value now until HTTP/3 is taken. With both
+fixes the fixture passed 25 of 25 runs under the same load, and the full suite
+passed: 7097 tests, none failed.
+
+The rest of `0800bcc7` is SMTP: Hermod#301 to #305 and #308. The solution
+built at once.
+
+| | `81ab1c86` | `0800bcc7` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1616 | **1623** |
+| ↳ regression selection | 980 | **985** |
+| ↳ WebSockets | 244 | **246** |
+| CI's filter, `+ Tests.HTTPS.` | 1617 | **1624** |
+| the neighbours | 3458 | **3527** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / yes / required fails / rows | 285 / 94 / 5 / 101 | **285 / 94 / 5 / 101** |
+
+The 69 more neighbours are SMTP's. Every filter passed on the first run.
+cache-tests gave the same 480 results on Windows and in the Linux-built clone.
+As a private cache it gives 265 pass and 94 yes, exactly the 20 shared-cache
+tests below the shared mode, and without a cache 22 pass, both unchanged. The
+Autobahn suite peaked at 3 573 MiB against the server and 3 630 MiB against
+the client.
+
+Track B is 48 of 49. H-49, the client refusing a status code above 599
+instead of reading it as a `5xx`, is the one left.

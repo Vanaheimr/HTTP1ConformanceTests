@@ -43,8 +43,8 @@ of its own, and they are written down in `Program.cs` rather than discovered:
   the suite runs 25 tests at once, some with origin answers paused for
   seconds. Each request rents an idle client or makes one.
 - **No retries.** The suite reports a retry as a result of its own (↻).
-  `MaxNumberOfRetries: 1`, which is one attempt: the parameter counts attempts
-  (H-48).
+  `MaxNumberOfRetries: 0`, one attempt and no retry. Until H-48 the parameter
+  counted attempts, and the proxy passed `1`.
 - **Field lines in, field lines out**, from the raw header block in both
   directions. Repeated lines are combined with `", "`, because Hermod's builders
   hold one value per name.
@@ -74,7 +74,7 @@ that failed. Counting the `true`s would mix four different things together, so
 | `dependency_fail` | a test it depends on did not pass, so it says nothing of its own |
 | `untested` | not run against a shared cache: browser-only tests |
 
-## Results, 2026-11-24, Hermod `81ab1c86`
+## Results, 2026-11-24, Hermod `0800bcc7`
 
 | | Hermod | nginx | Squid | ATS | httpd | Varnish | Caddy | HAProxy | Fastly |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -185,8 +185,11 @@ Four findings in the cache and two in the client around it, tracked in
   expects the `HEAD` response filled in from the stored one, the reverse of
   §4.3.5, and `head-410-update` a `410` to update it, which §4.3.5 does not
   cover.
-- **H-48** — `MaxNumberOfRetries` counts attempts. `0` sends nothing and
-  answers "Giving up … after 0 attempts". Found by writing the proxy.
+- ~~**H-48**~~, fixed 2026-11-24, [Hermod#306](https://github.com/Vanaheimr/Hermod/pull/306): `MaxNumberOfRetries` counted
+  attempts, so `0` sent nothing and answered "Giving up … after 0 attempts".
+  Found by writing the proxy. It counts retries now, and the default went from
+  3 to 2, so a client that leaves it alone still makes three attempts. No
+  result of the suite changed with it.
 - **H-49** — the client refuses a status code outside 100–599 as an invalid
   status line. RFC 9110 §15: a client SHOULD treat it as a `5xx`. The suite's
   origin uses `999` to say "this should have been conditional", so

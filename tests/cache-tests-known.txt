@@ -22,7 +22,7 @@
 # rows with H-45's.
 #
 # The notes name their cause first:
-#   H-n           a finding in Hermod, tracked in PLAN.md: H-48, H-49
+#   H-n           a finding in Hermod, tracked in PLAN.md: H-49
 #   proxy         tests/cache-proxy/, not the cache: the client hands back the
 #                 final response only, so no interim response reaches the suite
 #   by design     a decision of H-5's or H-45's, with the RFC text that allows it
