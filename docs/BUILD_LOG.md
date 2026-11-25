@@ -6873,3 +6873,73 @@ keep: an attempt whose connection never opened sent nothing, and trying it
 again is what "some means to detect that the original request was never
 applied" allows. Filed as H-50 in `PLAN.md`, P2, and the RFC 9110 §9 row of
 `README.md` says so.
+
+## 2026-11-25 — H-50: a request that went out is sent again only if it may be; Hermod to `002cfd29`
+
+H-50 is fixed, merged as [Hermod#313](https://github.com/Vanaheimr/Hermod/pull/313) and pinned, the day it was filed. RFC 9110
+§9.2.2 has two client requirements here: a client SHOULD NOT automatically
+retry a request with a non-idempotent method, and SHOULD NOT automatically
+retry a failed automatic retry. `AHTTPClient` now tells two kinds of failed
+attempt apart. One that fails before the request goes out, because the
+connection or its TLS handshake fails, sent nothing, and is followed by
+another as often as `MaxNumberOfRetries` allows, as before. One that fails
+after the first octet went out is followed by another only if the method is
+idempotent (`HTTPMethod.IsIdempotent`) or the request carries an
+`Idempotency-Key`, and then only once. The answer names the rule that stopped
+it. The probe that found it shows the difference: a `POST` to a server that
+reads it and closes without an answer arrives once now, a `PUT` twice.
+
+The second rule took a decision, because it undoes part of H-48's tests from
+the day before. They counted `MaxNumberOfRetries` against a server that read
+each request and closed, and with the default two retries a `GET` went out
+three times. Under §9.2.2 it goes out twice. Go and .NET send a request that
+went out again at most once, too. The tests count `MaxNumberOfRetries` on
+connections that fail in the TLS handshake now, where nothing is sent, and
+gained a case for four retries. Nine tests in all; four mutations, each
+turning them red. Hermod's full suite passed before the PR: 7168 tests, none
+failed.
+
+What it means downstream: a `POST` whose connection closes after it went out
+comes back as the client's `ClientError` at once, where it used to be sent
+twice more. A caller that wants it sent again sets an `Idempotency-Key`. A
+stale keep-alive connection is caught before the request is written to it in
+all but a narrow race, because the client polls a pooled connection for a
+close before every reuse. `tests/cache-proxy/` passes `0` and saw no change.
+
+The rest of `002cfd29` is SMTP, Hermod#311. The solution built at once.
+
+| | `51bdc7d5` | `002cfd29` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1630 | **1639** |
+| ↳ regression selection | 992 | **1001** |
+| ↳ WebSockets | 246 | **246** |
+| CI's filter, `+ Tests.HTTPS.` | 1631 | **1640** |
+| the neighbours | 3538 | **3563** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / yes / required fails / rows | 285 / 94 / 5 / 101 | **285 / 94 / 5 / 101** |
+
+Everything else measured as at `51bdc7d5`. All 480 cache-tests results are as
+recorded, on Windows and in the Linux-built clone. The calibrations are
+unchanged too: as a private cache 265 pass and 94 answer yes, and without a
+cache 22 pass. The Autobahn suite peaked at 3654 MiB against the server and
+3473 MiB against the client.
+
+One test failed once, and it was H-50's own. In the run of CI's filter,
+`A_POST_With_An_IdempotencyKey_Is_Sent_Again_Once` got a connection reset
+(10054) on the second attempt, the one its server answers, instead of the
+`200`; the same test passed in the runs of `Tests.HTTP.` and of the selection
+that followed. Under `[Repeat(500)]` it failed within the first few
+repetitions. The cause was the test server. `DroppingServer` read up to the
+end of the header section and no further, and the client writes the body
+separately. A socket closed with octets unread sends a reset rather than a FIN
+(RFC 9293 §3.6.1), and on Windows the reset discards the answer before the
+client reads it. No earlier test had both a body and an answer. The fix reads
+the announced body before answering, closes the sending side first and waits
+for the client's close: 5000 of 5000 under `[Repeat(5000)]`, and Hermod's full
+suite passed, 7168 tests. In review as
+[Hermod#315](https://github.com/Vanaheimr/Hermod/pull/315); test code only, so
+nothing above changes when it is pinned.
+
+Track B is 50 of 50.

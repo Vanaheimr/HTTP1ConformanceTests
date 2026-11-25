@@ -74,7 +74,7 @@ that failed. Counting the `true`s would mix four different things together, so
 | `dependency_fail` | a test it depends on did not pass, so it says nothing of its own |
 | `untested` | not run against a shared cache: browser-only tests |
 
-## Results, 2026-11-25, Hermod `51bdc7d5`
+## Results, 2026-11-25, Hermod `002cfd29`
 
 | | Hermod | nginx | Squid | ATS | httpd | Varnish | Caddy | HAProxy | Fastly |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
