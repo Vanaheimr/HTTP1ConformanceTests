@@ -6943,3 +6943,20 @@ suite passed, 7168 tests. In review as
 nothing above changes when it is pinned.
 
 Track B is 50 of 50.
+
+## 2026-11-25 — Hermod to `5b6458e0`: H-50's test server reads the body
+
+[Hermod#315](https://github.com/Vanaheimr/Hermod/pull/315) is merged and
+pinned: `DroppingServer` reads the body a request announces before it answers,
+and closes its sending side before it waits for the client's close. That was
+the cause of the one failure at `002cfd29`, recorded above. Test code only.
+Also in the pin: Hermod#312, SMTP's file mail store with 15 tests of its own,
+and #314, which gives an SSH messaging test a second of slack. Neither touches
+HTTP.
+
+Measured at `5b6458e0`, one run after the other: `Tests.HTTP.` 1639, the
+selection 1001, WebSockets 246, CI's filter 1640 with no failure this time,
+the neighbours 3578, the gate 337 cleartext, 343 over TLS and 539 with
+`--wsl`. The solution built at once. Nothing HTTP changed, so cache-tests, the
+Linux-built clone and Autobahn were not run again; their figures stand as
+measured at `002cfd29`, which `docs/TestingAgainst_CacheTests.md` still names.
