@@ -10,6 +10,7 @@
 #   setup_fail       the test could not set up what it measures
 #   dependency_fail  a test it depends on did not pass, so it says nothing
 #   untested         the suite does not run it against a shared cache
+#   retry            the origin saw one of the suite's requests twice
 #
 # A test not listed here must pass (or answer yes), and tests/cache-tests.sh
 # fails on ANY test whose result is not what this file says, in either
@@ -19,10 +20,11 @@
 # y2038-age-generated-across-int32-max with H-46's, at Hermod 810fdfbd.
 # head-200-freshness-update and head-200-update left with H-47's on
 # 2026-11-24, at Hermod c9f237f7, and sixteen conditional-* and y2038-ims-*
-# rows with H-45's.
+# rows with H-45's. 304-etag-update-response-ETag went from setup_fail to
+# retry with H-49's on 2026-11-25, at Hermod 51bdc7d5.
 #
 # The notes name their cause first:
-#   H-n           a finding in Hermod, tracked in PLAN.md: H-49
+#   H-n           a finding in Hermod, tracked in PLAN.md; none is open
 #   proxy         tests/cache-proxy/, not the cache: the client hands back the
 #                 final response only, so no interim response reaches the suite
 #   by design     a decision of H-5's or H-45's, with the RFC text that allows it
@@ -34,7 +36,7 @@
 
 304-etag-update-response-Content-Encoding	no	check: RFC 9111 §3.2 lists the field among those a 304 does not update
 304-etag-update-response-Content-Range	no	check: RFC 9111 §3.2 lists the field among those a 304 does not update
-304-etag-update-response-ETag	setup_fail	by design: the 304 names another entity tag, so it selects nothing (RFC 9111 §4.3.4: MUST NOT update) and the cache asks again without conditions. The suite's origin answers that third request with status 999, which the client refuses outright where RFC 9110 §15 would have it read as a 5xx (H-49)
+304-etag-update-response-ETag	retry	by design: the 304 names another entity tag, so it selects nothing (RFC 9111 §4.3.4: MUST NOT update), and the cache, whose caller sent no conditions and cannot be given a 304, asks again without them. The suite counts that as a retry, the origin seeing the same request number twice. Until H-49 the origin's 999 to it came back as a 502, and the test as a setup_fail
 age-parse-numeric-parameter	no	check: an Age with a parameter is invalid, and an invalid Age is ignored (RFC 9111 §5.1)
 age-parse-parameter	no	check: an Age with a parameter is invalid, and an invalid Age is ignored (RFC 9111 §5.1)
 cc-resp-immutable-fresh	untested	untested: a browser test, which the suite runs only against a private cache in a browser
