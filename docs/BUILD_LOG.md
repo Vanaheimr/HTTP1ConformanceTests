@@ -6849,3 +6849,27 @@ retry loop retries a `POST` like any other method, which RFC 9110 §9.2.2
 advises against, as noted under H-48. And HTTP/3's `Http3MessageValidator`
 still refuses a `:status` outside 100–599, where HTTP/2's client takes it;
 that one is HTTP/3's, which this repository does not test.
+
+## 2026-11-25 — H-50 filed: the client retries a `POST`
+
+Noticed while fixing H-48 and set aside then: `AHTTPClient`'s retry loop does
+not look at the method. Measured at `51bdc7d5` with a probe outside both
+repositories: a server that reads each request in full, body included, and
+closes the connection without a response. With the default
+`MaxNumberOfRetries` of 2, a `POST` arrived three times, and a `PUT` three
+times; with `0`, once each. Each ended in the client's own `ClientError`.
+
+RFC 9110 §9.2.2 has two client requirements here, both SHOULD NOT. A client
+SHOULD NOT automatically retry a request with a non-idempotent method, unless
+it knows the request to be idempotent or can detect that it was never
+applied. And it SHOULD NOT automatically retry a failed automatic retry,
+whatever the method, which the third attempt of the default does. RFC 9112
+§9.3.1 adds no requirement of its own and refers to §9.2.2. A proxy MUST NOT
+retry a non-idempotent request; `tests/cache-proxy/` passes `0`, so it never
+did.
+
+The fix has a model to ask, `HTTPMethod.IsIdempotent`, and one distinction to
+keep: an attempt whose connection never opened sent nothing, and trying it
+again is what "some means to detect that the original request was never
+applied" allows. Filed as H-50 in `PLAN.md`, P2, and the RFC 9110 §9 row of
+`README.md` says so.
