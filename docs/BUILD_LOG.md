@@ -6782,3 +6782,70 @@ the client.
 
 Track B is 48 of 49. H-49, the client refusing a status code above 599
 instead of reading it as a `5xx`, is the one left.
+
+## 2026-11-25 — H-49: a status code outside 100–599 is a server error; Hermod to `51bdc7d5`
+
+H-49 is fixed, merged as
+[Hermod#310](https://github.com/Vanaheimr/Hermod/pull/310) and pinned. RFC
+9110 §15 calls a status code outside 100–599 invalid, and a client SHOULD
+process the response as if it had a `5xx`. `AHTTPClient` refused the status
+line instead: a `999` came back as the client's own `ClientError`, and the
+connection was dropped with the body unread. It reads any three digits now.
+The response is framed and read like any final one, the connection carries the
+next request, and the code is kept. `HTTPStatusCode.IsInvalid` is new, and
+`IsServerError` holds for an invalid code too. `000` alone is still refused:
+code 0 is `ClientError`, the sentinel for "no response came", and a server's
+`000` must not read as one. `HTTPCache.IsStorable` refuses an invalid code,
+for both caches. Seven tests, all in fixtures the selection names; five
+mutations, each turning them red. The old rejection test gained a check of the
+reason: without it, its `000` case passed either way, since a `000` read as a
+code is a `ClientError` as well.
+
+cache-tests moved by one row, on purpose. `304-etag-update-response-ETag`
+went from `setup_fail` to `retry`. Its `304` names another entity tag, so it
+selects nothing (RFC 9111 §4.3.4), and the cache, whose caller sent no
+conditions, asks again without them. The suite's origin answers that request
+with `999`. That came back as a `502` until now, and reaches the suite now,
+which sees the same request number twice and calls it a retry.
+`tests/cache-tests-known.txt` gained `retry` among its results, and its last
+`H-n` reason.
+
+The rest of `51bdc7d5` is SMTP, Hermod#309. The solution built at once.
+
+| | `0800bcc7` | `51bdc7d5` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1623 | **1630** |
+| ↳ regression selection | 985 | **992** |
+| ↳ WebSockets | 246 | **246** |
+| CI's filter, `+ Tests.HTTPS.` | 1624 | **1631** |
+| the neighbours | 3527 | **3538** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+| Linux-built clone: TLS, proxies | 344, 32/32 | **344, 32/32** |
+| Autobahn server / client | 481 / 445 | **481 / 445** |
+| cache-tests: pass / yes / required fails / rows | 285 / 94 / 5 / 101 | **285 / 94 / 5 / 101** |
+
+The 11 more neighbours are SMTP's. Every filter passed but CI's, where one
+test failed once:
+`WebSocketShutdownTests.AClientWhoseAnswerWasOnItsWayIsToldAsWell` failed with
+its client never getting onto the WebSocket, "Unable to connect to the remote
+server". It passed in the `Tests.HTTP.` and WebSocket runs of the same
+measurement. Of 70 runs of its fixture alone, one failed without a log that
+names the test, and the last 40 passed. The test arrived on 2026-11-06, and
+this is its first failure recorded here. It races a server's shutdown against
+the `101` it is sending, and neither H-49 nor Hermod#309 touches either. Not
+filed; written down so that a second failure is not taken for the first.
+
+cache-tests gave the same 480 results on Windows and in the Linux-built clone.
+As a private cache it gives 265 pass and 94 yes, and without a cache 22 pass,
+both as before. With H-49's, one setup failure becomes a retry in each cache
+mode, `304-etag-update-response-ETag`, and without a cache two become optional
+failures, `cc-resp-no-cache-revalidate` and its `-fresh`: their origin answers
+`999` to a request that should have been conditional, and that reaches the
+suite now instead of a `502`. The Autobahn suite peaked at 3 701 MiB against
+the server and 3 461 MiB against the client.
+
+Track B is 49 of 49. Two questions came out of H-49 and are not filed. The
+retry loop retries a `POST` like any other method, which RFC 9110 §9.2.2
+advises against, as noted under H-48. And HTTP/3's `Http3MessageValidator`
+still refuses a `:status` outside 100–599, where HTTP/2's client takes it;
+that one is HTTP/3's, which this repository does not test.

@@ -74,7 +74,7 @@ that failed. Counting the `true`s would mix four different things together, so
 | `dependency_fail` | a test it depends on did not pass, so it says nothing of its own |
 | `untested` | not run against a shared cache: browser-only tests |
 
-## Results, 2026-11-24, Hermod `0800bcc7`
+## Results, 2026-11-25, Hermod `51bdc7d5`
 
 | | Hermod | nginx | Squid | ATS | httpd | Varnish | Caddy | HAProxy | Fastly |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -83,9 +83,9 @@ that failed. Counting the `true`s would mix four different things together, so
 | no | 39 | 57 | 30 | 42 | 55 | 63 | 50 | 37 | 59 |
 | **fail** (required) | **5** | 31 | 27 | 18 | 16 | 17 | 13 | 19 | 37 |
 | optional_fail | 23 | 33 | 52 | 28 | 33 | 45 | 66 | 55 | 42 |
-| setup_fail | 5 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
+| setup_fail | 4 | 12 | 7 | 4 | 8 | 12 | 8 | 7 | 3 |
 | dependency_fail | 24 | 99 | 37 | 42 | 36 | 72 | 90 | 117 | 78 |
-| other | 5 | 10 | 5 | 6 | 12 | 5 | 5 | 5 | 10 |
+| other | 6 | 10 | 5 | 6 | 12 | 5 | 5 | 5 | 10 |
 
 480 tests. The other columns are the results the suite publishes, from the
 same checkout: recorded on 2026-11-17 against the versions `results/index.mjs`
@@ -108,17 +108,22 @@ twice more with the cache changed and nothing else:
 
 Without a cache, 22 tests pass: the ones that ask a cache not to store or not
 to serve. So the other 263 are the cache's. `private` mode turns exactly the
-shared cache's tests red: `cc-resp-private-shared`, `freshness-s-maxage-shared`,
-`other-authorization` and 17 that depend on them. That is the suite telling the
-two modes apart, which is what H-5 claims they are. Three runs in shared mode
-gave the same 480 results. All three modes were measured again with H-44's
-fix: one more pass and one fewer fail in each cache mode, and no change
-without a cache. With H-46's, again: one more pass and one fewer setup
-failure in each cache mode, and no change without a cache. With H-47's, two
-more checks answer yes and two fewer dependencies fail in each cache mode,
-and without a cache nothing changes. With H-45's, thirteen more pass, three
-more checks answer yes and eighteen fewer dependencies fail in each cache
-mode, and without a cache nothing changes.
+shared cache's tests red: `cc-resp-private-shared`,
+`freshness-s-maxage-shared`, `other-authorization` and 17 that depend on them.
+That is the suite telling the two modes apart, which is what H-5 claims they
+are. Three runs in shared mode gave the same 480 results. All three modes were
+measured again with H-44's fix: one more pass and one fewer fail in each cache
+mode, and no change without a cache. With H-46's, again: one more pass and one
+fewer setup failure in each cache mode, and no change without a cache. With
+H-47's, two more checks answer yes and two fewer dependencies fail in each
+cache mode, and without a cache nothing changes. With H-45's, thirteen more
+pass, three more checks answer yes and eighteen fewer dependencies fail in
+each cache mode, and without a cache nothing changes. With H-49's, one setup
+failure becomes a retry in each cache mode, `304-etag-update-response-ETag`,
+and without a cache two become optional failures,
+`cc-resp-no-cache-revalidate` and its `-fresh`: their origin answers `999` to
+a request that should have been conditional, and that reaches the suite now
+instead of a `502`.
 
 The record was checked the same way. Deleting the `age-parse-suffix` row,
 recording a fail for `freshness-none` and inventing a row for a test that does
@@ -190,10 +195,13 @@ Four findings in the cache and two in the client around it, tracked in
   Found by writing the proxy. It counts retries now, and the default went from
   3 to 2, so a client that leaves it alone still makes three attempts. No
   result of the suite changed with it.
-- **H-49** — the client refuses a status code outside 100–599 as an invalid
-  status line. RFC 9110 §15: a client SHOULD treat it as a `5xx`. The suite's
-  origin uses `999` to say "this should have been conditional", so
-  `304-etag-update-response-ETag` is a setup failure here.
+- ~~**H-49**~~, fixed 2026-11-25, [Hermod#310](https://github.com/Vanaheimr/Hermod/pull/310): the client refused a status code
+  outside 100–599 as an invalid status line, where RFC 9110 §15 says a client
+  SHOULD treat it as a `5xx`. The suite's origin uses `999` to say "this should
+  have been conditional", and `304-etag-update-response-ETag` was a setup
+  failure. It is a retry now: the `304` selects nothing, the cache asks again
+  without conditions (§4.3.4), and the `999` to that reaches the suite instead
+  of a `502`. Neither cache stores a response with an invalid code.
 
 ## Bumping the pin
 
