@@ -7069,3 +7069,53 @@ server. The ACME and SSH tests are in none of the filters here. The gate
 passed in all three legs. cache-tests, the Linux-built clone and Autobahn were
 not run again: nothing they reach changed, and their figures stand as measured
 at `002cfd29`.
+
+## 2026-11-26 — Hermod to `c35782a8`: the HTTP/2 client reads a response's pseudo-header fields
+
+[Hermod#327](https://github.com/Vanaheimr/Hermod/pull/327) is merged and
+pinned. It is the HTTP/2 half of what the entry above left noted and not
+filed. The HTTP/2 client checked none of a response's pseudo-header fields. It
+read `:status` with `Int32.TryParse` wherever it needed it, and so took `42`,
+`1000`, `+200` and ` 200` as status codes, the first of two `:status` fields,
+a `:path` beside one, a `:status` after a regular field, and trailers with a
+`:status`. A buffered response without one failed only once it had ended, with
+its stream not reset, and a streamed one handed its reader a head with status
+0. RFC 9113 §8.1.1 and §8.3.2 make each of these a malformed response, and
+"Clients MUST NOT accept a malformed response". The server has always held
+requests to the same rules, and the HTTP/3 client responses.
+
+`TryReadStatus` now reads every response header block, interim and final,
+before anything of it is handed over: exactly one `:status`, before every
+regular field, three ASCII digits and no less than 100. A code from 600 to 999
+is invalid, not malformed, and goes through with its code, as it does in the
+HTTP/1.1 client since H-49 and in the HTTP/3 client. A header block that
+breaks a rule, and trailers with a pseudo-header field, fail the response
+there with `PROTOCOL_ERROR` and reset its stream, through the same path as a
+malformed `content-length`; the connection goes on.
+`ClientResponsePseudoHeaderTests` has 28 tests, of which 22 failed before; the
+6 that stood before are the valid cases. Six mutations, each red: no lower
+bound, `Int32.TryParse` again, a second `:status` taken, the order unchecked,
+another pseudo-header taken, trailers unchecked. Hermod's full suite passed
+before the PR, 7432 tests.
+
+Not in it: the rules of RFC 9113 §8.2 for regular fields, lowercase names, no
+connection-specific fields and `te` only with `trailers`, which the server
+holds requests to and the client still does not hold responses to. That change
+has more interop risk, and is left for one of its own. Nothing in this
+repository drives the HTTP/2 client, so only the neighbours move. Also in the
+pin: SMTP's #326 and SSH's #325. The solution built at once.
+
+| | `3049728e` | `c35782a8` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1645 | **1645** |
+| ↳ regression selection | 1001 | **1001** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1646 | **1646** |
+| the neighbours | 3728 | **3794** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included, with the counts of `3049728e`. The 66 more
+neighbours are `ClientResponsePseudoHeaderTests`' 28 and SMTP's 38 from #326.
+The gate passed in all three legs. cache-tests, the Linux-built clone and
+Autobahn were not run again: none of them reaches the HTTP/2 client, and their
+figures stand as measured at `002cfd29`.
