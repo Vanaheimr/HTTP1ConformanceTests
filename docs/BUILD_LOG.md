@@ -6960,3 +6960,54 @@ the neighbours 3578, the gate 337 cleartext, 343 over TLS and 539 with
 `--wsl`. The solution built at once. Nothing HTTP changed, so cache-tests, the
 Linux-built clone and Autobahn were not run again; their figures stand as
 measured at `002cfd29`, which `docs/TestingAgainst_CacheTests.md` still names.
+
+## 2026-11-26 — Hermod to `852ec2d9`: a slow network is simulated at its pace
+
+[Hermod#319](https://github.com/Vanaheimr/Hermod/pull/319) is merged and
+pinned. It fixes the test recorded above at `51bdc7d5`,
+`WebSocketShutdownTests.AClientWhoseAnswerWasOnItsWayIsToldAsWell`, which
+failed now and then on Windows and never in the Debian leg. The test sets
+`SlowNetworkSimulationDelay` to 1 ms, so that the server's `101` goes out a
+byte at a time while the server shuts down. The simulation waited that 1 ms
+after every byte, and on Windows a wait of 1 ms takes 15.6 ms, the timer's
+resolution, unless some program asks for finer. The `101` of some 300 bytes
+took close to five seconds instead of a third of one, and five seconds is
+`DefaultCloseTimeout`, as long as a close waits for a `101` on its way out. A
+close that gave up on it ended the connection in the middle of the `101`.
+Timed over 300 repetitions on the old code, the shutdown took 5.8 s at the
+median and 6.7 s at most, and the 76th failed: shut down after 5.1 s, the
+connect given up after 5.15 s.
+
+The simulation now keeps its pace by a stopwatch, in one helper the server and
+the client share, `SlowNetworkSimulation`. A byte that is behind its time goes
+out at once, and only one that is ahead of it waits; still one byte at a time.
+The 5 s of `Close()` are unchanged. With the fix, 300 of 300 passed, each
+shutdown in 2.21 to 2.32 s. The test still reaches its case: with `Close()` no
+longer waiting for the `101`, it failed in its first run, after 160 ms. Two
+new tests pin the pace, and both the old per-byte wait (4.57 s for 300 bytes)
+and no wait at all turn them red. On Linux, where a wait of 1 ms takes about
+that, the first of them cannot tell old from new, which it says. Hermod's full
+suite passed before the PR, 7242 tests. Nothing the demo, the gate or Autobahn
+runs sets the delay.
+
+Also in the pin: SMTP's Hermod#316 and #317, a DNS request handler that
+forwards (#320), `X509Certificate2.MatchesIPAddress`, and a fix to
+`ANotification`'s message types with three tests of its own, which sit under
+`Tests.HTTP.Entities` and so count in `Tests.HTTP.`. The solution built at
+once.
+
+| | `5b6458e0` | `852ec2d9` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1639 | **1644** |
+| ↳ regression selection | 1001 | **1001** |
+| ↳ WebSockets | 246 | **248** |
+| CI's filter, `+ Tests.HTTPS.` | 1640 | **1645** |
+| the neighbours | 3578 | **3679** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included, and the 101 more neighbours are SMTP's 89
+and the forwarding DNS handler's 12. The test the pin fixes passed in all
+three runs that reach it, CI's filter, `Tests.HTTP.` and the WebSocket one.
+Nothing the gate exercises changed, and it passed in all three legs. cache-tests, the Linux-built clone and Autobahn were not run again: the
+changed code runs only when the delay is set, which none of them does, and
+their figures stand as measured at `002cfd29`.
