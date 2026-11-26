@@ -7174,3 +7174,65 @@ Every filter passed, CI's included. The 52 more neighbours are
 gate passed in all three legs. cache-tests, the Linux-built clone and Autobahn
 were not run again: none of them reaches the HTTP/2 client or the three new
 fixtures, and their figures stand as measured at `002cfd29`.
+
+## 2026-11-26 — Hermod to `69096a60`: both sides of HTTP/2 hold a field's characters to §8.2.1
+
+[Hermod#333](https://github.com/Vanaheimr/Hermod/pull/333) is merged and
+pinned. Both entries before this one held HTTP/2's fields to the rules of RFC
+9113 Section 8.2 that name fields; this one holds them to the rules on their
+characters, Section 8.2.1, which neither side checked: a field name carries no
+octet from 0x00 to 0x20, none from 0x7F to 0xFF, and no colon but the one that
+opens a pseudo-header field's name, and a field value carries no NUL, CR or
+LF, and no whitespace at either end. HPACK carries any octet. The server
+handed a request's `x-id: a\r\nx-injected: 1`, a name with a space or a NUL, a
+`:path` of `" /"` to the handler, and the client handed the same over in a
+response.
+
+`HTTP2FieldCharacters`, new in `Core`, holds the rules once. The server checks
+a request's header block and its trailers, pseudo-header values included, and
+resets the stream with `PROTOCOL_ERROR`; the client checks every header block
+of a response, interim and trailers included, and fails it as for the rest of
+Section 8.2. nghttp2 drops such a field, where the RFC makes the message
+malformed; Hermod goes by the RFC. Whitespace inside a value and obs-text
+stand. On the way, the HPACK decoder: it read a raw string literal as ASCII,
+every octet above 0x7F a `?`, where a Huffman-coded one gave the octet, so the
+same field read two ways, and a name with such an octet came through as a
+legal one. It reads one character per octet now, both ways.
+
+69 new tests, 36 in `ServerRequestFieldCharacterTests` and 33 in
+`ClientResponseFieldTests`; 66 failed against the old code, and the 3 that
+stood should have: the two valid cases coded with Huffman, which decoded right
+before, and the server's `te: "trailers "`, which its te check refused
+already. 16 mutations, each red at exactly the tests it should be.
+`ClientContentLengthTests` traded `" 5"` and `"5 "` for `"5 5"`, since a value
+with whitespace at either end now fails for its characters before it is read
+as a length.
+
+Left for later, in the PR as not in it: neither side checks the fields it
+sends, and the HPACK encoder still writes ASCII; HTTP/3's QPACK reads a string
+as ASCII too, raw and Huffman alike. The server's `te`, which took `trailers`
+in lowercase only, is
+[Hermod#336](https://github.com/Vanaheimr/Hermod/pull/336), open.
+
+Also in the pin: SMTP's #331, #332, #334 and #335, and two commits on master
+without a PR — one gives `HTTPExtAPINotificationMessageTests` its third test,
+which is the one more `Tests.HTTP.` test, and one zeroes SSH's key-exchange
+secrets and fixes `TLSWarden`'s disposal and expiry, with three
+`TLSWardenTests` that no filter here selects. The regression selection does
+not move. The solution built at once; Styx stays at `a6b9f9fb`.
+
+| | `ff0300bb` | `69096a60` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1650 | **1651** |
+| ↳ regression selection | 1001 | **1001** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1651 | **1652** |
+| the neighbours | 3846 | **3987** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included. The 141 more neighbours are HTTP/2's 68 —
+36 in `ServerRequestFieldCharacterTests`, 33 in `ClientResponseFieldTests`,
+one fewer in `ClientContentLengthTests` — and SMTP's 73, counted by their
+attributes at both pins, which give the same 141. The gate passed in all three
+legs. cache-tests, the Linux-built clone and Autobahn were not run again: none
+of them reaches HTTP/2, and their figures stand as measured at `002cfd29`.
