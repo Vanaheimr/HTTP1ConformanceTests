@@ -7236,3 +7236,61 @@ one fewer in `ClientContentLengthTests` — and SMTP's 73, counted by their
 attributes at both pins, which give the same 141. The gate passed in all three
 legs. cache-tests, the Linux-built clone and Autobahn were not run again: none
 of them reaches HTTP/2, and their figures stand as measured at `002cfd29`.
+
+## 2026-11-26 — Hermod to `de34e4e5`: zstd, and the HTTP/2 server's `te`
+
+Two PRs are merged and pinned, both from this session's list.
+[Hermod#336](https://github.com/Vanaheimr/Hermod/pull/336): the HTTP/2 server
+took `te: trailers` in lowercase only, and reset a request with `te: Trailers`
+with `PROTOCOL_ERROR`; RFC 9110 reads a transfer coding's name in any case, as
+nghttp2 and Hermod's own client read it, and so does the server now. Its rules
+on a request's regular fields had no test of their own in Hermod, only
+h2spec's in the conformance repositories; `ServerRequestFieldTests` holds all
+three, in the header block and in the trailers — 22 tests, 4 of them red
+against the old comparison, four mutations each red where it should be.
+
+[Hermod#337](https://github.com/Vanaheimr/Hermod/pull/337) closes a row of the
+matrix: zstd (RFC 8878) is a content coding now, in both directions and on
+every path that takes br and gzip — the HTTP/1.x server's compression filter,
+`SinglePageAppHandler`, HTTP/2's resource layer, and both clients, which
+advertise `br, zstd, gzip, deflate`. The row read ❌ because the BCL had no
+codec; .NET 11 brings `ZstandardStream`, and the stack still takes no
+dependency. br stays the server's first choice. RFC 9659 holds zstd for HTTP
+to a window of 8 MB, and the BCL makes that easy to get wrong:
+`CompressionLevel.SmallestSize` writes a frame that needs 128 MB, measured.
+The encoder sets zstd's default quality, 3, whose window is 2 MB, and states
+the content size; the decoder takes no frame that needs more than 8 MB.
+
+The decoder answers such a frame with an `IOException`, which `AHTTPPDU`, like
+any caller, reads as the connection failing. It is translated into the
+`InvalidDataException` every other coding raises, but only the decoder's own:
+an `IOException` keeps its `Source` through a decoder, so one of the socket
+goes on as it is, which a test pins for zstd and gzip, read and read
+asynchronously. 27 tests, among them frames built byte by byte that need 1, 8,
+9 and 16 MiB and 2 GiB; 24 red against the old code, 11 mutations each red
+where it should be. 25 of them are in the regression selection, which goes
+from 1001 to 1026, and the PR's second commit records that in
+`HTTP1/README.md`, which the first had left at 1001.
+
+Also in the pin: a commit on master without a PR, SSH's one-time password
+bound with exporter material, which no filter here selects. The solution built
+at once; Styx stays at `a6b9f9fb`.
+
+| | `69096a60` | `de34e4e5` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1651 | **1676** |
+| ↳ regression selection | 1001 | **1026** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1652 | **1677** |
+| the neighbours | 3987 | **4011** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included. The 25 more `Tests.HTTP.` tests are
+zstd's, all of them in the regression selection: eight in
+`ContentEncodingHeaderTests`, eleven in `ContentCodingStreamTests`, two in
+`ClientContentDecodingTests`, four in `ServerContentCompressionTests`. The 24
+more neighbours are HTTP/2's: `ServerRequestFieldTests`' 22, and the two zstd
+tests in `ContentCodingTests`. The gate passed in all three legs. cache-tests,
+the Linux-built clone and Autobahn were not run again: the cache proxy's
+client advertises no coding of its own, none of the three reaches HTTP/2, and
+their figures stand as measured at `002cfd29`.
