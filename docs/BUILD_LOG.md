@@ -7008,6 +7008,64 @@ once.
 Every filter passed, CI's included, and the 101 more neighbours are SMTP's 89
 and the forwarding DNS handler's 12. The test the pin fixes passed in all
 three runs that reach it, CI's filter, `Tests.HTTP.` and the WebSocket one.
-Nothing the gate exercises changed, and it passed in all three legs. cache-tests, the Linux-built clone and Autobahn were not run again: the
+Nothing the gate exercises changed, and it passed in all three legs.
+cache-tests, the Linux-built clone and Autobahn were not run again: the
 changed code runs only when the delay is set, which none of them does, and
 their figures stand as measured at `002cfd29`.
+
+## 2026-11-26 — Hermod to `3049728e`: HTTP/3 reads a `:status` from 600 to 999, as it always did
+
+[Hermod#324](https://github.com/Vanaheimr/Hermod/pull/324) is merged and
+pinned, and with it a correction of this log. The entry for `51bdc7d5` above
+says that HTTP/3's `Http3MessageValidator` refuses a `:status` outside
+100–599. It does not, and never did. It refuses a `:status` that is not three
+digits or lies below 100, and hands 600 to 999 on with their code, and
+`Http3Client` returns such a response as the `Http3Response` it is. That is
+what RFC 9110 §15 asks: a code outside 100–599 is invalid, not malformed, and
+a client SHOULD process the response as if it had a 5xx status. HTTP/3 reports
+the status as a plain `int`, so the caller is the one to read a `999` as a
+`5xx`. The claim came from the validator's comment, which said 100–599, and
+not from its code.
+
+The comment is corrected, and `Http3StatusCodeRangeTests` holds the range,
+with 14 tests: 100, 199, 200, 599, 600 and 999 read with their code; 000, 099,
+20, 1000, `+20`, ` 20` and the empty value refused; and a `999` over real
+sockets reaching `Http3Client` with its code and content. All 14 passed
+against the unchanged validator. Two mutations turned them red: refusing above
+599, as the comment said, failed three, and dropping the lower bound two.
+Hermod's full suite passed before the PR, 7380 tests. No library code changed,
+and this repository runs no HTTP/3 filter, so only the neighbours move.
+
+Where HTTP/2 and HTTP/3 do differ is the other end.
+`HTTP2ClientConnection.CompleteResponse` checks a `:status` only with
+`int.TryParse`, and so takes `42`, `1000`, `+200` or ` 200` as a status, which
+HTTP/3 refuses as not three digits. That one is HTTP/2's, and is not filed
+here.
+
+Also in the pin: [Hermod#323](https://github.com/Vanaheimr/Hermod/pull/323),
+which changes `SlowNetworkSimulation` from #319. In the Debian CI,
+`NoByteGoesOutBeforeItsTime` saw byte 8 go out at 318.38 ms, below the 319 ms
+its 1 ms of slack allowed: `Task.Delay` drops the fraction of a millisecond,
+and a wait of 0.4 ms is no wait at all. The helper now starts its stopwatch
+once the first byte is out and waits in whole milliseconds, rounded up, until
+each byte's time has come. A byte that is behind its time still goes out at
+once. A third test, `FractionalMillisecondDelayNeverGoesOutEarly`, holds it
+with a delay of 20.7 ms. The rest is an ACME client, SSH's #321 and #322,
+SMTP's #318, and a DNS server that tells a handler how a request came. The
+solution built at once.
+
+| | `852ec2d9` | `3049728e` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1644 | **1645** |
+| ↳ regression selection | 1001 | **1001** |
+| ↳ WebSockets | 248 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1645 | **1646** |
+| the neighbours | 3679 | **3728** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included. The 49 more neighbours are
+`Http3StatusCodeRangeTests`' 14, SMTP's 34 from #318, and one for the DNS
+server. The ACME and SSH tests are in none of the filters here. The gate
+passed in all three legs. cache-tests, the Linux-built clone and Autobahn were
+not run again: nothing they reach changed, and their figures stand as measured
+at `002cfd29`.
