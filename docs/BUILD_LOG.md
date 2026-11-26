@@ -7119,3 +7119,58 @@ neighbours are `ClientResponsePseudoHeaderTests`' 28 and SMTP's 38 from #326.
 The gate passed in all three legs. cache-tests, the Linux-built clone and
 Autobahn were not run again: none of them reaches the HTTP/2 client, and their
 figures stand as measured at `002cfd29`.
+
+## 2026-11-26 — Hermod to `ff0300bb`: the HTTP/2 client holds a response's regular fields to §8.2
+
+[Hermod#330](https://github.com/Vanaheimr/Hermod/pull/330) is merged and
+pinned. It is the second half of what the entry above left for one of its own:
+the HTTP/2 client held a response's pseudo-header fields to RFC 9113 since
+#327, and none of its regular fields. It handed over a response with
+`Content-Type`, with `connection: keep-alive` or `transfer-encoding: chunked`,
+with `te: gzip`, in its header block, an interim response's or its trailers.
+§8.2.1 and §8.2.2 make each of these a malformed response.
+
+`TryFindMalformedField` now checks every header block after `TryReadStatus`,
+and every trailer block after the pseudo-header check: a field name is not
+empty and has no uppercase letter, no connection-specific field is carried
+(`connection`, `keep-alive`, `proxy-connection`, `transfer-encoding`,
+`upgrade`), and `te` carries `trailers` and nothing else. These are the rules
+the server holds a request's fields to, and nghttp2's
+`http_response_on_header`, read from its source, a response's. One difference
+from the server: the client reads `trailers` in any case, as nghttp2
+(`lstrieq`) and RFC 9110's ABNF do; the server takes it in lowercase only. A
+response that breaks one fails at that header block with `PROTOCOL_ERROR` and
+its stream reset, through the same path as a malformed `:status`.
+`ClientResponseFieldTests` has 26 tests, of which 22 failed before; the 4 that
+stood are the valid cases. Seven mutations, each red at exactly the tests it
+should be. Hermod's full suite passed before the PR, 7496 tests.
+
+Found on the way and left in the PR as not in it: neither side holds a field
+to §8.2.1's character rules. A value with NUL, CR or LF, or with whitespace at
+either end, and a name with a control, a space, a colon or an octet above
+0x7E, pass the server and the client alike; the HPACK decoder hands every
+string over through `Encoding.ASCII`. Nor does the server check the fields it
+sends, trailers apart, and its `te` refuses `Trailers`.
+
+Also in the pin: SMTP's #329, SSH's #328, and three commits on master without
+a PR, which leave no compiler warnings, give `HTTPExtAPI`'s notification
+messages their tests, let a copied request keep what the server set on it, and
+make ES256K -47. Their three new fixtures are the 5 more `Tests.HTTP.` tests;
+none is the protocol's, and the regression selection does not move. The
+solution built at once.
+
+| | `c35782a8` | `ff0300bb` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1645 | **1650** |
+| ↳ regression selection | 1001 | **1001** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1646 | **1651** |
+| the neighbours | 3794 | **3846** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included. The 52 more neighbours are
+`ClientResponseFieldTests`' 26 and SMTP's 26 from #329, 22 in
+`SMTPOutboundClientTests.Retries` and 4 in `SMTPSessionWireTests.Copies`. The
+gate passed in all three legs. cache-tests, the Linux-built clone and Autobahn
+were not run again: none of them reaches the HTTP/2 client or the three new
+fixtures, and their figures stand as measured at `002cfd29`.
