@@ -7294,3 +7294,52 @@ tests in `ContentCodingTests`. The gate passed in all three legs. cache-tests,
 the Linux-built clone and Autobahn were not run again: the cache proxy's
 client advertises no coding of its own, none of the three reaches HTTP/2, and
 their figures stand as measured at `002cfd29`.
+
+## 2026-11-27 — Hermod to `82a4af48`: `aes128gcm`
+
+[Hermod#339](https://github.com/Vanaheimr/Hermod/pull/339) closes another row
+of the matrix: RFC 8188's encrypted content coding, `aes128gcm`.
+`HTTPEncryptedContentCoding` encrypts and decrypts in records of a fixed size,
+behind the header that carries the salt, the record size and a keyid; key and
+nonce are derived with the BCL's `HKDF` and the records sealed with its
+`AesGcm`, so the stack still takes no dependency. Both examples of RFC 8188 §3
+are reproduced to the octet, through a seal of the fixture's own that
+reproduces them first. Every body §2 makes a decrypter fail on is an
+`InvalidDataException`: cut off, tampered with, reordered, under another key,
+a record shorter than its tag, and a delimiter where none belongs, which is
+what makes a body cut off at a record boundary fail. 39 tests, 13 mutations
+each red where it should be.
+
+The row reads ✅ with a 🔵, because RFC 8188 leaves the key to the application.
+So `aes128gcm` is not one of the codings `HTTPContentCoding` undoes on its
+own, no client advertises it, and a body in it is left as it came, as an
+unknown coding is. For the same reason `EncryptedContentCodingTests` stays
+outside the regression selection: it tests no field or coding the stack writes
+or reads by itself. The solution built at once; Styx stays at `a6b9f9fb`.
+
+| | `de34e4e5` | `82a4af48` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1676 | **1715** |
+| ↳ regression selection | 1026 | **1026** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1677 | **1716** |
+| the neighbours | 4011 | **4011** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included. The 39 more `Tests.HTTP.` tests are
+`EncryptedContentCodingTests`', none of them in the regression selection,
+which stays at 1026. The gate passed in all three legs; it could not have
+moved, as nothing on the wire changed. cache-tests, the Linux-built clone and
+Autobahn were not run again: none of them reaches a coding no peer negotiates,
+and their figures stand as measured at `002cfd29`.
+
+The neighbours did not pass at the first attempt: SMTP's
+`DANE_TA_does_not_depend_on_certificate_downloads` failed once, 4010 of 4011,
+with a TLSA mismatch for a certificate whose issuer URL is unreachable on
+purpose. Nothing in the pin touches SMTP. Alone it passed five times out of
+five, and the whole filter, run again at the same pin, passed 4011 of 4011,
+which is the figure in the table. The test's own remark is the likely reason:
+on some Windows images the server side, SChannel, still builds its chain with
+AIA retrieval and waits on its own, which a machine under the load of the full
+filter makes long enough to matter. Recorded here so that a second time is a
+pattern rather than news.
