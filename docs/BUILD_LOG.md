@@ -7519,3 +7519,85 @@ Every filter passed at the first attempt, and the gate in all three legs. The
 solution built at once; Styx stays at `a6b9f9fb`. No harness here sends a
 form, so the gate had nothing new to measure, and cache-tests, the Linux-built
 clone and Autobahn were not run again.
+
+## 2026-11-27 — Hermod to `ffb926c7`: cookies (RFC 6265, 6265bis-22), and three tests the gate never ran
+
+[Hermod#347](https://github.com/Vanaheimr/Hermod/pull/347) closes two of the
+matrix's own rows. RFC 6265 read 🟢 with "attribute-parsing edge cases
+untested", and 6265bis ❌. Measured before the change, on the pin before this
+one:
+
+- A response with two `Set-Cookie` lines read as one with no cookies. That is
+  what `HTTPExtAPI` sends at every sign-in.
+- A request with two `Cookie` lines read as one with no cookies. Hermod's own
+  client wrote two such lines whenever it sent two cookies, each line with the
+  cookie's attributes.
+- `Expires` went through `DateTimeOffset.Parse`. An `Expires` that is no date
+  threw, out of `TryParse` and out of reading the response; asctime's order
+  was refused; a date without `GMT` was read in the machine's local time zone.
+- `Value` was the name of the first of Hermod's own "crumbs", so `abc==` read
+  as `abc`, and `a=b:b` was written back as `a=b`.
+- `Max-Age`, `Domain`, the prefixes and `SameSite=None` were not modeled.
+
+Now a `Set-Cookie` is read as 6265bis, Section 5.6 has a user agent read it,
+with the cookie-date algorithm of Section 5.1.1, and what every user agent
+ignores whatever the request (Section 5.7, steps 8 and 19 to 21) is no cookie
+here either. A request carries one `Cookie` line without attributes.
+`HTTPCookie.Create` makes a cookie held to Section 4.1. Hermod keeps no cookie
+store, so `SameSite` enforcement stays a user agent's: 🔵 in the 6265bis row.
+121 tests, 54 mutations, each red; `HTTPExtAPIAuthTests` passes unchanged.
+
+The two lines that read as none were not a cookie bug. The header section
+keeps a field that arrives on two lines as a `String[]`, and the typed lookup
+parses only a `String`, so every typed field reads as absent on two lines:
+`Cache-Control: no-store` beside a second `Cache-Control` line reads as no
+`Cache-Control`, and `Accept` and `Connection` the same. The client cache is
+not affected; it reads the raw lines. #347 gives a header field a
+`FieldLinesParser` and the two cookie fields one each. The rest is **H-52**,
+filed in PLAN.md and half fixed.
+
+**Three tests the gate had never run.** Two of #347's own cases had U+0001 and
+U+001F in their arguments. NUnit names a case after its arguments and writes
+those as `\uXXXX`, and such a case runs in a full run but not under
+`FullyQualifiedName~HTTPCookiesTests`: 126 ran of 128 listed. They were
+rewritten before the merge. Looking for others at `1105a05e`, #347's merge
+with #346 after it: `FullyQualifiedName~Hermod` ran all 8084 tests
+`--list-tests` named, and `FullyQualifiedName~Tests.HTTP.` 1957 of 1960. The three are regression tests
+for U+0001 in a response header value, a request header value and a chunk
+extension, in two fixtures the regression selection names. They are the
+"three" by which this repository's README has said `--list-tests` and
+`dotnet test` disagree since 2026-09-24, and explained as three listing
+entries that never become a test case. The explanation was wrong, and the gate
+never ran them. A fourth, SaslPrep's U+FFFE, is under `Tests.SMTP`.
+[Hermod#350](https://github.com/Vanaheimr/Hermod/pull/350) gives the four a
+`TestName` and adds `FilterSafeTestNamesTests`, red on exactly those four
+before and green after. It was merged while `1105a05e` was being measured
+(`Tests.HTTP.` 1957, the selection 1268, CI's filter 1958), so the pin moved on
+to `ffb926c7`, where listing and runs agree.
+
+Also in the pin: [Hermod#346](https://github.com/Vanaheimr/Hermod/pull/346),
+DKIM's white space, and [Hermod#348](https://github.com/Vanaheimr/Hermod/pull/348),
+SSH's session recordings rotating. The solution built at once; Styx stays at `a6b9f9fb`.
+
+| | `e73d854c` | `ffb926c7` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1836 | **1960** |
+| ↳ regression selection | 1147 | **1271** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1837 | **1961** |
+| the neighbours | 4051 | **4085** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed at the first attempt, and the gate in all three legs. The
+124 more in `Tests.HTTP.` are the 121 cookie tests and the three that ran for
+the first time, all of them in the selection. The 34 more neighbours are SMTP's, from Hermod#346. The neighbour
+filter, eight terms long, had run SaslPrep's U+FFFE case all along: the listing
+and the run grew by the same 34. Which filters lose such a case and which do not, I have not worked out:
+the selection, fifty terms, lost the HTTP three, and `FullyQualifiedName~SaslPrepTests`,
+one term, lost U+FFFE. `FilterSafeTestNamesTests` makes the question moot for
+`[TestCase]`, and its remark that a narrower filter loses such a case says more
+than was measured. No
+harness here reads or writes a cookie through the typed fields: cache-tests'
+one `Set-Cookie` test goes through `tests/cache-proxy/`, which forwards raw
+field lines. So the gate had nothing new to measure, and cache-tests, the
+Linux-built clone and Autobahn were not run again.
