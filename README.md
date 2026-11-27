@@ -58,7 +58,7 @@ On top of that, the coverage inside Hermod itself:
 | Autobahn vs. the **client** (`fuzzingserver`) | `tests/autobahn-client.sh` | **445** / 517 + 72 declined | our `WebSocketClient` driven through the suite, nightly and gated — 0 hard failures |
 
 Every count above is a **run** count, re-measured on 2026-11-27 against Hermod
-`bd549e50` and Styx `a6b9f9fb` by running the filter in its own row — which is now printed, because
+`5c4cbf93` and Styx `a6b9f9fb` by running the filter in its own row — which is now printed, because
 every time a figure here drifted it was a figure whose filter nobody could check. The two Autobahn
 rows were measured in a Linux-built clone inside WSL, the configuration the nightly runs them in.
 

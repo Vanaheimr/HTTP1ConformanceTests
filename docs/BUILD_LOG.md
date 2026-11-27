@@ -7411,3 +7411,61 @@ pattern now. Its likely cause is the tests' own: a server bound to the
 wildcard address on a port chosen beforehand, which Windows lets another
 listener hold on 127.0.0.1, and a test that leaves such a listener open. That
 is investigated, and fixed in Hermod, separately.
+
+## 2026-11-27 — Hermod to `5c4cbf93`: the SMTP tests' own ports
+
+Nothing in this pin is HTTP. It is measured because the last two pins each
+recorded one SMTP test that failed once under the full neighbour filter, and
+this pin carries what came of looking at both.
+
+The DANE test, `DANE_TA_does_not_depend_on_certificate_downloads`, had a cause
+that could be shown. On Windows, `SslStreamCertificateContext.Create` puts the
+issuers it is given into the intermediate CA store, and the chain engine sees
+them there only about 100 ms after the call returns. A handshake that came
+sooner found no trust anchor and deferred. With every core busy it failed four
+runs of six, and none of six once the test's next hop waited until the
+platform saw its chain. That wait is `8717b09a`, on Hermod's `master` from
+another branch of work, and it is in this pin. `openssl s_client` against such
+a next hop on Windows adds a fact the test did not state: SChannel sends the
+certificate alone, because it sends no partial chain, so the client finds the
+anchor in its own store and not on the wire. The DANE-TA tests check what a
+server presents only on Linux, where OpenSSL sends the chain.
+[Hermod#344](https://github.com/Vanaheimr/Hermod/pull/344) writes that next
+to the test.
+
+`A_quoted_local_part_is_one_local_part` did not fail again. Five runs of all
+SMTP tests with every core busy passed. Its session was answered 250 at every
+step while the server's storage stayed empty. The server stores before it
+answers 250 to a local recipient, so some other server answered. The last
+entry guessed at a test that leaves a listener open. That was wrong: the
+fixture it suspected is disposed by every caller. What is left is the tests'
+own way of choosing a port. Two fixtures bound the wildcard address to port 0,
+read the port, released it and bound it again later, on the wildcard address.
+Windows lets one listener hold `127.0.0.1` on a port another holds on
+`0.0.0.0`, in either order (measured), and a connection to `127.0.0.1`, which
+every one of these tests makes, then reaches the other. It does not hand out
+a port held on `127.0.0.1` to a bind to `0.0.0.0:0` (0 of 2000 probes), so the
+window between the probe and the bind was the way in. Hermod#344 closes it.
+Both fixtures bind `127.0.0.1` itself to port 0 and read the ports the server
+was given. The port is the server's alone, or the bind fails where it can be
+seen. That is hardening, not a fix shown red before.
+
+Also in the pin: [Hermod#340](https://github.com/Vanaheimr/Hermod/pull/340),
+SMTP's submission agent, and
+[Hermod#343](https://github.com/Vanaheimr/Hermod/pull/343), DKIM's tag lists.
+The solution built at once; Styx stays at `a6b9f9fb`.
+
+| | `bd549e50` | `5c4cbf93` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1788 | **1788** |
+| ↳ regression selection | 1099 | **1099** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1789 | **1789** |
+| the neighbours | 4024 | **4051** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed at the first attempt, the neighbours included, for the
+first time in three pins. The 27 more neighbours are SMTP's, 12 from Hermod#340
+and 15 from #343. The gate passed in all three legs. cache-tests, the
+Linux-built clone and Autobahn were not run again. None of them reaches SMTP,
+and their figures stand as measured at `bd549e50` and `002cfd29`.
