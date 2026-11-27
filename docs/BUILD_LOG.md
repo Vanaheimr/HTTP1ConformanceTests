@@ -7469,3 +7469,53 @@ first time in three pins. The 27 more neighbours are SMTP's, 12 from Hermod#340
 and 15 from #343. The gate passed in all three legs. cache-tests, the
 Linux-built clone and Autobahn were not run again. None of them reaches SMTP,
 and their figures stand as measured at `bd549e50` and `002cfd29`.
+
+## 2026-11-27 — Hermod to `e73d854c`: multipart/form-data (RFC 7578)
+
+[Hermod#345](https://github.com/Vanaheimr/Hermod/pull/345) closes one of the
+matrix's own gaps, not a finding. RFC 7578's row read "content type modeled, no
+multipart parser", and that was too kind. There was a parser, `Hermod.MIME`,
+behind `TryParseMultipartFormDataRequestBody`, and nothing else used it. Run
+on the same bodies as its replacement, it kept the CRLF in front of every
+delimiter as the end of the content before it, so no field or file came back
+as it was sent. It threw on a preamble, on `--boundary` in the middle of a line
+of content, on a header section without its blank line, and on two field names
+that differ only in case. It read `name=token` as `oke`, lost a file name
+containing a `;`, and dropped a part without a `Content-Disposition`, and a
+body cut off, without a word. It is deleted.
+
+`HTTPMultipartFormData` lives in `Hermod/HTTP/`, for HTTP/2 and HTTP/3 to use
+as well. It frames a body as RFC 2046 §5.1.1 does: a delimiter only at the
+start of a line and followed by padding and a CRLF, the CRLF in front of it
+the delimiter's, the preamble and the epilogue ignored, and a body that ends
+before its close delimiter refused. Each part needs one `Content-Disposition`
+of `form-data` with a `name`. Its charset is its own, the form's `_charset_`
+(§4.6), or UTF-8. In a quoted string a backslash quotes only a quotation mark
+or a backslash, because that is how browsers write a Windows file name. The
+request helper now undoes the request's content coding first. Without that a
+gzip-compressed form would have been refused as malformed. A coding it cannot
+undo gets `415`, one that does not decode `400`.
+
+The tests' bodies are what real senders sent on 2026-11-27, copied octet for
+octet: Chromium 153 and Firefox 155 through Playwright, curl 8.23, and
+Python's requests 2.32 and urllib3 2.3. Each differs from the others in a way
+a parser written from the RFC alone could miss. The browsers percent-encode a
+quotation mark in a name and write a backslash as it is, curl adds a
+`Content-Type` to every file, and urllib3 writes a bare hex boundary. 38
+mutations, each red. `MultipartFormDataTests` joins the regression selection
+as its fiftieth name.
+
+| | `5c4cbf93` | `e73d854c` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1788 | **1836** |
+| ↳ regression selection | 1099 | **1147** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1789 | **1837** |
+| the neighbours | 4051 | **4051** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed at the first attempt, and the gate in all three legs. The
+48 more are `MultipartFormDataTests`, all of them in the selection too. The
+solution built at once; Styx stays at `a6b9f9fb`. No harness here sends a
+form, so the gate had nothing new to measure, and cache-tests, the Linux-built
+clone and Autobahn were not run again.
