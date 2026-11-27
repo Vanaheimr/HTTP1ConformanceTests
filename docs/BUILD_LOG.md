@@ -7343,3 +7343,71 @@ on some Windows images the server side, SChannel, still builds its chain with
 AIA retrieval and waits on its own, which a machine under the load of the full
 filter makes long enough to matter. Recorded here so that a second time is a
 pattern rather than news.
+
+## 2026-11-27 — Hermod to `bd549e50`: RFC 9440, and `Content-Type` read by its grammar (H-51)
+
+Two PRs are merged and pinned.
+[Hermod#341](https://github.com/Vanaheimr/Hermod/pull/341) closes the RFC 9440
+row of the matrix: `Client-Cert` and `Client-Cert-Chain`, the fields a
+TLS-terminating reverse proxy uses to tell the server behind it which
+certificate the client authenticated with. The proxy's side is
+`HTTPRequest.Builder.ForwardClientCertificate`: it removes whatever the client
+sent of either field, in any case, and then declares the certificate and chain
+it is given, or with none only removes, which §2.4 asks of a connection
+without one. The server's side is `ForwardedClientCertificate` and
+`ForwardedClientCertificateChain`. A value is a certificate only when it is
+one byte sequence of exactly one DER-encoded certificate; the BCL's loader
+also takes PEM and trailing octets, so what it read is compared with what it
+was given. The request parser now joins the chain over several field lines, as
+§2.3 allows, where it refused the request before. Both fields stay claims: the
+stack reads neither, and which proxy to believe is the application's (§4). 35
+tests, Appendix A's certificates read and written to the octet; thirteen
+mutations, twelve red, the thirteenth equivalent, and the code it guarded
+went.
+
+[Hermod#342](https://github.com/Vanaheimr/Hermod/pull/342) is H-51, found
+while preparing a `multipart/form-data` parser, which needs the boundary of a
+`Content-Type`. The old parser split the field on every `;` and read the
+boundary from its first `----` on, so a boundary without four dashes in a row
+made the field unreadable, among them RFC 7578's own `AaB03x`. It also handed
+back a registered type without the field's charset, compared types
+case-sensitively, and registered every type a peer named in a static table,
+without bound and without a lock. The parser is now RFC 9110 §8.3's grammar,
+and the registry is only read. 38 tests, 27 of the first 35 red against the
+old parser, among them 20 000 parses at once; sixteen mutations, each red.
+
+Both fixtures join the regression selection, which goes from forty-seven names
+and 1026 tests to forty-nine and 1099. Also in the pin:
+[Hermod#338](https://github.com/Vanaheimr/Hermod/pull/338), SMTP's `BDAT`
+grammar, which no filter here selects but the neighbours. The solution built
+at once; Styx stays at `a6b9f9fb`.
+
+| | `82a4af48` | `bd549e50` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1715 | **1788** |
+| ↳ regression selection | 1026 | **1099** |
+| ↳ WebSockets | 249 | **249** |
+| CI's filter, `+ Tests.HTTPS.` | 1716 | **1789** |
+| the neighbours | 4011 | **4024** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **337 / 343 / 539** |
+
+Every filter passed, CI's included. The 73 more `Tests.HTTP.` tests are
+`ClientCertificateFieldsTests`' 35 and `ContentTypeFieldTests`' 38, all of
+them in the regression selection. The 13 more neighbours are SMTP's, from
+Hermod#338. The gate passed in all three legs. cache-tests ran again, because
+H-51 changed how the client reads every response's `Content-Type`, and the
+cache proxy's client is one: all 480 as recorded, 379 pass or yes. The
+Linux-built clone and Autobahn were not run again; neither reaches a field
+either PR touched, and their figures stand as measured at `002cfd29`.
+
+The neighbours did not pass at the first attempt this time either: SMTP's
+`A_quoted_local_part_is_one_local_part`, one of its five cases, failed once,
+4023 of 4024. The session it drove was answered 250 at every step and the
+server's storage held nothing afterwards. Alone it passed three times out of
+three, and the whole filter, run again at the same pin, passed 4024 of 4024,
+which is the figure in the table. With the DANE test at the last pin it is the
+second SMTP test in a row that fails once under the full filter, and that is a
+pattern now. Its likely cause is the tests' own: a server bound to the
+wildcard address on a port chosen beforehand, which Windows lets another
+listener hold on 127.0.0.1, and a test that leaves such a listener open. That
+is investigated, and fixed in Hermod, separately.
