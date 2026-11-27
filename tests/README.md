@@ -25,13 +25,13 @@ scrapes output for a marker character.
 
 ## Status
 
-**342 checks pass over cleartext and 348 over TLS** — 219 raw-wire + 99 curl
+**346 checks pass over cleartext and 352 over TLS** — 223 raw-wire + 99 curl
 (105 over TLS: the ALPN check, curl's alt-svc cache and the four misdirected
 requests have no cleartext equivalent) + 24 desync —
 across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
-**544/544** over 12/12.
+**548/548** over 12/12.
 
 The curl figure is 99 **here** and 100 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional on the
@@ -52,9 +52,9 @@ real combinations. CI runs the cleartext gate per push:
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the CI Windows leg | no | yes | 99 | **342** |
+| Windows / Git Bash, and the CI Windows leg | no | yes | 99 | **346** |
 | the Debian curl reached through WSL (`--wsl`) | yes | no | 99 | — |
-| the CI `debian:13` container | yes | yes | 100 | **343** |
+| the CI `debian:13` container | yes | yes | 100 | **347** |
 
 The first two agree at 99 for opposite reasons, which is worth knowing before
 someone reconciles them into one number.
@@ -64,8 +64,8 @@ Over TLS the six transport-conditional checks join in, and the nightly's
 
 | Context | HTTP/2 | local target | curl checks | suite |
 |---|---|---|---:|---:|
-| Windows / Git Bash, and the nightly's Windows leg | no | yes | 105 | **348** |
-| Debian 13, and the nightly's `debian:13` leg | yes | yes | 106 | **349** |
+| Windows / Git Bash, and the nightly's Windows leg | no | yes | 105 | **352** |
+| Debian 13, and the nightly's `debian:13` leg | yes | yes | 106 | **353** |
 
 Both were measured on 2026-10-29 before the job existed, as 326 and 327, and again at Hermod `7946ad01`, `2b6eecc2`, `b27d6483` and, on .NET 11, `4b8be28a`, `5dfbd920`, `6011efc6` and `cc4bd449`. The Debian figure
 comes from a fresh clone built and run inside WSL, a Linux-built tree, and
@@ -132,7 +132,7 @@ shows that the octets cross `wsl.exe` unchanged.
 |---|---:|---|
 | `curl-matrix.sh` | 99–106 | **third-party**: version handling, ALPN, `Alt-Svc` and curl's alt-svc cache, misdirected requests over TLS, RFC 9457 problem details negotiated on `Accept`, RFC 8288 links as they arrive, RFC 8297 `103 Early Hints` in the order they arrive, RFC 6266 `Content-Disposition` and the name `curl -J` saves under, RFC 9530 digests checked against the octets that arrived, methods, framing, `Expect`, connection reuse, conditionals via curl's own ETag store, ranges, negotiation, auth incl. `--anyauth`, `--compressed`, redirects, curl's exit codes |
 | `h1syntax` | 40 | RFC 9112 §2–3, RFC 9110 §5 — request line, request-target forms (the absolute-form accepted since H-42), version syntax, field syntax, `obs-fold`, `Host`, a list on two lines (§5.3, since H-52: a WebSocket handshake's extensions and subprotocols on `/ws`, and a field that is no list refused), limits, fragmented delivery |
-| `h1framing` | 51 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings, chunk syntax, chunk extensions, trailers, response framing |
+| `h1framing` | 55 | RFC 9112 §6–7 — the body-length algorithm, `Content-Length` validity, CL+TE, transfer codings (`gzip` undone and others answered `501` since H-53), chunk syntax, chunk extensions, trailers, response framing |
 | `h1conn` | 20 | RFC 9112 §9 + RFC 1945 — persistence per version, `Connection` tokens, pipelining and ordering, reuse after bodyless replies, half-close |
 | `h1semantics` | 75 | RFC 9110 + RFC 10008 — methods, `Allow`, conditionals, ranges, negotiation, auth, QUERY, `Expect: 100-continue`, redirects |
 | `h1sse` | 16 | WHATWG SSE — stream head, framing, `Last-Event-ID` replay, mid-stream abort, concurrent subscribers |
@@ -177,7 +177,7 @@ interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
 ```bash
-tests/run-tests.sh --wsl        # 544/544 — both curl builds
+tests/run-tests.sh --wsl        # 548/548 — both curl builds
 ```
 
 `--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the

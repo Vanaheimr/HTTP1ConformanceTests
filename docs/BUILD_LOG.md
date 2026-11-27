@@ -7671,3 +7671,65 @@ a path that answered `400`, so `h1syntax` now has five checks for it:
   no list is still refused.
 
 All green at the first attempt, and the gate grew by five: `h1syntax` now sends lists on two lines to the demo's `/ws`. Against a demo built on `ffb926c7` exactly the four that need the fix are red, a handshake offering `permessage-deflate` or the `demo` subprotocol on a second line answered `400`, and the control, two `If-Modified-Since` lines, is `400` on both pins. The Debian figures, 343 and 349, are the Windows ones plus the same five checks, which are not platform-conditional, until the nightly measures them. The 15 more neighbours are SMTP's, from Hermod#349.
+
+## 2026-11-27 — Hermod to `488d0fb2`: the transfer codings other than chunked (H-53)
+
+The matrix's last ❌ for RFC 9112 was §7's other transfer codings. Before
+anything was changed, the demo was asked what it does with them. `POST /echo`
+answered `Transfer-Encoding: gzip, chunked`, `deflate, chunked` and
+`bogus, chunked` alike with `200`, and echoed the gzip octets. The server's
+parse required only that `chunked` be the final coding, removed the chunks and
+handed on the rest as the content, whatever the coding before `chunked` was
+called. RFC 9112, Section 6.1, says a server that receives a transfer coding it
+does not understand SHOULD answer `501`. That became **H-53**.
+
+[Hermod#354](https://github.com/Vanaheimr/Hermod/pull/354) fixes it:
+
+- `HTTPTransferCoding` undoes `gzip`, `x-gzip` and `deflate` below the framing,
+  in reverse order of application, with the decoders and per-step limits of the
+  content codings.
+- The server answers `501` with `Connection: close` to any other coding before
+  `chunked`. That covers `compress`, which is LZW and has no BCL decoder,
+  `identity`, `br` and `zstd`, which are content codings only, and any made-up
+  name.
+- Octets that do not decode are a `400`, whether the handler reads them or the
+  server does after it. A handler that reads them gets
+  `HTTPInvalidTransferCodingException`, not an empty content to act on. What
+  expands past the body limit is a `413`.
+- The client used to refuse every `Transfer-Encoding` but a single `chunked`,
+  which was safe. It now undoes the same codings, below a content coding and a
+  digest check. It reads a response whose final coding is not `chunked` to the
+  close (Section 6.3, item 4) and does not reuse that connection. `chunked`
+  twice, or not last, is still refused.
+- Neither role applies a coding other than `chunked` when sending.
+
+`TransferCodingDecodingTests` brings 28 tests and is the regression selection's
+fifty-second name. There were 21 mutations: 20 are red, and one is equivalent.
+Removing both of `HTTPServer`'s catches still ends in `400`, because the
+server's read of the rest of the body fails the same way after the handler.
+
+Also in the pin: [Hermod#352](https://github.com/Vanaheimr/Hermod/pull/352),
+DKIM and ARC signing `From` whatever the configuration names. The solution
+built at once; Styx stays at `a6b9f9fb`.
+
+| | `b536fa1e` | `488d0fb2` |
+|---|---:|---:|
+| `Tests.HTTP.` | 2007 | **2035** |
+| ↳ regression selection | 1313 | **1341** |
+| ↳ WebSockets | 254 | **254** |
+| CI's filter, `+ Tests.HTTPS.` | 2008 | **2036** |
+| the neighbours | 4100 | **4110** |
+| gate, cleartext / TLS / `--wsl` | 342 / 348 / 544 | **346 / 352 / 548** |
+
+`h1framing` gets four checks, after the one that sends an unknown coding:
+
+- `gzip, chunked` on `/echo` gets a `200`;
+- the handler gets the content rather than the gzip;
+- `bogus, chunked` gets a `501`;
+- `compress, chunked` gets a `501`.
+
+Against a demo built on `b536fa1e`, `h1framing` read 52/55. The three red were
+exactly the ones that need the fix: the echoed gzip octets, and `200` for the
+two codings that should be `501`. The `200` itself was there before. The Debian
+figures, 347 and 353, are the Windows ones plus the same four checks, which are
+not platform-conditional, until the nightly measures them. The 10 more neighbours are SMTP's, from Hermod#352.

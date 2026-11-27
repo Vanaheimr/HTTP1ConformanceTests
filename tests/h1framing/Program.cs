@@ -15,6 +15,9 @@
  * limitations under the License.
  */
 
+using System.IO.Compression;
+using System.Text;
+
 using org.GraphDefined.Vanaheimr.Hermod.HTTP1.Tests;
 
 // ---------------------------------------------------------------------------
@@ -119,6 +122,48 @@ checks.Status(
     "unknown transfer coding",
     await target.RoundTripAsync($"POST /echo HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: bogus\r\n\r\n0\r\n\r\n"),
     400, 501
+);
+
+// §7: "gzip, chunked" is gzipped content, chunked, and the content is what
+// the handler gets. §6.1: "A server that receives a request message with a
+// transfer coding it does not understand SHOULD respond with 501". Until
+// Hermod's fix for H-53 (2026-11-27) the server removed the chunks and handed
+// on the rest as the content, whatever the coding before chunked was called:
+// /echo answered all three of these with 200 and the gzip octets.
+{
+
+    const String content = "hello, transfer-coded";
+
+    using var gzipped = new MemoryStream();
+    using (var gzip = new GZipStream(gzipped, CompressionLevel.Optimal, leaveOpen: true))
+        gzip.Write(Encoding.ASCII.GetBytes(content));
+
+    await using var connection = await target.ConnectAsync();
+
+    await connection.SendAsync([
+        .. Encoding.ASCII.GetBytes($"POST /echo HTTP/1.1\r\nHost: {host}\r\nContent-Type: text/plain\r\n" +
+                                   $"Transfer-Encoding: gzip, chunked\r\nConnection: close\r\n\r\n{gzipped.Length:x}\r\n"),
+        .. gzipped.ToArray(),
+        .. Encoding.ASCII.GetBytes("\r\n0\r\n\r\n")
+    ]);
+
+    var response = await connection.ReadResponseAsync();
+
+    checks.Status  ("gzip under chunked (§7)",                           response, 200);
+    checks.Contains("… and the handler gets the content, not the gzip",  response, content);
+
+}
+
+checks.Status(
+    "a coding the server cannot undo, under chunked → 501 (§6.1)",
+    await target.RoundTripAsync($"POST /echo HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: bogus, chunked\r\n\r\n0\r\n\r\n"),
+    501
+);
+
+checks.Status(
+    "compress under chunked → 501 (§6.1: no LZW decoder here)",
+    await target.RoundTripAsync($"POST /echo HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: compress, chunked\r\n\r\n0\r\n\r\n"),
+    501
 );
 
 // The TE.TE obfuscation family: a front end and a back end disagreeing about
