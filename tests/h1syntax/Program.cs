@@ -223,6 +223,53 @@ checks.Status(
 );
 
 
+// --- RFC 9110 §5.3 — a list on more than one line is one list --------------
+
+// "A recipient MAY combine multiple field lines within a field section that
+// have the same field name into one field line ... by appending each subsequent
+// field line value to the initial field line value in order, separated by a
+// comma". RFC 6455 §11.3.2 says the same of a handshake's extensions in so many
+// words. Until Hermod#351 (H-52, 2026-11-27) the server joined seventeen fields
+// by a list of its own and answered 400 to every other field that came twice:
+// the demo's /ws refused a handshake that offered permessage-deflate on a
+// second line. A field that is no list may still not come twice, and the last
+// check here is the control that the joining did not become a free-for-all.
+async Task<String> Upgrade(String FieldLines)
+{
+
+    await using var connection = await target.ConnectAsync();
+
+    await connection.SendAsync($"GET /ws HTTP/1.1\r\nHost: {host}\r\n" +
+                                "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+                                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                                "Sec-WebSocket-Version: 13\r\n" +
+                               $"{FieldLines}\r\n");
+
+    return await connection.ReadHeadersAsync();
+
+}
+
+var extensionsOnTwoLines = await Upgrade("Sec-WebSocket-Extensions: x-unknown-extension\r\n" +
+                                         "Sec-WebSocket-Extensions: permessage-deflate\r\n");
+
+checks.Status  ("Sec-WebSocket-Extensions on two lines → 101 (§5.3, RFC 6455 §11.3.2)", extensionsOnTwoLines, 101);
+checks.Contains("… and the offer on the second line is accepted",                         extensionsOnTwoLines, "Sec-WebSocket-Extensions: permessage-deflate");
+
+var protocolsOnTwoLines  = await Upgrade("Sec-WebSocket-Protocol: x-unknown-protocol\r\n" +
+                                         "Sec-WebSocket-Protocol: demo\r\n");
+
+checks.Status  ("Sec-WebSocket-Protocol on two lines → 101 (§5.3, RFC 6455 §11.3.4)",     protocolsOnTwoLines,  101);
+checks.Contains("… and the subprotocol on the second line is selected",                   protocolsOnTwoLines,  "Sec-WebSocket-Protocol: demo");
+
+checks.Status(
+    "a field that is no list, twice (If-Modified-Since) → 400",
+    await target.RoundTripAsync($"GET / HTTP/1.1\r\nHost: {host}\r\n" +
+                                 "If-Modified-Since: Sun, 06 Nov 1994 08:49:37 GMT\r\n" +
+                                 "If-Modified-Since: Sun, 06 Nov 1994 08:49:37 GMT\r\n\r\n"),
+    400
+);
+
+
 // --- Limits: RFC 9110 §15.5.15 (414) and RFC 6585 (431) --------------------
 
 checks.Status(

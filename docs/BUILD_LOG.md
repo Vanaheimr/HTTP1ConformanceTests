@@ -7601,3 +7601,73 @@ harness here reads or writes a cookie through the typed fields: cache-tests'
 one `Set-Cookie` test goes through `tests/cache-proxy/`, which forwards raw
 field lines. So the gate had nothing new to measure, and cache-tests, the
 Linux-built clone and Autobahn were not run again.
+
+## 2026-11-27 — Hermod to `b536fa1e`: a list on more than one line is one list
+
+[Hermod#351](https://github.com/Vanaheimr/Hermod/pull/351) fixes the rest of
+**H-52**. [Hermod#347](https://github.com/Vanaheimr/Hermod/pull/347) had fixed
+it for `Cookie` and `Set-Cookie`. The PLAN.md row filed with it said that
+`Accept` and `Connection` on two lines read as absent too. That was measured on
+`HTTPRequest.TryParse(Text)`, and it is not what the server does. Measured
+again before the fix, field by field, on all three parses:
+
+- **The server's own parse** joined seventeen fields by a list of its own, and
+  `Accept` and `Connection` were among them. It answered `400` to every other
+  field that came twice. That included `Sec-WebSocket-Extensions` and
+  `Sec-WebSocket-Protocol`, which RFC 6455, Sections 11.3.2 and 11.3.4, says a
+  request may repeat. It also included a request body's `Content-Encoding` and
+  `Content-Language`, and `Prefer`, `Priority`, `Link`, `Pragma` and the
+  `Want-*-Digest` fields.
+- **A response, `HTTPRequest.TryParse(Text)`, and the WebSocket server on a
+  port of its own** kept the lines as a `String[]`. A typed list on two lines
+  read as absent: `Cache-Control`, `Allow`, `Link`, `Alt-Svc`,
+  `WWW-Authenticate`, and `Content-Encoding` as an empty list. A field read by
+  name read as the text `System.String[]`: `Vary`, `Accept-Ranges` and
+  `Proxy-Authenticate`.
+
+On the wire, that was:
+
+- a WebSocket on a path of the HTTP server answering `400` to a handshake that
+  offered `permessage-deflate` on a second line;
+- the WebSocket server on its own port answering `101` without
+  `permessage-deflate`, and without the one subprotocol it speaks;
+- Hermod's client handing its caller the compressed octets of a response that
+  said `Content-Encoding: br` and `Content-Encoding: gzip` on two lines.
+
+`HTTPHeaderField.IsListBasedField` is now one set of the fields that are lists.
+The server joins them, and every lookup joins them where the header section did
+not. Any other field that comes twice is still refused by the server, as
+`HTTP11AuditRegressionTests` pins. On two lines elsewhere it reads as absent,
+by name too.
+
+`RepeatedFieldLinesTests` brings 41 tests and is the regression selection's
+fifty-first name. `WebSocketHandshakeFieldLinesTests` brings 5, over a raw
+socket, and is red before the fix exactly as measured.
+`ClientContentDecodingTests` gains one. 25 mutations, each red. In the same PR,
+`FilterSafeTestNamesTests`' remark now says what was measured: that *some*
+`FullyQualifiedName` filters lose a case named with `\uXXXX`.
+
+Also in the pin: [Hermod#349](https://github.com/Vanaheimr/Hermod/pull/349),
+DKIM's temperror and permerror. The solution built at once; Styx stays at
+`a6b9f9fb`.
+
+| | `ffb926c7` | `b536fa1e` |
+|---|---:|---:|
+| `Tests.HTTP.` | 1960 | **2007** |
+| ↳ regression selection | 1271 | **1313** |
+| ↳ WebSockets | 249 | **254** |
+| CI's filter, `+ Tests.HTTPS.` | 1961 | **2008** |
+| the neighbours | 4085 | **4100** |
+| gate, cleartext / TLS / `--wsl` | 337 / 343 / 539 | **342 / 348 / 544** |
+
+Until this pin, no harness here sent a field on two lines. The demo's `/ws` is
+a path that answered `400`, so `h1syntax` now has five checks for it:
+
+- `Sec-WebSocket-Extensions` on two lines, with `permessage-deflate` on the
+  second, gets a `101`, and the offer is accepted;
+- `Sec-WebSocket-Protocol` on two lines, with `demo` on the second, gets a
+  `101`, and `demo` is selected;
+- two `If-Modified-Since` lines get a `400`, the control that a field that is
+  no list is still refused.
+
+All green at the first attempt, and the gate grew by five: `h1syntax` now sends lists on two lines to the demo's `/ws`. Against a demo built on `ffb926c7` exactly the four that need the fix are red, a handshake offering `permessage-deflate` or the `demo` subprotocol on a second line answered `400`, and the control, two `If-Modified-Since` lines, is `400` on both pins. The Debian figures, 343 and 349, are the Windows ones plus the same five checks, which are not platform-conditional, until the nightly measures them. The 15 more neighbours are SMTP's, from Hermod#349.
