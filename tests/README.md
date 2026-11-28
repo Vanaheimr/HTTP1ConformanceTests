@@ -31,7 +31,7 @@ requests have no cleartext equivalent) + 24 desync —
 across 9/9 harnesses, two of which need no demo response at all: the
 fuzzer's fixed-seed pass and `h1desync`'s assertions. With `--wsl`, a second
 curl build, the foreign peers and the smuggling differential join in:
-**548/548** over 12/12.
+**560/560** over 12/12.
 
 The curl figure is 99 **here** and 100 on the CI Debian leg, and that is not a
 discrepancy to reconcile. Two of the matrix's checks are conditional on the
@@ -177,7 +177,7 @@ interesting witness: a client that *could* upgrade and does not proves ALPN
 negotiation in a way the Windows build (no HTTP/2 at all) structurally cannot.
 
 ```bash
-tests/run-tests.sh --wsl        # 548/548 — both curl builds
+tests/run-tests.sh --wsl        # 560/560 — both curl builds
 ```
 
 `--wsl` starts the demo with `--bind-any` (0.0.0.0 instead of loopback) so the
@@ -333,6 +333,18 @@ printed a `FAIL` died, and counts as a failure that names the line it died
 with. Until 2026-11-01 it counted as a shorter list. `tests/run-tests.sh`
 prints the skips under the verdict, so the nightly's log says what it did not
 measure.
+
+**WebSocket, from two clients that are neither browsers nor Autobahn.** `client.mjs` uses Node's global `WebSocket` (undici, Node 22 and later; an
+older Node says SKIP) and `Client.java` uses `java.net.http.WebSocket`, both
+against `/ws` on the HTTP port, the Upgrade path. Six checks each: the `echo`
+subprotocol, a text message, one with two-, three- and four-octet UTF-8, 256
+octets of binary, a message past 65535 octets, which takes the 64-bit length,
+and a clean close with 1000. Java sends the large one in three fragments.
+undici offers permessage-deflate, and the server accepts it with
+`client_no_context_takeover; server_no_context_takeover`, so Node's checks
+run compressed in both directions; the negotiated extensions are printed as
+`INFO`. An echo that dropped a character or an octet turned eight of the
+twelve red on 2026-11-28; the subprotocol and the close do not depend on it.
 
 Three of those skips are real and worth knowing: `java.net.http` and Python's
 `http.client` do not expose the trailer section at all, and `node:http` follows

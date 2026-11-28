@@ -31,6 +31,90 @@ if (!base) {
 // sidestepped.
 const agent = new http.Agent({ keepAlive: true, maxSockets: 4 });
 
+// One WebSocket, with its messages queued so that a check can await the next
+// one. Every wait has a deadline: a server that never answers is a failure
+// with a name, not a hung peer.
+function openWebSocket(path, protocols) {
+    return new Promise((resolve, reject) => {
+
+        const url    = base.replace(/^http/, 'ws') + path;
+        const socket = new WebSocket(url, protocols);
+        const queue  = [];
+        const waits  = [];
+        let   closed = null;
+
+        socket.binaryType = 'arraybuffer';
+
+        const deliver = () => {
+            while (waits.length > 0 && (queue.length > 0 || closed)) {
+                const wait = waits.shift();
+                clearTimeout(wait.timer);
+                queue.length > 0 ? wait.resolve(queue.shift()) : wait.reject(new Error(`closed ${closed.code}`));
+            }
+        };
+
+        socket.onmessage = (event) => { queue.push(event.data); deliver(); };
+        socket.onclose   = (event) => { closed = { code: event.code, reason: event.reason, wasClean: event.wasClean }; deliver(); };
+        socket.onerror   = ()      => reject(new Error(`could not open ${url}`));
+        socket.onopen    = ()      => resolve({
+            socket,
+            next: () => new Promise((res, rej) => {
+                const wait = { resolve: res, reject: rej };
+                wait.timer = setTimeout(() => { waits.splice(waits.indexOf(wait), 1); rej(new Error('no message within 20 s')); }, 20000);
+                waits.push(wait);
+                deliver();
+            }),
+            closed: () => new Promise((res) => {
+                const poll = setInterval(() => { if (closed) { clearInterval(poll); res(closed); } }, 20);
+                setTimeout(() => { clearInterval(poll); res(closed ?? { code: 'none within 20 s' }); }, 20000);
+            })
+        });
+
+    });
+}
+
+async function webSocketChecks() {
+
+    const ws = await openWebSocket('/ws', ['echo']);
+
+    check('ws/subprotocol', ws.socket.protocol === 'echo', `negotiated ${quote(ws.socket.protocol)}`);
+
+    ws.socket.send('hello over the Upgrade');
+    const text = await ws.next();
+    check('ws/echo-text', text === 'hello over the Upgrade', `got ${quote(String(text))}`);
+
+    // Every UTF-8 length at once: two, three and four octets.
+    const utf8 = 'Grüße — ✓ 🌍';
+    ws.socket.send(utf8);
+    const utf8Echo = await ws.next();
+    check('ws/echo-utf8', utf8Echo === utf8, `got ${quote(String(utf8Echo))}`);
+
+    const octets = new Uint8Array(256).map((_, i) => i);
+    ws.socket.send(octets);
+    const binary = await ws.next();
+    check('ws/echo-binary',
+          binary instanceof ArrayBuffer && Buffer.from(binary).equals(Buffer.from(octets)),
+          `got ${binary instanceof ArrayBuffer ? binary.byteLength + ' octets' : typeof binary}`);
+
+    // Past 65535 octets the payload length takes the 64-bit form (RFC 6455
+    // §5.2), in both directions.
+    const large = 'abcdefghij'.repeat(30000);
+    ws.socket.send(large);
+    const largeEcho = await ws.next();
+    check('ws/echo-large', largeEcho === large,
+          `sent ${large.length} characters, got ${typeof largeEcho === 'string' ? largeEcho.length : typeof largeEcho}`);
+
+    // What undici offered and the server accepted, recorded rather than
+    // asserted: the client's offer is undici's to make.
+    console.log(`INFO\tws/extensions\t${quote(ws.socket.extensions || '(none)')}`);
+
+    ws.socket.close(1000, 'done');
+    const closed = await ws.closed();
+    check('ws/close', closed.code === 1000 && closed.wasClean === true,
+          `code ${closed.code}, clean ${closed.wasClean}, reason ${quote(String(closed.reason ?? ''))}`);
+
+}
+
 function request(method, path, headers = {}) {
     return new Promise((resolve, reject) => {
 
@@ -172,6 +256,18 @@ try {
           after.body.toString() === 'Hermod HTTP/1.1 demo host\n',
           `status ${hinted.status}, 1xx ${JSON.stringify(hinted.interim)}, ` +
           `body ${quote(hinted.body.toString())}, then ${quote(after.body.toString())}`);
+
+    // -------------------------------------------------------- WebSocket
+    //
+    // Node's own WebSocket (undici, global since Node 22): a WebSocket client
+    // that is neither a browser nor Autobahn nor ours, against /ws on the HTTP
+    // port, the RFC 9110 §7.8 Upgrade path rather than the :8081 listener.
+
+    if (typeof WebSocket !== 'function') {
+        skip('ws', `node ${process.version} has no global WebSocket (Node 22 or later has)`);
+    } else {
+        await webSocketChecks();
+    }
 
 }
 catch (error) {

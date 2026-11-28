@@ -15,8 +15,15 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 
 public class Client {
@@ -195,7 +202,100 @@ public class Client {
               after.body().equals("Hermod HTTP/1.1 demo host\n"),
               "status " + hinted.statusCode() + ", body " + quote(hinted.body()) + ", then " + quote(after.body()));
 
+        // ------------------------------------------------------ WebSocket
+        //
+        // java.net.http.WebSocket, the JDK's own client, against /ws on the
+        // HTTP port: the RFC 9110 §7.8 Upgrade path. It offers no extension,
+        // so this is the uncompressed path, and it hands a message over in
+        // parts with a last flag, which the listener below puts together.
+
+        webSocketChecks(client, base);
+
         System.exit(failed > 0 ? 1 : 0);
+
+    }
+
+    static final class Echo implements WebSocket.Listener {
+
+        final LinkedBlockingQueue<Object> messages = new LinkedBlockingQueue<>();
+        final CompletableFuture<Integer>  closed   = new CompletableFuture<>();
+        final StringBuilder               text     = new StringBuilder();
+        final java.io.ByteArrayOutputStream binary = new java.io.ByteArrayOutputStream();
+
+        public CompletionStage<?> onText(WebSocket socket, CharSequence data, boolean last) {
+            text.append(data);
+            if (last) { messages.add(text.toString()); text.setLength(0); }
+            socket.request(1);
+            return null;
+        }
+
+        public CompletionStage<?> onBinary(WebSocket socket, ByteBuffer data, boolean last) {
+            var bytes = new byte[data.remaining()];
+            data.get(bytes);
+            binary.writeBytes(bytes);
+            if (last) { messages.add(binary.toByteArray()); binary.reset(); }
+            socket.request(1);
+            return null;
+        }
+
+        public CompletionStage<?> onClose(WebSocket socket, int statusCode, String reason) {
+            closed.complete(statusCode);
+            return null;
+        }
+
+        public void onError(WebSocket socket, Throwable error) {
+            closed.completeExceptionally(error);
+        }
+
+        Object next() throws InterruptedException {
+            return messages.poll(20, TimeUnit.SECONDS);
+        }
+
+    }
+
+    static void webSocketChecks(HttpClient client, String base) throws Exception {
+
+        var echo   = new Echo();
+        var socket = client.newWebSocketBuilder()
+                           .subprotocols("echo")
+                           .connectTimeout(Duration.ofSeconds(10))
+                           .buildAsync(URI.create(base.replaceFirst("^http", "ws") + "/ws"), echo)
+                           .get(20, TimeUnit.SECONDS);
+
+        check("ws/subprotocol", "echo".equals(socket.getSubprotocol()), "negotiated " + quote(socket.getSubprotocol()));
+
+        socket.sendText("hello over the Upgrade", true).get(20, TimeUnit.SECONDS);
+        var text = echo.next();
+        check("ws/echo-text", "hello over the Upgrade".equals(text), "got " + text);
+
+        var utf8 = "Grüße — ✓ 🌍";
+        socket.sendText(utf8, true).get(20, TimeUnit.SECONDS);
+        var utf8Echo = echo.next();
+        check("ws/echo-utf8", utf8.equals(utf8Echo), "got " + utf8Echo);
+
+        var octets = new byte[256];
+        for (var i = 0; i < octets.length; i++) octets[i] = (byte) i;
+        socket.sendBinary(ByteBuffer.wrap(octets), true).get(20, TimeUnit.SECONDS);
+        var binary = echo.next();
+        check("ws/echo-binary", binary instanceof byte[] b && Arrays.equals(b, octets),
+              "got " + (binary instanceof byte[] b ? b.length + " octets" : String.valueOf(binary)));
+
+        // Past 65535 octets, the 64-bit payload length (RFC 6455 §5.2), and
+        // sent in three fragments: a continuation frame each after the first.
+        var part  = "abcdefghij".repeat(10000);
+        socket.sendText(part, false).get(20, TimeUnit.SECONDS);
+        socket.sendText(part, false).get(20, TimeUnit.SECONDS);
+        socket.sendText(part, true ).get(20, TimeUnit.SECONDS);
+        var large = echo.next();
+        check("ws/echo-fragmented-large", (part + part + part).equals(large),
+              "sent " + 3 * part.length() + " characters in three fragments, got " +
+              (large instanceof String l ? l.length() : String.valueOf(large)));
+
+        socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(20, TimeUnit.SECONDS);
+        Integer code;
+        try { code = echo.closed.get(20, TimeUnit.SECONDS); }
+        catch (Exception e) { code = null; }
+        check("ws/close", code != null && code == WebSocket.NORMAL_CLOSURE, "close code " + code);
 
     }
 

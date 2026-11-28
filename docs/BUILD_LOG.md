@@ -7872,3 +7872,36 @@ alone, on Debian in WSL (Python 3.13.5). From WSL the TLS leg gets `421`
 throughout. That is H-36 working, not the peer failing: the demo's certificate
 does not name the Windows host's address. The driver uses `127.0.0.1`, and the
 nightly runs it on `ubuntu-latest` as `signatures-peer`.
+
+## 2026-11-28 — WebSocket from Node's and Java's own clients
+
+The matrix of tools marked "independent WS peers beyond Autobahn" as 🟡.
+websocat, `ws` and Python's `websockets` all need installing, and
+`tests/interop.sh` installs nothing. Two runtimes it already drives ship a
+WebSocket client of their own:
+
+- Node's global `WebSocket`, which is undici, since Node 22;
+- the JDK's `java.net.http.WebSocket`.
+
+`client.mjs` and `Client.java` now talk to `/ws` on the HTTP port, the
+RFC 9110 §7.8 Upgrade path. Each makes six checks:
+
+- the `echo` subprotocol;
+- a text message;
+- a message with two-, three- and four-octet UTF-8;
+- 256 octets of binary;
+- a message past 65535 octets, which takes the 64-bit payload length;
+- a clean close with 1000.
+
+Java sends the large message in three fragments. undici offers
+permessage-deflate, and the server accepts it as
+`permessage-deflate; client_no_context_takeover; server_no_context_takeover`,
+so Node's checks run compressed in both directions.
+
+**interop 77/77 + 3 skips, up from 65; `--wsl` 560/560 over 12/12, up from
+548.**
+
+The falsification was one mutation of the demo's echo: a text message lost or
+gained a character, and a binary message lost its first octet. It turned eight
+of the twelve red, four on each client. The subprotocol and the close do not
+depend on the echo, and stayed green.
