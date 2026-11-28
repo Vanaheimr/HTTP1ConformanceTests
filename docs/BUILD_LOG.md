@@ -7811,3 +7811,64 @@ No harness checks a signature yet: RFC 9421 is something an application does,
 and the demo host does not do it. Hermod#357 was measured .NET against .NET.
 The RFC's own examples come from other implementations, but a peer that signs
 on the wire is the open part.
+
+## 2026-11-28 — RFC 9421 against a peer that is not .NET
+
+Hermod#357 was measured against the RFC's examples and against itself, .NET
+against .NET. The same day, `tests/signatures.sh` puts pyauth's
+[http-message-signatures](https://github.com/pyauth/http-message-signatures)
+2.0.1 on the other end. It is installed into `tests/thirdparty/sig-venv` and
+pinned. The demo has two new routes:
+
+- `/signatures/verify` verifies the request's signature. `@method`,
+  `@authority` and `@path` must be covered, and with a body `Content-Digest`,
+  which is then checked against the body. `created` is required and may be
+  five minutes old. It answers `200` with the signature's name or `403` with
+  the step that failed. Not `401`: that one needs a `WWW-Authenticate`
+  challenge, and a signature is no auth-scheme.
+- `/signatures/signed/{keyid}` signs its response over `@status`,
+  `Content-Type`, `Content-Digest` and `Content-Length`.
+
+Both use the RFC's example keys (Appendix B.1), in `Demo/DemoSignatureKeys.cs`,
+and the peer holds the same ones, so neither side hands the other a key.
+
+**41 checks per listener, 82 in all, each passed.**
+
+- The library is first held against the RFC: four example signatures verify,
+  each with one covered field changed does not, and HMAC and Ed25519 sign as
+  the RFC does.
+- It then signs with all five keys, `@scheme` and `@target-uri` included,
+  which the demo derives from the connection. The demo verifies, and refuses
+  the requests it should, each for its own reason.
+- The demo signs with four keys and the library verifies. The response is not
+  compressed, although the peer asks for gzip.
+
+Seven mutations, each red:
+
+- forcing the scheme to `http` on the TLS listener;
+- dropping the digest check, the maximum age or the required components;
+- resolving every key identifier to one key;
+- changing `Content-Type` after signing;
+- removing the server's guard that keeps a signed response uncompressed.
+
+What the library taught:
+
+- **It calls `@query-param` `@query-params`.** RFC 9421 §2.2.8 has no such
+  name, so the library can neither sign over a query parameter nor verify a
+  signature that covers one. Hermod refuses `@query-params` as an unknown
+  derived component (`SignatureBaseError`). Both are pinned as checks: the
+  library's refusal of `@query-param`, and the demo's of `@query-params`.
+- **2.0.1 imports `typing_extensions` without declaring it.** Only
+  `SupportsIndex` is used, which `typing` has had since Python 3.8. The peer
+  lends it from there rather than fetching a second package.
+- **It has no `req`**, so the demo's signed response covers nothing of the
+  request. Hermod's own `MessageSignatureTests` cover `req`, and no peer here
+  does.
+
+Neither finding was reported upstream.
+
+Measured on Windows (Python 3.14.5, cryptography 50.0.2) and, for the peer
+alone, on Debian in WSL (Python 3.13.5). From WSL the TLS leg gets `421`
+throughout. That is H-36 working, not the peer failing: the demo's certificate
+does not name the Windows host's address. The driver uses `127.0.0.1`, and the
+nightly runs it on `ubuntu-latest` as `signatures-peer`.

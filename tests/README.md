@@ -593,6 +593,31 @@ the trace of every exchange, are in `artifacts/cache-tests/`, and the proxy's
 log says what the cache did with each request. See
 [`../docs/TestingAgainst_CacheTests.md`](../docs/TestingAgainst_CacheTests.md).
 
+## The signatures peer (RFC 9421)
+
+```bash
+tests/signatures.sh                            # both listeners, starts the demo
+tests/signatures.sh --base http://127.0.0.1:8080
+```
+
+Hermod#357 was measured against the RFC's examples and against itself, which is
+.NET reading the RFC one way. This driver puts [http-message-signatures](https://github.com/pyauth/http-message-signatures)
+2.0.1 on the other end, installed into `thirdparty/sig-venv` on the first run
+and pinned. It has its own signature base, its own Structured Field parser and
+pyca/cryptography for the keys. Both sides use the RFC's example keys, out of
+Appendix B.1, so neither hands the other one.
+
+| | checks |
+|---|---|
+| `rfc/` | the library against Appendix B.2: four example signatures verify, each with one covered field changed does not, and HMAC and Ed25519 sign octet for octet as the RFC does |
+| `known/` | the library calls `@query-param` `@query-params`, so it cannot sign over a query parameter. Pinned: the check turns red when the library learns the RFC's name |
+| `client/` | the library signs, `/signatures/verify` verifies, with every key and with `@scheme` and `@target-uri`, which the demo derives from the connection; a body under `Content-Digest`; and the refusals, each for its own reason: a digest of other content, another query, no signature, too little covered, too old, an unknown key, `@query-params` |
+| `server/` | `/signatures/signed/{keyid}` signs, the library verifies; the digest is the content's, the response is not compressed although the peer asks for gzip, and with its `Content-Type` changed it does not verify |
+
+41 checks per listener, 82 in all. The peer prints `END` last, and a run
+without it is a failure, not a shorter list. Seven mutations, of the demo's
+route and of the server's compression guard, each turn checks red.
+
 ## Not here yet
 
 `PLAN.md` has no third-party suite left open. CI (A11)

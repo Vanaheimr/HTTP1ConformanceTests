@@ -309,6 +309,29 @@ jobs:
       - name: smuggler and h2csmuggler
         run: bash tests/smuggler.sh
 
+  signatures-peer:
+    # RFC 9421 against pyauth's http-message-signatures, pinned: the peer signs
+    # and the demo verifies, the demo signs and the peer verifies, over both
+    # listeners, after the library has been held against the RFC's examples.
+    #
+    # Not a gate for the reason smuggler-thirdparty is not: it pip-installs the
+    # library on its first run, and a push gate must not depend on PyPI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '11.0.x'
+
+      - name: Build
+        run: dotnet build HTTP1.slnx
+
+      - name: RFC 9421, both directions
+        run: bash tests/signatures.sh
+
   cache-tests:
     # Hermod's HTTP/1.x client cache (H-5) against cache-tests, the suite
     # behind cache-tests.fyi, through tests/cache-proxy/: a reverse proxy

@@ -1139,6 +1139,145 @@ namespace org.GraphDefined.Vanaheimr.Hermod.HTTP1.Demo
 
             #endregion
 
+            #region GET|POST /signatures/verify  — RFC 9421: the request's signature, verified
+
+            // RFC 9421 is something an application does, and this is the
+            // application: what a signature must cover, how old it may be and
+            // which keys may make it are this route's to say (Section 3.2.1),
+            // not the server's. The keys are the RFC's own examples
+            // (DemoSignatureKeys), so a peer that is not .NET signs with them
+            // out of the same appendix, and tests/signatures.sh is that peer.
+            //
+            // @method, @authority and @path must be covered, and with a body
+            // Content-Digest too, which is then checked against the body: a
+            // signature over a digest says nothing about content the digest
+            // does not match (RFC 9421, Section 7.2.8). created is required and
+            // may be five minutes old.
+            //
+            // 200 names the signature that verified; 403 names the step that
+            // failed. Not 401: that one requires a WWW-Authenticate challenge
+            // (RFC 9110, Section 15.5.2), and a signature is no auth-scheme.
+            foreach (var method in new[] { HTTPMethod.GET, HTTPMethod.POST })
+                API.AddHandler(
+                    method,
+                    HTTPPath.Root + "signatures" + "verify",
+                    HTTPDelegate: request => {
+
+                        var body          = request.HTTPBody ?? [];
+                        var required      = new List<HTTPSignatureComponent> {
+                                                HTTPSignatureComponent.Method,
+                                                HTTPSignatureComponent.Authority,
+                                                HTTPSignatureComponent.Path
+                                            };
+
+                        if (body.Length > 0)
+                            required.Add(HTTPSignatureComponent.Field("content-digest"));
+
+                        var verification  = request.VerifySignature(new HTTPSignatureVerificationOptions {
+                                                KeyResolver         = parameters => parameters.KeyId is not null &&
+                                                                                    DemoSignatureKeys.ByKeyId.TryGetValue(parameters.KeyId, out var key)
+                                                                                        ? key
+                                                                                        : null,
+                                                RequiredComponents  = required,
+                                                RequireCreated      = true,
+                                                MaximumAge          = TimeSpan.FromMinutes(5)
+                                            });
+
+                        var text          = verification.IsValid
+                                                ? $"{verification} {verification.Parameters?.KeyId} {verification.Key?.Algorithm}\n"
+                                                : $"{verification}\n";
+
+                        if (verification.IsValid && body.Length > 0)
+                        {
+                            var digest = HTTPDigest.Verify(request.ContentDigest, body);
+                            if (digest != HTTPDigestVerification.Match)
+                                text = $"Content-Digest {digest}, under the valid signature {verification}\n";
+                        }
+
+                        return Task.FromResult(
+                            new HTTPResponse.Builder(request) {
+                                HTTPStatusCode  = text.StartsWith("Valid ") ? HTTPStatusCode.OK : HTTPStatusCode.Forbidden,
+                                ContentType     = HTTPContentType.Text.PLAIN,
+                                Content         = text.ToUTF8Bytes()
+                            }.AsImmutable
+                        );
+
+                    }
+                );
+
+            #endregion
+
+            #region GET /signatures/signed/{keyid}  — RFC 9421: a response the demo signs
+
+            // Signed with the key the path names, over @status, Content-Type,
+            // Content-Digest and Content-Length: what the response says, and,
+            // through the digest, the content. Not over any request component
+            // with req, which Hermod signs (MessageSignatureTests) but the
+            // peer's library cannot verify: it has no req.
+            //
+            // The server's AutomaticContentCompression is on, and leaves this
+            // response alone: compressing it would change Content-Length and
+            // Content-Digest under the signature. A peer asking for gzip gets
+            // the identity coding, and tests/signatures.sh asks.
+            API.AddHandler(
+                HTTPMethod.GET,
+                HTTPPath.Root + "signatures" + "signed" + "{keyid}",
+                HTTPDelegate: request => {
+
+                    if (!request.ParsedURLParametersX.TryGetValue("keyid", out var keyId) ||
+                        !DemoSignatureKeys.ByKeyId.TryGetValue(keyId, out var key) ||
+                        !key.CanSign)
+                        return Task.FromResult(
+                            new HTTPResponse.Builder(request) {
+                                HTTPStatusCode  = HTTPStatusCode.NotFound,
+                                ContentType     = HTTPContentType.Text.PLAIN,
+                                Content         = $"no key here signs as '{keyId}'\n".ToUTF8Bytes()
+                            }.AsImmutable
+                        );
+
+                    var text     = new StringBuilder();
+
+                    for (var i = 0; i < 40; i++)
+                        text.AppendLine($"line {i}: signed by {keyId}, and not compressed for it");
+
+                    var content  = text.ToString().ToUTF8Bytes();
+
+                    var response = new HTTPResponse.Builder(request) {
+                                       HTTPStatusCode  = HTTPStatusCode.OK,
+                                       ContentType     = HTTPContentType.Text.PLAIN,
+                                       ContentDigest   = HTTPDigest.FieldValue(content, "sha-256"),
+                                       Content         = content
+                                   };
+
+                    if (!response.TrySign("sig1",
+                                          new HTTPSignatureParameters(
+                                              [
+                                                  HTTPSignatureComponent.Status,
+                                                  HTTPSignatureComponent.Field("content-type"),
+                                                  HTTPSignatureComponent.Field("content-digest"),
+                                                  HTTPSignatureComponent.Field("content-length")
+                                              ],
+                                              Created:    DateTimeOffset.UtcNow,
+                                              KeyId:      keyId,
+                                              Algorithm:  key.Algorithm
+                                          ),
+                                          key,
+                                          out var error))
+                        return Task.FromResult(
+                            new HTTPResponse.Builder(request) {
+                                HTTPStatusCode  = HTTPStatusCode.InternalServerError,
+                                ContentType     = HTTPContentType.Text.PLAIN,
+                                Content         = $"{error}\n".ToUTF8Bytes()
+                            }.AsImmutable
+                        );
+
+                    return Task.FromResult(response.AsImmutable);
+
+                }
+            );
+
+            #endregion
+
             #region GET /events  — Server-Sent Events
 
             var eventSource = API.AddEventSource<String>(

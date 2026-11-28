@@ -41,6 +41,8 @@ because Hermod's HTTP/1.x server has no `Upgrade` dispatch today (PLAN.md,
 | `/pages/{n}` | GET | RFC 8288 `Link`: three pages, each linking to its neighbours (`prev`, `next`) and both ends (`first`, `last`). The first page's title, `Übersicht`, goes out as `title*` in UTF-8 (RFC 8187) |
 | `/early-hints` | GET | RFC 8297 `103 Early Hints` with `Link: </prose>; rel="preload"; as=fetch`, then 100 ms of work, then the `200` with the same `Link`. The body says whether the `103` went out: an HTTP/1.0 request gets none (RFC 9110 §15.2), and the handler is told so |
 | `/download` | GET | RFC 6266 `Content-Disposition`: an attachment named `Grüße.txt`, which goes out as an ASCII `filename="Gruesse.txt"` first and `filename*` in UTF-8 after it (Appendix D) |
+| `/signatures/verify` | GET POST | RFC 9421: verifies the request's signature with the RFC's example keys (Appendix B.1, in `DemoSignatureKeys.cs`). `@method`, `@authority` and `@path` must be covered, and with a body `Content-Digest`, which is then checked against it; `created` is required and may be five minutes old. `200` names the signature, `403` the step that failed |
+| `/signatures/signed/{keyid}` | GET | RFC 9421: a response signed with the key named, over `@status`, `Content-Type`, `Content-Digest` and `Content-Length`, and therefore never compressed. `404` for `test-key-rsa`, which the BCL cannot import as a private key |
 | `/events` | GET | SSE — `retry`, `id`, `event`, a 2 s ticker |
 | `/ws` | GET | RFC 9110 §7.8 `Upgrade` — a WebSocket echo on the HTTP port itself, cleartext and TLS. A plain GET gets `426` |
 
