@@ -7733,3 +7733,81 @@ exactly the ones that need the fix: the echoed gzip octets, and `200` for the
 two codings that should be `501`. The `200` itself was there before. The Debian
 figures, 347 and 353, are the Windows ones plus the same four checks, which are
 not platform-conditional, until the nightly measures them. The 10 more neighbours are SMTP's, from Hermod#352.
+
+## 2026-11-28 — Hermod to `7a868082`: HTTP Message Signatures (RFC 9421, H-54)
+
+RFC 9421 was the matrix's last ❌. The row said "`Argus` has its own non-RFC
+signature verification". That was wrong: `Argus/SignatureVerification.cs` is
+a record of the HTTPS monitor, `Present`, `Valid` and `Error`, and verifies
+nothing. Hermod had none of RFC 9421. `Signature-Input`, `Signature` and
+`Accept-Signature` were three names in the set of fields that are lists, since
+H-52, and that was all.
+
+[Hermod#357](https://github.com/Vanaheimr/Hermod/pull/357) adds it. The model
+is version-neutral, in `Hermod/HTTP/MessageSignatures/`, and
+`HTTPMessageSignatureExtensions` binds it to HTTP/1.x: `builder.TrySign(...)`
+on a request or a response builder, and `VerifySignature(options)` on a request
+or a response.
+
+- The components come from `RawHTTPHeader`. That is the header as it arrived,
+  or, for a builder, as it will go out. So a field on two lines stays two lines
+  for `bs`, and `@path` and `@query` are the request line's, undecoded.
+- The scheme is the one component an origin-form request does not carry. It is
+  the absolute-form target's, else the client's `RemoteURL`'s, else the
+  connection's. A builder knows none of these, so it takes the scheme as an
+  argument.
+- Every derived component of Section 2.2 is supported, and so is every
+  component parameter of Section 2.1. Every error of Section 2.5 fails the
+  signature base.
+- `@query-param` writes a space as `%20`, as every example in Section 2.2.8
+  does. The WHATWG serializer that the section cites writes `+`.
+- All six registered algorithms are in. A key has the one algorithm it is for,
+  and a signature whose `alg` names another fails before it is checked.
+- What a signature must cover, how old it may be and which keys may make it
+  are the application's to say (Section 3.2.1). Neither the server nor the
+  client signs or verifies on its own.
+- `AutomaticContentCompression` no longer compresses a signed response.
+
+`MessageSignatureTests` brings 123 tests and is the regression selection's
+fifty-third name. The RFC's examples are in `RFC9421Vectors`, taken from the
+RFC's text by a script that undoes the line wrapping of RFC 8792, not typed:
+
+- every example signature base matches the RFC's octet for octet;
+- every example signature verifies, RSA-PSS and ECDSA included;
+- HMAC and Ed25519, which are deterministic, sign exactly as the RFC does;
+- the transformations of Appendix B.4 come out valid or invalid as the RFC
+  says.
+
+On the wire, the server verifies the B.4 request sent over a raw socket, and
+refuses it once its two `Accept` lines are swapped. A client signs and the
+server verifies. The server signs a response with `req` components, which the
+client verifies against the request it sent. That response is not compressed,
+where the same content unsigned is.
+
+There were 50 mutations, and each is red. One survived at first. Without the
+check that a label in `Signature-Input` is also in `Signature`, the next check
+still refused the message as `Malformed`, but for the wrong reason, so the test
+now checks the reason as well.
+
+The private key of `test-key-rsa`, in Appendix B.1.1, has primes of 1088 and
+960 bits. That is a valid RSA key, but not one the BCL can import, so its
+public key verifies the proxy signature of Section 4.3.
+
+Also in the pin: [Hermod#353](https://github.com/Vanaheimr/Hermod/pull/353), whose 29 tests are the neighbours' 29 more, DKIM's `t=`, `x=`, `l=` and `q=` of an unexpected value as a permanent error and the body hashed to `l=`, and [Hermod#355](https://github.com/Vanaheimr/Hermod/pull/355)
+and [#356](https://github.com/Vanaheimr/Hermod/pull/356), SSH's one-time
+password over keyboard-interactive and its README, which no filter here selects. The solution built at once.
+Styx stays at `a6b9f9fb`.
+
+| | `488d0fb2` | `7a868082` |
+|---|---:|---:|
+| `Tests.HTTP.` | 2035 | **2158** |
+| ↳ regression selection | 1341 | **1464** |
+| ↳ WebSockets | 254 | **254** |
+| CI's filter, `+ Tests.HTTPS.` | 2036 | **2159** |
+| the neighbours | 4110 | **4139** |
+| gate, cleartext / TLS / `--wsl` | 346 / 352 / 548 | **346 / 352 / 548** |
+
+No harness checks a signature yet: RFC 9421 is something an application does,
+and the demo host does not do it. Hermod#357 was measured .NET against .NET.
+The RFC's own examples come from other implementations, but a peer that signs
+on the wire is the open part.
